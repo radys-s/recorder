@@ -33,10 +33,19 @@ library;
 const List<String> _kExactArtifacts = [
   // Czech
   'dekuji za pozornost',
+  'dekuji vam za pozornost',
+  'dekujeme za pozornost',
   'dekuji za sledovani',
   'dekuju za pozornost',
   'odebirejte kanal',
   'titulky',
+  // Sound-event tags, which arrive bare or in brackets ("[hudba]").
+  'hudba',
+  'potlesk',
+  'smich',
+  'music',
+  'applause',
+  'laughter',
   // English — 'auto' and 'en' are still selectable, and auto-detect can still
   // land on English for a chunk of silence.
   'you',
@@ -55,6 +64,7 @@ const List<String> _kPrefixArtifacts = [
   // Czech
   'titulky vytvoril',
   'titulky pro vas vytvoril',
+  'titulky pro vas pripravil',
   'preklad titulku',
   'titulky z portalu',
   'prepis a korektura',
@@ -68,7 +78,11 @@ const List<String> _kPrefixArtifacts = [
 /// whole response was one. Pure — no logging, no I/O — so it is unit-testable
 /// and safe to call from anywhere.
 String sanitizeTranscript(String raw) {
-  final text = raw.trim();
+  // A bracketed sound tag is never speech, wherever it sits.
+  final text = raw
+      .replaceAll(RegExp(r'\[[^\]]{1,30}\]'), ' ')
+      .replaceAll(RegExp(r'\s{2,}'), ' ')
+      .trim();
   if (text.isEmpty) return '';
 
   if (_isArtifact(text)) return '';
@@ -89,6 +103,23 @@ String sanitizeTranscript(String raw) {
 
   if (end == sentences.length) return text;
   return sentences.take(end).join().trim();
+}
+
+/// True when [text] is just Whisper repeating the context it was given.
+///
+/// The previous chunk's tail goes up as the `prompt`, so Whisper continues a
+/// sentence across the cut. Over a chunk with little speech in it, it
+/// sometimes does the opposite and returns that prompt — the transcript then
+/// shows a sentence twice, the second time at a moment nobody said it.
+///
+/// Only the *whole* output counts, and only when it is long enough to be a
+/// phrase rather than a common word or two: a real "ano, souhlasím" that
+/// happens to repeat something said a chunk earlier is short and survives.
+bool isPromptEcho(String text, String? prompt) {
+  if (prompt == null) return false;
+  final t = normalizeForArtifactMatch(text);
+  if (t.length < 12) return false;
+  return normalizeForArtifactMatch(prompt).contains(t);
 }
 
 bool _isArtifact(String sentence) {

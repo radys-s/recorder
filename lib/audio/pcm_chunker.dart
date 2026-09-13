@@ -11,6 +11,7 @@ class PcmChunk {
     required this.endMs,
     required this.frames,
     required this.byteLength,
+    required this.voicedMs,
   });
 
   /// 0-based position of this chunk within its meeting.
@@ -26,6 +27,11 @@ class PcmChunk {
   /// the writer can stream them out without a second large allocation.
   final List<Uint8List> frames;
   final int byteLength;
+
+  /// How much of the chunk is louder than [kVoicedRmsThreshold] — i.e. could
+  /// be somebody talking. A chunk with next to none of it is room tone, and
+  /// uploading room tone is how Whisper ends up inventing sentences.
+  final int voicedMs;
 
   Duration get duration => Duration(milliseconds: endMs - startMs);
 
@@ -93,6 +99,7 @@ class PcmChunker {
   int _emittedBytes = 0;
   int _sequence = 0;
   int _silentRunMs = 0;
+  int _voicedMs = 0;
 
   int get bufferedBytes => _bufferedBytes;
   Duration get bufferedDuration => Duration(milliseconds: _msForBytes(_bufferedBytes));
@@ -136,6 +143,7 @@ class PcmChunker {
     _emittedBytes = 0;
     _sequence = 0;
     _silentRunMs = 0;
+    _voicedMs = 0;
   }
 
   void _completeFrame() {
@@ -146,7 +154,10 @@ class PcmChunker {
     _frames.add(frame);
     _bufferedBytes += frame.length;
 
-    final isSilent = _rmsOf(frame) < silenceRmsThreshold;
+    final rms = _rmsOf(frame);
+    if (rms >= kVoicedRmsThreshold) _voicedMs += frameDuration.inMilliseconds;
+
+    final isSilent = rms < silenceRmsThreshold;
     _silentRunMs = isSilent ? _silentRunMs + frameDuration.inMilliseconds : 0;
 
     final chunkMs = _msForBytes(_bufferedBytes);
@@ -169,6 +180,7 @@ class PcmChunker {
       endMs: _msForBytes(_emittedBytes + _bufferedBytes),
       frames: List<Uint8List>.unmodifiable(_frames),
       byteLength: _bufferedBytes,
+      voicedMs: _voicedMs,
     );
 
     _sequence++;
@@ -176,6 +188,7 @@ class PcmChunker {
     _frames.clear();
     _bufferedBytes = 0;
     _silentRunMs = 0;
+    _voicedMs = 0;
 
     onChunk(chunk);
   }

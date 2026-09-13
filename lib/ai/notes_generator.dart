@@ -172,6 +172,9 @@ Rules:
 - Write in the same language as the transcript, headings included.
 - Use only what was said. Invent no fact, name, number, date, decision or task,
   and never pad the list with a task nobody accepted.
+- Leave out small talk that has nothing to do with what the meeting is about —
+  what somebody is having for dinner, the weather, private chatter — unless the
+  meeting itself is about it.
 - Keep every number, amount, date and name that was said. A date the reader has
   to act on — the next meeting, a deadline, a delivery date — is never dropped.
 - Sentences with verbs, active voice, people named: "Petr namítl, že by to

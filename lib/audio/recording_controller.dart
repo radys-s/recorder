@@ -272,6 +272,10 @@ class RecordingController extends Notifier<RecordingState> {
       // Whisper produces a hallucinated word, so it is recorded as an already
       // finished, empty segment instead of being queued.
       final tooShort = chunk.duration < kMinTranscribableDuration;
+      // Room tone gets the same treatment: nothing in it for Whisper to
+      // transcribe, and plenty for it to invent. See [kMinVoicedDuration].
+      final noSpeech = chunk.voicedMs < kMinVoicedDuration.inMilliseconds;
+      final skip = tooShort || noSpeech;
 
       // The segment row goes in regardless of network state — that is what
       // makes "transcript so far, mid-recording" work by construction.
@@ -281,18 +285,19 @@ class RecordingController extends Notifier<RecordingState> {
           sequence: chunk.sequence,
           startMs: chunk.startMs,
           endMs: chunk.endMs,
-          status: tooShort ? SegmentStatus.transcribed : SegmentStatus.pending,
+          status: skip ? SegmentStatus.transcribed : SegmentStatus.pending,
           localAudioPath: storedPath,
           createdAt: DateTime.now(),
         ),
       );
 
-      if (tooShort) {
+      if (skip) {
         state = state.copyWith(chunkCount: state.chunkCount + 1);
         AppLog.d(
           _tag,
           'chunk ${chunk.sequence} -> $name ($size B, '
-          '${chunk.duration.inMilliseconds}ms) too short to transcribe, '
+          '${chunk.duration.inMilliseconds}ms, voiced ${chunk.voicedMs}ms) '
+          '${tooShort ? 'too short' : 'no speech'}, not uploaded, '
           'segment $segmentId left empty',
         );
         return;
@@ -312,7 +317,8 @@ class RecordingController extends Notifier<RecordingState> {
 
       AppLog.d(
         _tag,
-        'chunk ${chunk.sequence} -> $name ($size B, ${chunk.duration.inMilliseconds}ms), '
+        'chunk ${chunk.sequence} -> $name ($size B, ${chunk.duration.inMilliseconds}ms, '
+        'voiced ${chunk.voicedMs}ms), '
         'segment $segmentId enqueued',
       );
 

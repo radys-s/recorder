@@ -8,21 +8,33 @@ import '../stt/transcript_sanitizer.dart';
 /// permissive: a false positive costs one small LLM call, a false negative
 /// costs the user the answer they were waiting for.
 ///
-/// Three rules, in order:
+/// It cannot simply be skipped, though. The answer model shares an 8 000
+/// tokens-per-minute ceiling with the web hop, and live mode cuts a chunk
+/// every seven or eight seconds — sending all of them would spend the budget
+/// on statements and lose the answers to 429s.
+///
+/// Five rules, in order:
 ///  1. a `?` anywhere — Whisper punctuates questions reliably, so this alone
 ///     catches nearly everything;
 ///  2. a *sentence* opening with an interrogative word, as the backstop for
 ///     the times it does not;
-///  3. [endedOnPause] only: an interrogative opening any *clause* of the
-///     closing sentence.
+///  3. an indirect-question phrase anywhere — "nevím, kdy to bude", "zajímalo
+///     by mě", "stihneme to, nebo ne" — which is how people actually put a
+///     question on the table without ever intoning one, and which Whisper
+///     therefore writes with a full stop;
+///  4. [endedOnPause] only: an interrogative opening any *clause* of the
+///     closing sentence;
+///  5. [endedOnPause] only: the closing sentence opening with a polite or
+///     modal yes/no opener ("nešlo by", "dá se", "stihneme").
 ///
 /// Rules 1 and 2 split on sentence terminators only, never on commas. `co`,
-/// `jak` and `kdy` are all common mid-sentence in ordinary Czech ("řekni mi,
-/// co potřebuješ"), and splitting on commas would send almost every segment to
-/// the model — which is exactly what this function exists to prevent.
+/// `jak` and `kdy` are all common mid-sentence in ordinary Czech ("ukázal jsem
+/// jim, jak se to dělá"), and splitting on commas would send almost every
+/// segment to the model — which is exactly what this function exists to
+/// prevent.
 ///
-/// Rule 3 does exactly that comma split, which is why it is gated on the
-/// pause: see [endedOnPause].
+/// Rules 4 and 5 do exactly that comma split, which is why they are gated on
+/// the pause: see [endedOnPause].
 bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
   if (text.contains('?')) return true;
 
@@ -37,9 +49,14 @@ bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
     }
   }
 
+  if (_kIndirectQuestion.hasMatch(normalizeForArtifactMatch(text))) {
+    return true;
+  }
+
   if (endedOnPause && sentences.isNotEmpty) {
     for (final clause in _clauses(sentences.last)) {
       if (_opensWithInterrogative(clause)) return true;
+      if (_kYesNoOpener.hasMatch(clause)) return true;
     }
   }
 
@@ -69,8 +86,8 @@ bool chunkEndedOnPause(Duration chunkDuration, Duration maxPauseCutDuration) =>
 /// with.
 ///
 /// "A kolik nás to vlastně bude stát" yields "kolik nas to vlastne bude stat",
-/// which opens with an interrogative. "Nevím kolik to bude stát" does not split
-/// at all and opens with "nevim", so it stays out.
+/// which opens with an interrogative. "Rozpočet je dva miliony" does not split
+/// at all and opens with "rozpocet", so it stays out.
 Iterable<String> _clauses(String sentence) sync* {
   for (final part in sentence.split(RegExp(r'[,;:]|\s[-–—]\s'))) {
     final normalized = normalizeForArtifactMatch(part);
@@ -123,3 +140,40 @@ const Set<String> _kInterrogatives = {
   'can', 'could', 'would', 'should', 'shall', 'may', 'might',
   'do', 'does', 'did', 'is', 'are', 'was', 'were', 'will', 'has', 'have', 'am',
 };
+
+/// Phrases that put a question on the table without a question's intonation.
+///
+/// Every one of them is a way of saying "I want to know X" — which is what a
+/// question is — and every one of them comes back from Whisper with a full
+/// stop, because nobody's voice rose. Matched anywhere in the passage, not
+/// only at a sentence start: "Teď k té první věci. Nevím přesně, kolik to
+/// dělá." is the typical shape.
+///
+/// `nevím` needs an interrogative right behind it (one word such as "přesně"
+/// may sit between), so "nevím, to je na tobě" stays out.
+final RegExp _kIndirectQuestion = RegExp(
+  r'\b(?:'
+  r'zajimalo by (?:me|nas)|zajima (?:me|nas)|'
+  r'otazka (?:je|zni|zustava)|otazkou je|zustava otazka|'
+  r'nevim(?:e)? (?:\w+ )?(?:jestli|zda|kolik|jak\w*|kdy|kdo|co|proc|kde|kam|kter\w*)|'
+  r'netusi(?:m|me)|nejsem si jist\w*|nejsme si jisti|'
+  r'chtel(?:a|i)? (?:bych|bychom) vedet|'
+  r'potrebuj\w* (?:vedet|zjistit)|'
+  r'rekni(?:te)? mi|reknete mi|vysvetli(?:te)?|poradte|porad mi|'
+  r'nebo ne|'
+  r'i wonder|do you know|not sure (?:if|whether)|or not|tell me'
+  r')\b',
+);
+
+/// Yes/no openers that, in a meeting, are a question far more often than a
+/// statement. Only consulted for the closing sentence of a passage that ended
+/// on a pause.
+///
+/// Plain `je`, `máme` or `musíme` are deliberately absent: as text, "Musíme to
+/// stihnout do pátku." is a statement exactly as often as it is a question —
+/// only the intonation Whisper failed to hear could tell — and matching them
+/// would spend the token budget on statements.
+final RegExp _kYesNoOpener = RegExp(
+  r'^(?:neslo by|slo by|nedalo by se|dalo by se|da se|je mozne|bylo by mozne|'
+  r'nemohli bychom|nemeli bychom|stihneme|zvladneme|vyplati se)\b',
+);

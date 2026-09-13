@@ -96,6 +96,21 @@ const Duration kConfidentSilenceDuration = Duration(milliseconds: 600);
 /// segment row, so the timeline stays complete; it just never reaches the API.
 const Duration kMinTranscribableDuration = Duration(milliseconds: 500);
 
+/// Normalised RMS above which a 100 ms frame could be somebody talking.
+/// ~-48 dBFS: well under [kSilenceRmsThreshold], because this one decides
+/// whether a chunk is uploaded at all, and a speaker far from the phone must
+/// never be mistaken for silence. A quiet room's noise floor sits below it.
+const double kVoicedRmsThreshold = 0.004;
+
+/// A chunk with less voiced audio than this is never sent to Whisper.
+///
+/// The root of the "it wrote something I never said" reports: pinned to Czech,
+/// Whisper answers a chunk of room tone with a plausible sentence rather than
+/// nothing, and no text filter can tell that sentence from speech. Not
+/// uploading it removes the problem instead of chasing its symptoms. Three
+/// frames is less than one short word, so any real speech clears it.
+const Duration kMinVoicedDuration = Duration(milliseconds: 300);
+
 /// Size of the canonical RIFF/WAVE header prepended to each chunk.
 const int kWavHeaderSize = 44;
 
@@ -104,6 +119,7 @@ const int kWavHeaderSize = 44;
 /// wins, so which test runs is decided by which files were pushed. Czech first,
 /// because that is the language real meetings are in.
 const List<String> kReplayAudioFileNames = [
+  'test_cs_m23.wav',
   'test_cs_web.wav',
   'test_cs.wav',
   'test_cs_silence.wav',

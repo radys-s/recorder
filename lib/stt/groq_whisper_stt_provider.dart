@@ -8,6 +8,7 @@ import '../core/groq_failure.dart';
 import '../core/logging.dart';
 import '../data/secure/api_key_store.dart';
 import 'stt_provider.dart';
+import 'whisper_segment_filter.dart';
 
 /// Groq's OpenAI-compatible Whisper endpoint.
 ///
@@ -63,6 +64,10 @@ class GroqWhisperSttProvider implements SttProvider {
       // verbose_json also returns the detected language and duration, which
       // are worth having for diagnostics and cost nothing extra.
       'response_format': 'verbose_json',
+      // Greedy decoding. At a higher temperature Whisper retries a segment it
+      // is unsure of by sampling, which is exactly where invented words come
+      // from.
+      'temperature': '0',
       'language': ?languageCode,
       'prompt': ?_trimPrompt(promptContext),
     });
@@ -98,9 +103,18 @@ class GroqWhisperSttProvider implements SttProvider {
       throw const SttPermanentException('Response is missing a "text" field.');
     }
 
+    // Segments Whisper itself scored as silence or a runaway loop are cut out
+    // here, before the text goes anywhere — the transcript, live answers or
+    // the notes.
+    final filtered = filterWhisperSegments(data['segments']);
+    final kept = filtered != null && filtered.dropped > 0
+        ? filtered.text
+        : text.trim();
+
     final duration = data['duration'];
     return TranscriptionResult(
-      text: text.trim(),
+      text: kept,
+      droppedSegments: filtered?.dropped ?? 0,
       language: data['language'] is String ? data['language'] as String : null,
       durationSeconds: duration is num ? duration.toDouble() : null,
     );

@@ -6,9 +6,14 @@ class TranscriptionResult {
     required this.text,
     this.language,
     this.durationSeconds,
+    this.droppedSegments = 0,
   });
 
   final String text;
+
+  /// How many of the response's segments were discarded as likely silence or
+  /// a decoding loop before [text] was assembled. See `filterWhisperSegments`.
+  final int droppedSegments;
 
   /// Detected language, when the provider reports one.
   final String? language;

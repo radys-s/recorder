@@ -188,12 +188,23 @@ class TranscriptionQueueWorker {
 
       // Whisper answers silence with a plausible sentence rather than nothing,
       // and pinning the language above makes that more likely, not less.
-      final text = sanitizeTranscript(result.text);
+      if (result.droppedSegments > 0) {
+        AppLog.d(
+          _tag,
+          'row ${row.id}: dropped ${result.droppedSegments} low-confidence '
+          'Whisper segment(s)',
+        );
+      }
+      var text = sanitizeTranscript(result.text);
       if (text != result.text.trim()) {
         AppLog.d(
           _tag,
           'row ${row.id} sanitized: ${_preview(result.text)} -> ${_preview(text)}',
         );
+      }
+      if (isPromptEcho(text, prompt)) {
+        AppLog.d(_tag, 'row ${row.id}: prompt echo dropped: ${_preview(text)}');
+        text = '';
       }
 
       if (text.isEmpty) {

@@ -7,6 +7,7 @@ import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
 import '../data/db/daos/transcript_segments_dao.dart';
 import 'answer_source.dart';
+import 'grounding.dart';
 import 'json_extract.dart';
 import 'llm_provider.dart';
 import 'question_detector.dart';
@@ -88,8 +89,36 @@ class LiveAnswerService {
         AppLog.e(_tag, 'segment ${segment.id}: unparseable response');
         return;
       }
-      if (!decision.isQuestion || decision.answer.isEmpty) {
+      if (!decision.isQuestion) {
         AppLog.d(_tag, 'segment ${segment.id}: model says not a question');
+        return;
+      }
+      if (!decision.onTopic) {
+        AppLog.d(_tag, 'segment ${segment.id}: off topic, no card');
+        return;
+      }
+      if (decision.answer.isEmpty) {
+        AppLog.d(_tag, 'segment ${segment.id}: question but no answer');
+        return;
+      }
+
+      // The question has to have been asked in the words the room actually
+      // used. The previous segment counts too, since a chunk cut can split a
+      // question from its first half.
+      final previous = await _segmentsDao.previousTranscript(
+        segment.meetingId,
+        segment.sequence,
+      );
+      final spoken = '${previous ?? ''} $text';
+      final grounded = decision.quote.isNotEmpty
+          ? isGroundedIn(decision.quote, spoken)
+          : isGroundedIn(decision.question, spoken, minShare: 1 / 3);
+      if (!grounded) {
+        AppLog.d(
+          _tag,
+          'segment ${segment.id}: ungrounded question dropped '
+          '(quote "${decision.quote}", question "${decision.question}")',
+        );
         return;
       }
       if (decision.confidence < kAnswerMinConfidence) {
@@ -182,6 +211,10 @@ class LiveAnswerService {
     final basis = _string(decoded['basis']).toLowerCase();
     return _AnswerDecision(
       isQuestion: decoded['is_question'] == true,
+      // Only an explicit false filters. A response that forgot the field is
+      // not evidence of small talk, and must not cost the user a card.
+      onTopic: decoded['on_topic'] != false,
+      quote: _string(decoded['quote']),
       question: _string(decoded['question']),
       answer: _string(decoded['answer']),
       // An unrecognised label is treated as "from the meeting", which is the
@@ -219,26 +252,42 @@ The transcript may contain recognition errors and carries no speaker labels.
 
 You are given the meeting so far and the newest passage. First decide whether
 the newest passage contains a question somebody asked out loud that a short
-answer would genuinely help with. These do not count:
+answer would genuinely help with. Only the newest passage counts: a question
+from earlier in the meeting, or one you think somebody might want to ask, is
+not in it. These do not count:
 - tag questions and turns of phrase ("že jo?", "right?", "což?"),
 - a question the transcript itself answers immediately afterwards,
 - a question about the meeting's own procedure ("můžeme začít?").
 
 A question does not need a question mark, and does not need to be addressed
-to anybody. Somebody thinking out loud — "no a to je právě ta otázka, jestli
-se nám to vyplatí", "zůstává otázka, co na to úřad" — has put a real
-question on the table. When you are told the room went quiet right after
-it, that is the room waiting for an answer nobody in it has, and it is
+to anybody. The transcript drops question marks all the time, so judge by
+meaning, never by punctuation. Somebody saying what they do not know or would
+like to know — "nevím, kdo to má podepsat", "zajímalo by mě, jestli to projde
+auditem", "stihne se to, nebo ne" — has asked a question. So has somebody
+thinking out loud: "no a to je právě ta otázka, jestli se nám to vyplatí",
+"zůstává otázka, co na to úřad". When you are told the room went quiet right
+after it, that is the room waiting for an answer nobody in it has, and it is
 worth answering — often more than the ones asked outright.
 
-If it does, answer it the way a well-prepared colleague across the table would:
-straight to the point, no throat-clearing. Work through these in order and stop
-at the first that applies:
+Then decide whether the question belongs to the meeting. People drift into
+private small talk — what to have for dinner, the weather, the weekend, a
+joke — and a question from that is not what you are here for: set "on_topic"
+to false and leave "answer" empty. Judge by what the meeting so far is about;
+if the meeting itself is about that subject, the question is on topic. When
+the meeting has barely started, a work or factual question is on topic and a
+question about somebody's private life is not. When you use the meeting so far
+for an answer, ignore its small talk the same way.
+
+If it is a question and on topic, answer it the way a well-prepared colleague
+across the table would: straight to the point, no throat-clearing. Work through
+these in order and stop at the first that applies:
 
 1. Answer from the meeting. Use what was said — including combining two things
    that were said and doing the arithmetic. If the budget is two million and
    forty percent is spent, the answer is that roughly 1.2 million is left. Do
-   the sum. Set "basis" to "meeting".
+   the sum. Use only what the transcript actually contains: never present as
+   said something nobody said, and never attach a name to a statement the
+   transcript does not attach it to. Set "basis" to "meeting".
 2. Answer from your own knowledge, when the question does not depend on this
    meeting: a definition, a rule, a standard practice, a general calculation.
    Set "basis" to "knowledge".
@@ -280,17 +329,23 @@ them, never the content:
          nich bude, je jediné, co k tomu zatím nepadlo."
 
 Reply with one JSON object and nothing else:
-{"is_question": true|false, "question": "...", "answer": "...",
+{"is_question": true|false, "on_topic": true|false, "quote": "...",
+ "question": "...", "answer": "...",
  "basis": "meeting"|"knowledge"|"unknown", "confidence": 0.0}
 
-"question" is the question as it was asked, tidied up. "confidence" is between
-0 and 1: how sure you are that this really was a question worth answering.
-When "is_question" is false, leave "question" and "answer" empty.''';
+"quote" is the words of the newest passage in which the question was asked,
+copied exactly as they stand there — not tidied, not reworded. "question" is
+that same question tidied into one clear sentence, keeping the speaker's own
+words. "confidence" is between 0 and 1: how sure you are that this really was
+a question worth answering. When "is_question" is false, leave "quote",
+"question" and "answer" empty.''';
 }
 
 class _AnswerDecision {
   const _AnswerDecision({
     required this.isQuestion,
+    required this.onTopic,
+    required this.quote,
     required this.question,
     required this.answer,
     required this.basis,
@@ -298,6 +353,8 @@ class _AnswerDecision {
   });
 
   final bool isQuestion;
+  final bool onTopic;
+  final String quote;
   final String question;
   final String answer;
   final String basis;
