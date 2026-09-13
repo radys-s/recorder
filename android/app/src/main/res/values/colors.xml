@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's own light surface, sampled from the running app. The launch
+         window and the first Flutter frame paint the same colour, so a cold
+         start has no white flash between them. -->
+    <color name="launch_background">#F9F9FF</color>
+</resources>

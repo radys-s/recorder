@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The window the OS paints before Flutter has drawn anything. Both the
+     colour and the mark come from the app's own design, so the splash reads as
+     this app rather than as a blank rectangle. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/launch_background" />
+
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/launch_image" />
+    </item>
+</layer-list>
