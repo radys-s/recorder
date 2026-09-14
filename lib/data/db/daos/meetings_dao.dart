@@ -1,8 +1,12 @@
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
+import '../tables/answer_cards_table.dart';
+import '../tables/meeting_notes_table.dart';
 import '../tables/meetings_table.dart';
+import '../tables/saved_notes_table.dart';
 import '../tables/transcript_segments_table.dart';
+import '../tables/upload_queue_table.dart';
 
 part 'meetings_dao.g.dart';
 
@@ -33,7 +37,16 @@ class MeetingSummary {
   Duration get duration => Duration(milliseconds: durationMs);
 }
 
-@DriftAccessor(tables: [Meetings, TranscriptSegments])
+@DriftAccessor(
+  tables: [
+    Meetings,
+    TranscriptSegments,
+    UploadQueue,
+    AnswerCards,
+    MeetingNotes,
+    SavedNotes,
+  ],
+)
 class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin {
   MeetingsDao(super.db);
 
@@ -89,6 +102,64 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
   Future<void> markEnded(int id, DateTime endedAt) => (update(meetings)
         ..where((t) => t.id.equals(id)))
       .write(MeetingsCompanion(endedAt: Value(endedAt)));
+
+  Future<void> renameMeeting(int id, String title) {
+    final clean = title.trim();
+    if (clean.isEmpty) {
+      throw ArgumentError.value(title, 'title', 'must not be blank');
+    }
+    return (update(meetings)..where((t) => t.id.equals(id)))
+        .write(MeetingsCompanion(title: Value(clean)));
+  }
+
+  /// Removes a meeting and everything that hangs off it, in one transaction so
+  /// a crash halfway cannot leave a transcript with no meeting above it.
+  ///
+  /// Saved notes are the exception: they are the user's copy and stay in the
+  /// library, only forgetting which meeting they came from. The audio files
+  /// are not the database's business — `MeetingDeleter` removes those after
+  /// this commits.
+  Future<void> deleteMeeting(int id) => transaction(() async {
+        await (delete(uploadQueue)..where((t) => t.meetingId.equals(id))).go();
+        await (delete(answerCards)..where((t) => t.meetingId.equals(id))).go();
+        await (delete(meetingNotes)..where((t) => t.meetingId.equals(id)))
+            .go();
+        await (delete(transcriptSegments)
+              ..where((t) => t.meetingId.equals(id)))
+            .go();
+        await (update(savedNotes)..where((t) => t.meetingId.equals(id)))
+            .write(const SavedNotesCompanion(meetingId: Value(null)));
+        await (delete(meetings)..where((t) => t.id.equals(id))).go();
+      });
+
+  /// Rows whose meeting no longer exists, removed at startup.
+  ///
+  /// Deleting a meeting does not stop work already in flight for it: a chunk
+  /// mid-upload finishes, its transcript write is a no-op on a deleted row, but
+  /// the live-answer call it triggers can still insert a card afterwards. Safe
+  /// only at startup, for the same reason as [closeOrphanedMeetings].
+  Future<int> deleteOrphanRows() => transaction(() async {
+        final existing = selectOnly(meetings)..addColumns([meetings.id]);
+        var removed = 0;
+        removed += await (delete(uploadQueue)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        removed += await (delete(answerCards)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        removed += await (delete(meetingNotes)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        removed += await (delete(transcriptSegments)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        await (update(savedNotes)
+              ..where((t) =>
+                  t.meetingId.isNotNull() &
+                  t.meetingId.isNotInQuery(existing)))
+            .write(const SavedNotesCompanion(meetingId: Value(null)));
+        return removed;
+      });
 
   /// Closes meetings left open by a process that died mid-recording, and
   /// returns their ids.

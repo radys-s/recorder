@@ -10,12 +10,15 @@ import 'daos/answer_cards_dao.dart';
 import 'daos/meeting_notes_dao.dart';
 import 'daos/meetings_dao.dart';
 import 'daos/preferences_dao.dart';
+import 'daos/saved_notes_dao.dart';
 import 'daos/transcript_segments_dao.dart';
 import 'daos/upload_queue_dao.dart';
 import 'tables/answer_cards_table.dart';
 import 'tables/meeting_notes_table.dart';
 import 'tables/meetings_table.dart';
+import 'tables/note_folders_table.dart';
 import 'tables/preferences_table.dart';
+import 'tables/saved_notes_table.dart';
 import 'tables/transcript_segments_table.dart';
 import 'tables/upload_queue_table.dart';
 
@@ -29,6 +32,8 @@ part 'app_database.g.dart';
     Preferences,
     MeetingNotes,
     AnswerCards,
+    NoteFolders,
+    SavedNotes,
   ],
   daos: [
     MeetingsDao,
@@ -37,13 +42,17 @@ part 'app_database.g.dart';
     PreferencesDao,
     MeetingNotesDao,
     AnswerCardsDao,
+    SavedNotesDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// An arbitrary executor — `NativeDatabase.memory()` in tests.
+  AppDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +78,10 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 8) {
             await m.addColumn(preferences, preferences.micSensitivity);
+          }
+          if (from < 9) {
+            await m.createTable(noteFolders);
+            await m.createTable(savedNotes);
           }
         },
       );

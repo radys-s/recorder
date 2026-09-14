@@ -10,11 +10,13 @@ import '../../core/theme.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
+import '../../core/widgets/menu_row.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/meetings_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../settings/settings_screen.dart';
+import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
 
 /// Home screen: every recorded meeting, newest first.
@@ -197,6 +199,8 @@ class _DayHeader extends StatelessWidget {
   }
 }
 
+enum _CardAction { rename, delete }
+
 class _MeetingCard extends ConsumerWidget {
   const _MeetingCard({required this.summary});
 
@@ -214,6 +218,7 @@ class _MeetingCard extends ConsumerWidget {
       ),
     );
     final chips = _chips(isLive);
+    final named = !isDefaultMeetingTitle(meeting.title);
 
     return Card(
       child: InkWell(
@@ -230,13 +235,14 @@ class _MeetingCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // The time, not `meeting.title` — the title is generated
-                    // as `Schůzka 08.09. 09:50`, and under a `Dnes` heading
-                    // two thirds of it is a repeat of what the heading just
-                    // said. The full title still names the meeting in the
-                    // detail screen's app bar.
+                    // The time, not a generated `Schůzka 08.09. 09:50` title —
+                    // under a `Dnes` heading two thirds of that repeats what
+                    // the heading just said. A title the user gave is shown,
+                    // since that is how they will look for the meeting.
                     Text(
-                      formatTimeOfDay(meeting.createdAt),
+                      named ? meeting.title : formatTimeOfDay(meeting.createdAt),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.w600,
                         height: 1.2,
@@ -253,7 +259,10 @@ class _MeetingCard extends ConsumerWidget {
                         ),
                         const SizedBox(width: Gap.xs),
                         Text(
-                          formatDurationLabel(summary.duration),
+                          named
+                              ? '${formatTimeOfDay(meeting.createdAt)} · '
+                                  '${formatDurationLabel(summary.duration)}'
+                              : formatDurationLabel(summary.duration),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                             fontFeatures: kTabularFigures,
@@ -272,11 +281,41 @@ class _MeetingCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(left: Gap.sm),
-                child: Icon(
-                  Icons.chevron_right,
-                  color: scheme.outlineVariant,
+              // Pulled up and in so the button's touch target does not make
+              // the card taller than its text.
+              Transform.translate(
+                offset: const Offset(Gap.sm, -Gap.sm),
+                child: PopupMenuButton<_CardAction>(
+                  icon: Icon(Icons.more_vert, color: scheme.outline),
+                  tooltip: 'Další akce',
+                  onSelected: (action) => switch (action) {
+                    _CardAction.rename =>
+                      renameMeetingFlow(context, ref, meeting),
+                    _CardAction.delete => confirmAndDeleteMeeting(
+                        context,
+                        ref,
+                        meetingId: meeting.id,
+                      ),
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: _CardAction.rename,
+                      child: MenuRow(
+                        icon: Icons.drive_file_rename_outline,
+                        label: 'Přejmenovat',
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _CardAction.delete,
+                      enabled: !isLive,
+                      child: MenuRow(
+                        icon: Icons.delete_outline,
+                        label: 'Smazat',
+                        destructive: true,
+                        enabled: !isLive,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

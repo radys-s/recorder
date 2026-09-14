@@ -10,14 +10,18 @@ import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
+import '../../core/widgets/menu_row.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/tables/preferences_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
+import '../meetings_list/meeting_actions.dart';
 import 'meeting_detail_providers.dart';
 import 'widgets/answer_card_tile.dart';
 import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
 import 'widgets/transcript_segment_tile.dart';
+
+enum _MeetingAction { rename, delete }
 
 /// A single meeting and its transcript, growing live while recording.
 class MeetingDetailScreen extends ConsumerStatefulWidget {
@@ -182,6 +186,40 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               onPressed: prefs.hasValue
                   ? () => _toggleLiveAnswers(!liveAnswers, isThisOneRecording)
                   : null,
+            ),
+            PopupMenuButton<_MeetingAction>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Další akce',
+              enabled: meeting.valueOrNull != null,
+              onSelected: (action) => switch (action) {
+                _MeetingAction.rename =>
+                  renameMeetingFlow(context, ref, meeting.requireValue!),
+                _MeetingAction.delete => confirmAndDeleteMeeting(
+                    context,
+                    ref,
+                    meetingId: widget.meetingId,
+                    popRoute: true,
+                  ),
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: _MeetingAction.rename,
+                  child: MenuRow(
+                    icon: Icons.drive_file_rename_outline,
+                    label: 'Přejmenovat',
+                  ),
+                ),
+                PopupMenuItem(
+                  value: _MeetingAction.delete,
+                  enabled: !isThisOneRecording,
+                  child: MenuRow(
+                    icon: Icons.delete_outline,
+                    label: 'Smazat schůzku',
+                    destructive: true,
+                    enabled: !isThisOneRecording,
+                  ),
+                ),
+              ],
             ),
           ],
           bottom: const TabBar(

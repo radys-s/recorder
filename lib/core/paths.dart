@@ -54,6 +54,14 @@ Future<String>? _docsFuture;
 Future<String> _documentsPath() async =>
     (_docsFuture ??= getApplicationDocumentsDirectory().then((d) => d.path));
 
+/// The app documents directory, from the same per-process cache.
+Future<String> documentsPath() => _documentsPath();
+
+/// Where a meeting's chunks are written — the directory the recorder creates
+/// and the one deleting the meeting removes.
+String meetingRecordingsDir(String docsPath, int meetingId) =>
+    p.join(docsPath, kRecordingsDirName, 'meeting_$meetingId');
+
 /// Drops the cached documents directory. Tests only — nothing at runtime has
 /// a reason to, since the path is fixed for the life of the process.
 @visibleForTesting

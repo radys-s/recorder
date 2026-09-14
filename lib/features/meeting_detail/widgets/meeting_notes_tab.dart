@@ -8,9 +8,13 @@ import '../../../core/motion.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/notes_text.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/db/tables/meeting_notes_table.dart';
 import '../../../data/db/tables/preferences_table.dart';
+import '../../notes_library/notes_library_providers.dart';
+import '../../notes_library/saved_note_screen.dart';
+import '../../notes_library/widgets/save_note_sheet.dart';
 import '../meeting_detail_providers.dart';
 
 /// The "Poznámky" tab: pick a depth, press the button, read the result.
@@ -50,6 +54,41 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
       ..showSnackBar(const SnackBar(content: Text('Zkopírováno.')));
   }
 
+  /// Keeps a copy of the notes in the library, under a title and folder the
+  /// user picks.
+  Future<void> _save(MeetingNote note) async {
+    final dao = ref.read(savedNotesDaoProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final meetingTitle =
+        ref.read(meetingProvider(widget.meetingId)).valueOrNull?.title;
+
+    final picked = await showSaveNoteSheet(
+      context,
+      initialTitle: meetingTitle ?? 'Poznámky ze schůzky',
+    );
+    if (picked == null) return;
+
+    final id = await dao.saveNote(
+      title: picked.title,
+      content: note.content!,
+      folderId: picked.folderId,
+      meetingId: widget.meetingId,
+      depth: note.depth,
+    );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Uloženo do knihovny.'),
+          action: SnackBarAction(
+            label: 'Otevřít',
+            onPressed: () => navigator.push(SavedNoteScreen.route(id)),
+          ),
+        ),
+      );
+  }
+
   /// What the depth selector shows: the user's choice this session, else the
   /// depth the stored notes were made at, else the saved default from Settings.
   NotesDepth _effectiveDepth(MeetingNote? note) {
@@ -65,6 +104,17 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     final note = notes.valueOrNull;
     final depth = _effectiveDepth(note);
     final generating = note?.status == NotesStatus.generating;
+
+    // Matched on content rather than remembered from a tap: regenerating
+    // produces different text, and the button must then offer to save again.
+    int? savedId;
+    final content = note?.content?.trim();
+    for (final saved in ref
+            .watch(savedNotesForMeetingProvider(widget.meetingId))
+            .valueOrNull ??
+        const <SavedNote>[]) {
+      if (saved.content == content) savedId = saved.id;
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -96,7 +146,11 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
           _NotesBody(
             note: note,
             stale: generating,
+            saved: savedId != null,
             onCopy: () => _copy(note.content!),
+            onSave: () => savedId != null
+                ? Navigator.of(context).push(SavedNoteScreen.route(savedId))
+                : _save(note),
           )
         else if (note == null)
           const EmptyState(
@@ -172,7 +226,9 @@ class _NotesBody extends StatelessWidget {
   const _NotesBody({
     required this.note,
     required this.stale,
+    required this.saved,
     required this.onCopy,
+    required this.onSave,
   });
 
   final MeetingNote note;
@@ -181,7 +237,12 @@ class _NotesBody extends StatelessWidget {
   /// version rather than the one being made.
   final bool stale;
 
+  /// Whether exactly this text is already in the library. Tapping the button
+  /// then opens that note instead of saving a second copy.
+  final bool saved;
+
   final VoidCallback onCopy;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -214,119 +275,21 @@ class _NotesBody extends StatelessWidget {
                 tooltip: 'Kopírovat',
                 onPressed: onCopy,
               ),
+              const SizedBox(width: Gap.xs),
+              FilledButton.tonalIcon(
+                onPressed: stale ? null : onSave,
+                icon: Icon(
+                  saved ? Icons.bookmark : Icons.bookmark_add_outlined,
+                  size: 18,
+                ),
+                label: Text(saved ? 'Uloženo' : 'Uložit'),
+              ),
             ],
           ),
-          const SizedBox(height: Gap.xs),
-          _NotesText(content: note.content!),
+          const SizedBox(height: Gap.sm),
+          NotesText(content: note.content!),
         ],
       ),
-    );
-  }
-}
-
-/// The generated notes, laid out.
-///
-/// The prompts produce plain text — `- ` bullets, short heading lines ending in
-/// a colon, blank lines between blocks — and it stays plain text on purpose, so
-/// the copy button hands over something that pastes cleanly anywhere. Rendering
-/// it verbatim in a single `Text` is what made it read badly: a wrapped bullet
-/// came back to the left margin and the list stopped looking like a list.
-///
-/// Flutter cannot hang-indent inside one text run, so each block is its own
-/// widget. The cost is that a drag-selection stops at a block boundary; the
-/// copy button above covers "give me all of it", which is what people actually
-/// want from notes.
-class _NotesText extends StatelessWidget {
-  const _NotesText({required this.content});
-
-  final String content;
-
-  /// The bullet's own text, or null if the line is not a bullet. Models are
-  /// inconsistent about which mark they use even when the prompt says `- `.
-  static final _bullet = RegExp(r'^\s*[-•*–]\s+(.*)$');
-
-  /// A short line ending in a colon is one of the prompts' section headings
-  /// (`Rozhodnutí:`, `Úkoly:`). The length cap keeps an ordinary sentence that
-  /// happens to end in a colon from being promoted to a heading.
-  static bool _isHeading(String line) =>
-      line.endsWith(':') && line.length <= 60;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final body = theme.textTheme.bodyLarge?.copyWith(height: 1.45);
-
-    final blocks = <Widget>[];
-    var gap = false;
-
-    void add(Widget block) {
-      if (gap && blocks.isNotEmpty) {
-        blocks.add(const SizedBox(height: Gap.md));
-      }
-      gap = false;
-      blocks.add(block);
-    }
-
-    for (final raw in content.trim().split('\n')) {
-      final line = raw.trim();
-      if (line.isEmpty) {
-        gap = true;
-        continue;
-      }
-
-      final bullet = _bullet.firstMatch(line)?.group(1)?.trim();
-      if (bullet != null && bullet.isNotEmpty) {
-        add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: Gap.xs),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // A real bullet glyph rather than the model's hyphen, in a
-                // fixed-width box so every line of text starts on the same
-                // column no matter how the marks differ.
-                SizedBox(
-                  width: Gap.lg,
-                  child: Text(
-                    '•',
-                    style: body?.copyWith(color: scheme.outline),
-                  ),
-                ),
-                Expanded(child: SelectableText(bullet, style: body)),
-              ],
-            ),
-          ),
-        );
-        continue;
-      }
-
-      if (_isHeading(line)) {
-        add(
-          Padding(
-            padding: const EdgeInsets.only(top: Gap.sm, bottom: Gap.xs),
-            child: Text(
-              line,
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: scheme.primary,
-              ),
-            ),
-          ),
-        );
-        continue;
-      }
-
-      add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: Gap.xs),
-          child: SelectableText(line, style: body),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: blocks,
     );
   }
 }

@@ -9,7 +9,7 @@ import 'core/providers.dart';
 import 'core/theme.dart';
 import 'data/db/app_database.dart';
 import 'features/meeting_detail/widgets/recording_indicator_banner.dart';
-import 'features/meetings_list/meetings_list_screen.dart';
+import 'features/home/home_shell.dart';
 
 class RecorderApp extends ConsumerStatefulWidget {
   const RecorderApp({super.key});
@@ -52,6 +52,16 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
       final emptied = await db.meetingsDao.deleteEmptyMeetings();
       if (emptied > 0) {
         AppLog.d(_tag, 'removed $emptied meeting(s) that never produced audio');
+      }
+    });
+
+    // Deleting a meeting does not stop work already in flight for it: a chunk
+    // mid-upload can still land an answer card for a meeting that is gone.
+    // Nothing shows such rows, so this only keeps the database honest.
+    await _step('delete orphan rows', () async {
+      final removed = await db.meetingsDao.deleteOrphanRows();
+      if (removed > 0) {
+        AppLog.d(_tag, 'removed $removed row(s) of deleted meetings');
       }
     });
 
@@ -102,7 +112,7 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
       // Above the Navigator rather than inside a route: an indicator that
       // vanishes the moment the user opens Settings is not an indicator.
       builder: (_, child) => RecordingIndicatorBanner(child: child!),
-      home: const MeetingsListScreen(),
+      home: const HomeShell(),
     );
   }
 }

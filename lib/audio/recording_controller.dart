@@ -166,8 +166,7 @@ class RecordingController extends Notifier<RecordingState> {
 
       final docs = await getApplicationDocumentsDirectory();
       _docsPath = docs.path;
-      _sessionDir =
-          p.join(docs.path, kRecordingsDirName, 'meeting_$meetingId');
+      _sessionDir = meetingRecordingsDir(docs.path, meetingId);
       AppLog.d(_tag, 'meeting $meetingId, chunks in $_sessionDir');
 
       // The chunk profile is decided once, here, and holds for the whole

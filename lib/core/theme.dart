@@ -158,6 +158,79 @@ ThemeData _build(Brightness brightness) {
       ),
     ),
 
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 46),
+        textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Gap.md),
+        ),
+      ),
+    ),
+
+    // A quiet bar: the tint of the surface one step up rather than a coloured
+    // band, with the pill behind the selected tab doing the pointing.
+    navigationBarTheme: NavigationBarThemeData(
+      height: 68,
+      elevation: 0,
+      backgroundColor: scheme.surfaceContainer,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: scheme.secondaryContainer,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => text.labelMedium?.copyWith(
+          fontWeight: states.contains(WidgetState.selected)
+              ? FontWeight.w600
+              : FontWeight.w500,
+          color: states.contains(WidgetState.selected)
+              ? scheme.onSurface
+              : scheme.onSurfaceVariant,
+        ),
+      ),
+    ),
+
+    dialogTheme: DialogThemeData(
+      backgroundColor: scheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Gap.xl),
+      ),
+      titleTextStyle: text.titleLarge?.copyWith(color: scheme.onSurface),
+      contentTextStyle: text.bodyMedium?.copyWith(
+        color: scheme.onSurfaceVariant,
+      ),
+    ),
+
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: scheme.surfaceContainerLow,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: true,
+      dragHandleColor: scheme.outlineVariant,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Gap.xl)),
+      ),
+    ),
+
+    chipTheme: ChipThemeData(
+      labelStyle: text.labelLarge,
+      side: BorderSide(color: scheme.outlineVariant),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Gap.sm),
+      ),
+      showCheckmark: false,
+      selectedColor: scheme.secondaryContainer,
+    ),
+
+    popupMenuTheme: PopupMenuThemeData(
+      color: scheme.surfaceContainerHigh,
+      surfaceTintColor: Colors.transparent,
+      elevation: 3,
+      textStyle: text.bodyLarge?.copyWith(color: scheme.onSurface),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Gap.md),
+      ),
+    ),
+
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: scheme.inverseSurface,
