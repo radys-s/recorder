@@ -72,12 +72,14 @@ GroqFailure classifyGroqFailure(DioException e) {
 String? groqErrorMessage(Object? data) {
   if (data is Map) {
     final error = data['error'];
-    if (error is Map && error['message'] is String) {
-      return error['message'] as String;
-    }
-    if (data['message'] is String) return data['message'] as String;
+    final message = (error is Map ? _text(error['message']) : null) ??
+        _text(data['message']);
+    if (message != null) return _clip(message);
   }
-  if (data is String && data.trim().isNotEmpty) return _clip(data.trim());
+  // An empty body is no detail at all. It used to come back as `''`, which is
+  // not null, so the caller's fallback to Dio's own message never ran and a
+  // bare 502 from a gateway was logged as nothing.
+  if (data is String) return _text(data) == null ? null : _clip(data.trim());
 
   // Anything else — an HTML gateway page, a bare list, a body Dio could not
   // decode — used to be dropped on the floor, which left the log showing the
@@ -89,3 +91,7 @@ String? groqErrorMessage(Object? data) {
 
 String _clip(String value) =>
     value.length <= 300 ? value : '${value.substring(0, 300)}…';
+
+/// A non-blank string, trimmed; null for anything else.
+String? _text(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : null;

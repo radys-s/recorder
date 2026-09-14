@@ -135,6 +135,11 @@ class WebAnswerService {
         };
         if (wait == null) rethrow;
         if (!DateTime.now().add(wait).isBefore(deadline)) rethrow;
+        // The budget alone is not a bound when a rejection comes back at once:
+        // a 413 from a proxy or a cached gateway answer would otherwise spin
+        // for the full eighteen seconds, spending the minute's tokens on the
+        // very ceiling it keeps hitting.
+        if (attempt >= kWebMaxAttempts) rethrow;
 
         AppLog.d(
           _tag,

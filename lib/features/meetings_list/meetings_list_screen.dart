@@ -31,19 +31,31 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   /// [Entrance].
   final _seen = <int>{};
 
-  Future<void> _startRecording() async {
-    final controller = ref.read(recordingControllerProvider.notifier);
-    await controller.start();
+  /// A second tap on the FAB while the first is still opening the microphone
+  /// would otherwise push the meeting screen twice.
+  bool _starting = false;
 
-    final meetingId = ref.read(recordingControllerProvider).meetingId;
-    if (meetingId == null || !mounted) return;
-    await Navigator.of(context).push(MeetingDetailScreen.route(meetingId));
+  Future<void> _startRecording() async {
+    if (_starting) return;
+    _starting = true;
+    try {
+      await ref.read(recordingControllerProvider.notifier).start();
+
+      final meetingId = ref.read(recordingControllerProvider).meetingId;
+      if (meetingId == null || !mounted) return;
+      await Navigator.of(context).push(MeetingDetailScreen.route(meetingId));
+    } finally {
+      _starting = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final summaries = ref.watch(meetingSummariesProvider);
-    final recording = ref.watch(recordingControllerProvider);
+    final isRecording =
+        ref.watch(recordingControllerProvider.select((s) => s.isRecording));
+    final recordingError =
+        ref.watch(recordingControllerProvider.select((s) => s.error));
     final hasKey = ref.watch(hasApiKeyProvider).valueOrNull ?? true;
 
     return Scaffold(
@@ -59,7 +71,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           ),
         ],
       ),
-      floatingActionButton: recording.isRecording
+      floatingActionButton: isRecording
           ? null
           : FloatingActionButton.extended(
               onPressed: _startRecording,
@@ -80,11 +92,11 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
               ),
             ),
-          if (recording.error != null)
+          if (recordingError != null)
             _Notice(
               icon: Icons.error_outline,
               title: 'Nahrávání skončilo chybou',
-              message: recording.error!,
+              message: recordingError,
               tone: ChipTone.alert,
             ),
           Expanded(
@@ -196,8 +208,11 @@ class _MeetingCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final recording = ref.watch(recordingControllerProvider);
-    final isLive = recording.isRecording && recording.meetingId == meeting.id;
+    final isLive = ref.watch(
+      recordingControllerProvider.select(
+        (s) => s.isRecording && s.meetingId == meeting.id,
+      ),
+    );
     final chips = _chips(isLive);
 
     return Card(

@@ -43,7 +43,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +66,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 7) {
             await m.addColumn(answerCards, answerCards.sources);
             await m.addColumn(preferences, preferences.webAnswersEnabled);
+          }
+          if (from < 8) {
+            await m.addColumn(preferences, preferences.micSensitivity);
           }
         },
       );

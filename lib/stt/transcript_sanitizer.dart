@@ -78,9 +78,12 @@ const List<String> _kPrefixArtifacts = [
 /// whole response was one. Pure — no logging, no I/O — so it is unit-testable
 /// and safe to call from anywhere.
 String sanitizeTranscript(String raw) {
-  // A bracketed sound tag is never speech, wherever it sits.
+  // A bracketed sound tag is never speech, wherever it sits. Parentheses are
+  // only stripped for the known tags, since "(a to je důležité)" is speech.
   final text = raw
       .replaceAll(RegExp(r'\[[^\]]{1,30}\]'), ' ')
+      .replaceAll(_kParenthesizedTag, ' ')
+      .replaceAll(RegExp(r'[♪♫]+'), ' ')
       .replaceAll(RegExp(r'\s{2,}'), ' ')
       .trim();
   if (text.isEmpty) return '';
@@ -119,8 +122,19 @@ bool isPromptEcho(String text, String? prompt) {
   if (prompt == null) return false;
   final t = normalizeForArtifactMatch(text);
   if (t.length < 12) return false;
-  return normalizeForArtifactMatch(prompt).contains(t);
+  // Whole words only. A plain substring test called "ale to je problém" an
+  // echo of "…ale to je problematické…" and threw real speech away.
+  return ' ${normalizeForArtifactMatch(prompt)} '.contains(' $t ');
 }
+
+/// Sound tags Whisper writes in parentheses rather than brackets.
+final RegExp _kParenthesizedTag = RegExp(
+  r'\(\s*(?:hudba|potlesk|smích|smich|ticho|hluk|kašel|kasel|'
+  r'nesrozumitelné|nesrozumitelne|music|applause|laughter|silence|'
+  r'inaudible|noise|cough)\s*\)',
+  caseSensitive: false,
+  unicode: true,
+);
 
 bool _isArtifact(String sentence) {
   final n = normalizeForArtifactMatch(sentence);
@@ -145,7 +159,11 @@ String normalizeForArtifactMatch(String input) {
   for (final rune in input.toLowerCase().runes) {
     final ch = String.fromCharCode(rune);
     final folded = _diacritics[ch] ?? ch;
-    if (RegExp(r'[a-z0-9]').hasMatch(folded)) {
+    // A code-unit range check rather than a RegExp per character: this runs
+    // over every transcript chunk several times (detector, grounding, echo).
+    final c = folded.codeUnitAt(0);
+    if (folded.length == 1 &&
+        ((c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39))) {
       buffer.write(folded);
     } else {
       buffer.write(' ');

@@ -28,7 +28,7 @@ class PcmChunk {
   final List<Uint8List> frames;
   final int byteLength;
 
-  /// How much of the chunk is louder than [kVoicedRmsThreshold] — i.e. could
+  /// How much of the chunk is louder than [PcmChunker.voicedRmsThreshold] — i.e. could
   /// be somebody talking. A chunk with next to none of it is room tone, and
   /// uploading room tone is how Whisper ends up inventing sentences.
   final int voicedMs;
@@ -62,6 +62,7 @@ class PcmChunker {
     this.hardCapDuration = kChunkHardCapDuration,
     this.frameDuration = kSilenceFrameDuration,
     this.silenceRmsThreshold = kSilenceRmsThreshold,
+    this.voicedRmsThreshold = kVoicedRmsThreshold,
     this.confidentSilenceDuration = kConfidentSilenceDuration,
     this.sampleRate = kSampleRateHz,
     this.channels = kChannels,
@@ -79,7 +80,14 @@ class PcmChunker {
   final Duration targetDuration;
   final Duration hardCapDuration;
   final Duration frameDuration;
-  final double silenceRmsThreshold;
+
+  /// The two level thresholds are the only settings that may change while a
+  /// recording runs: the sensitivity setting moves them, and a threshold that
+  /// changes between two frames puts no seam in the audio. Each new value
+  /// applies from the next completed frame.
+  double silenceRmsThreshold;
+  double voicedRmsThreshold;
+
   final Duration confidentSilenceDuration;
   final int sampleRate;
   final int channels;
@@ -155,7 +163,7 @@ class PcmChunker {
     _bufferedBytes += frame.length;
 
     final rms = _rmsOf(frame);
-    if (rms >= kVoicedRmsThreshold) _voicedMs += frameDuration.inMilliseconds;
+    if (rms >= voicedRmsThreshold) _voicedMs += frameDuration.inMilliseconds;
 
     final isSilent = rms < silenceRmsThreshold;
     _silentRunMs = isSilent ? _silentRunMs + frameDuration.inMilliseconds : 0;

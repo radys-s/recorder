@@ -43,7 +43,14 @@ class WhisperSegmentFilterResult {
 /// one in a shape this does not recognise — so the caller keeps the plain
 /// `text`. A segment missing one of the metrics is kept: an unknown is never a
 /// reason to delete what might be real speech.
-WhisperSegmentFilterResult? filterWhisperSegments(Object? segments) {
+///
+/// The two no-speech thresholds default to OpenAI's and are raised by the
+/// sensitivity setting, since quiet real speech is scored as probable silence.
+WhisperSegmentFilterResult? filterWhisperSegments(
+  Object? segments, {
+  double noSpeechProbThreshold = kNoSpeechProbThreshold,
+  double lowAvgLogprobThreshold = kLowAvgLogprobThreshold,
+}) {
   if (segments is! List || segments.isEmpty) return null;
 
   final kept = <String>[];
@@ -58,6 +65,8 @@ WhisperSegmentFilterResult? filterWhisperSegments(Object? segments) {
       noSpeechProb: _num(segment['no_speech_prob']),
       avgLogprob: _num(segment['avg_logprob']),
       compressionRatio: _num(segment['compression_ratio']),
+      noSpeechProbThreshold: noSpeechProbThreshold,
+      lowAvgLogprobThreshold: lowAvgLogprobThreshold,
     )) {
       dropped++;
       continue;
@@ -79,14 +88,16 @@ bool isLikelyHallucinatedSegment({
   double? noSpeechProb,
   double? avgLogprob,
   double? compressionRatio,
+  double noSpeechProbThreshold = kNoSpeechProbThreshold,
+  double lowAvgLogprobThreshold = kLowAvgLogprobThreshold,
 }) {
   if (compressionRatio != null && compressionRatio > kMaxCompressionRatio) {
     return true;
   }
   return noSpeechProb != null &&
       avgLogprob != null &&
-      noSpeechProb > kNoSpeechProbThreshold &&
-      avgLogprob < kLowAvgLogprobThreshold;
+      noSpeechProb > noSpeechProbThreshold &&
+      avgLogprob < lowAvgLogprobThreshold;
 }
 
 double? _num(Object? value) => value is num ? value.toDouble() : null;

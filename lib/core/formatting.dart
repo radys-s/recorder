@@ -80,4 +80,8 @@ String formatDateGroup(DateTime when, {DateTime? now}) {
 
 /// Midnight of the day [t] falls on, so two timestamps can be compared by day
 /// without the hours getting in the way.
-DateTime _dayOf(DateTime t) => DateTime(t.year, t.month, t.day);
+///
+/// In UTC on purpose. Two *local* midnights either side of the spring DST
+/// change are 23 hours apart, so `inDays` came out 0 and yesterday's meetings
+/// were labelled „Dnes" for a whole day every March.
+DateTime _dayOf(DateTime t) => DateTime.utc(t.year, t.month, t.day);

@@ -163,9 +163,15 @@ class _BannerState extends ConsumerState<_Banner> {
 
   @override
   Widget build(BuildContext context) {
-    final recording = ref.watch(recordingControllerProvider);
+    // Only the two fields this strip shows; the clock has its own ticker.
+    final meetingId =
+        ref.watch(recordingControllerProvider.select((s) => s.meetingId));
+    final startedAt =
+        ref.watch(recordingControllerProvider.select((s) => s.startedAt));
+    final elapsed = startedAt == null
+        ? Duration.zero
+        : DateTime.now().difference(startedAt);
     final scheme = Theme.of(context).colorScheme;
-    final meetingId = recording.meetingId;
 
     return Material(
       color: scheme.errorContainer,
@@ -181,7 +187,7 @@ class _BannerState extends ConsumerState<_Banner> {
                 const SizedBox(width: Gap.sm),
                 Expanded(
                   child: Text(
-                    'Nahrává se · ${formatClock(recording.elapsed)}',
+                    'Nahrává se · ${formatClock(elapsed)}',
                     style: TextStyle(
                       color: scheme.onErrorContainer,
                       fontWeight: FontWeight.w500,

@@ -30,34 +30,53 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
   /// Runs once, before anything can be recording — which is what makes the
   /// orphan cleanup safe, since an open `endedAt` means "in progress" at any
   /// other time.
+  ///
+  /// Every step is guarded on its own. They used to run as one chain, so a
+  /// failure in housekeeping — a locked database row, a migration hiccup —
+  /// skipped starting the queue worker, and every chunk recorded afterwards
+  /// sat untranscribed with nothing on screen saying why.
   Future<void> _startup() async {
     final db = ref.read(appDatabaseProvider);
 
     // Closing comes first: deleteEmptyMeetings only considers closed rows, so
     // running it the other way round would let an interrupted meeting that
     // never produced a chunk sit in the list for exactly one more launch.
-    final orphans = await db.meetingsDao.closeOrphanedMeetings();
-    if (orphans.isNotEmpty) {
-      AppLog.d(_tag, 'closed interrupted meeting(s): $orphans');
-    }
+    await _step('close orphaned meetings', () async {
+      final orphans = await db.meetingsDao.closeOrphanedMeetings();
+      if (orphans.isNotEmpty) {
+        AppLog.d(_tag, 'closed interrupted meeting(s): $orphans');
+      }
+    });
 
-    final emptied = await db.meetingsDao.deleteEmptyMeetings();
-    if (emptied > 0) {
-      AppLog.d(_tag, 'removed $emptied meeting(s) that never produced audio');
-    }
+    await _step('delete empty meetings', () async {
+      final emptied = await db.meetingsDao.deleteEmptyMeetings();
+      if (emptied > 0) {
+        AppLog.d(_tag, 'removed $emptied meeting(s) that never produced audio');
+      }
+    });
 
     // A generation dies with the process, so a row still claiming to be
     // generating is a leftover, not work in progress — left alone it would sit
     // under a progress bar forever.
-    final stuck = await db.meetingNotesDao.failInterruptedGenerations();
-    if (stuck > 0) {
-      AppLog.d(_tag, 'reopened $stuck note generation(s) killed mid-flight');
-    }
+    await _step('fail interrupted generations', () async {
+      final stuck = await db.meetingNotesDao.failInterruptedGenerations();
+      if (stuck > 0) {
+        AppLog.d(_tag, 'reopened $stuck note generation(s) killed mid-flight');
+      }
+    });
 
     // Started here rather than lazily on first use: starting the worker is
     // what picks up chunks a previous run left unsent, and that has to happen
     // even if the user never opens the screen those chunks belong to.
-    await ref.read(queueWorkerProvider).start();
+    await _step('start queue worker', () => ref.read(queueWorkerProvider).start());
+  }
+
+  Future<void> _step(String name, Future<void> Function() body) async {
+    try {
+      await body();
+    } catch (e, st) {
+      AppLog.e(_tag, 'startup step "$name" failed', e, st);
+    }
   }
 
   @override

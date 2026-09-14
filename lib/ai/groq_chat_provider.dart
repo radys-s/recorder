@@ -82,7 +82,11 @@ class GroqChatProvider extends LlmProvider {
       throw const AiPermanentException('Response carried no choices.');
     }
 
-    final message = (choices.first as Map)['message'];
+    // Checked, not cast: a proxy or a changed envelope that puts anything but
+    // an object here must surface as the classified failure below, not as a
+    // TypeError that escapes the retry contract entirely.
+    final first = choices.first;
+    final message = first is Map ? first['message'] : null;
     final content = message is Map ? message['content'] : null;
     if (content is! String) {
       throw const AiPermanentException('Response is missing message content.');

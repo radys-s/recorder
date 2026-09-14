@@ -1611,12 +1611,23 @@ class $PreferencesTable extends Preferences
     defaultValue: const Constant(false),
   );
   @override
+  late final GeneratedColumnWithTypeConverter<MicSensitivity, int>
+  micSensitivity = GeneratedColumn<int>(
+    'mic_sensitivity',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  ).withConverter<MicSensitivity>($PreferencesTable.$convertermicSensitivity);
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     transcriptLanguage,
     notesDepth,
     liveAnswersEnabled,
     webAnswersEnabled,
+    micSensitivity,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1685,6 +1696,12 @@ class $PreferencesTable extends Preferences
         DriftSqlType.bool,
         data['${effectivePrefix}web_answers_enabled'],
       )!,
+      micSensitivity: $PreferencesTable.$convertermicSensitivity.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}mic_sensitivity'],
+        )!,
+      ),
     );
   }
 
@@ -1699,6 +1716,8 @@ class $PreferencesTable extends Preferences
   );
   static JsonTypeConverter2<NotesDepth, int, int> $converternotesDepth =
       const EnumIndexConverter<NotesDepth>(NotesDepth.values);
+  static JsonTypeConverter2<MicSensitivity, int, int> $convertermicSensitivity =
+      const EnumIndexConverter<MicSensitivity>(MicSensitivity.values);
 }
 
 class Preference extends DataClass implements Insertable<Preference> {
@@ -1720,12 +1739,14 @@ class Preference extends DataClass implements Insertable<Preference> {
   /// transcript — but that is still a decision the user makes knowingly rather
   /// than discovers later.
   final bool webAnswersEnabled;
+  final MicSensitivity micSensitivity;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
     required this.notesDepth,
     required this.liveAnswersEnabled,
     required this.webAnswersEnabled,
+    required this.micSensitivity,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1745,6 +1766,11 @@ class Preference extends DataClass implements Insertable<Preference> {
     }
     map['live_answers_enabled'] = Variable<bool>(liveAnswersEnabled);
     map['web_answers_enabled'] = Variable<bool>(webAnswersEnabled);
+    {
+      map['mic_sensitivity'] = Variable<int>(
+        $PreferencesTable.$convertermicSensitivity.toSql(micSensitivity),
+      );
+    }
     return map;
   }
 
@@ -1755,6 +1781,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       notesDepth: Value(notesDepth),
       liveAnswersEnabled: Value(liveAnswersEnabled),
       webAnswersEnabled: Value(webAnswersEnabled),
+      micSensitivity: Value(micSensitivity),
     );
   }
 
@@ -1772,6 +1799,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       ),
       liveAnswersEnabled: serializer.fromJson<bool>(json['liveAnswersEnabled']),
       webAnswersEnabled: serializer.fromJson<bool>(json['webAnswersEnabled']),
+      micSensitivity: $PreferencesTable.$convertermicSensitivity.fromJson(
+        serializer.fromJson<int>(json['micSensitivity']),
+      ),
     );
   }
   @override
@@ -1789,6 +1819,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       ),
       'liveAnswersEnabled': serializer.toJson<bool>(liveAnswersEnabled),
       'webAnswersEnabled': serializer.toJson<bool>(webAnswersEnabled),
+      'micSensitivity': serializer.toJson<int>(
+        $PreferencesTable.$convertermicSensitivity.toJson(micSensitivity),
+      ),
     };
   }
 
@@ -1798,12 +1831,14 @@ class Preference extends DataClass implements Insertable<Preference> {
     NotesDepth? notesDepth,
     bool? liveAnswersEnabled,
     bool? webAnswersEnabled,
+    MicSensitivity? micSensitivity,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
     notesDepth: notesDepth ?? this.notesDepth,
     liveAnswersEnabled: liveAnswersEnabled ?? this.liveAnswersEnabled,
     webAnswersEnabled: webAnswersEnabled ?? this.webAnswersEnabled,
+    micSensitivity: micSensitivity ?? this.micSensitivity,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -1820,6 +1855,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       webAnswersEnabled: data.webAnswersEnabled.present
           ? data.webAnswersEnabled.value
           : this.webAnswersEnabled,
+      micSensitivity: data.micSensitivity.present
+          ? data.micSensitivity.value
+          : this.micSensitivity,
     );
   }
 
@@ -1830,7 +1868,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('transcriptLanguage: $transcriptLanguage, ')
           ..write('notesDepth: $notesDepth, ')
           ..write('liveAnswersEnabled: $liveAnswersEnabled, ')
-          ..write('webAnswersEnabled: $webAnswersEnabled')
+          ..write('webAnswersEnabled: $webAnswersEnabled, ')
+          ..write('micSensitivity: $micSensitivity')
           ..write(')'))
         .toString();
   }
@@ -1842,6 +1881,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     notesDepth,
     liveAnswersEnabled,
     webAnswersEnabled,
+    micSensitivity,
   );
   @override
   bool operator ==(Object other) =>
@@ -1851,7 +1891,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.transcriptLanguage == this.transcriptLanguage &&
           other.notesDepth == this.notesDepth &&
           other.liveAnswersEnabled == this.liveAnswersEnabled &&
-          other.webAnswersEnabled == this.webAnswersEnabled);
+          other.webAnswersEnabled == this.webAnswersEnabled &&
+          other.micSensitivity == this.micSensitivity);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -1860,12 +1901,14 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<NotesDepth> notesDepth;
   final Value<bool> liveAnswersEnabled;
   final Value<bool> webAnswersEnabled;
+  final Value<MicSensitivity> micSensitivity;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
     this.notesDepth = const Value.absent(),
     this.liveAnswersEnabled = const Value.absent(),
     this.webAnswersEnabled = const Value.absent(),
+    this.micSensitivity = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -1873,6 +1916,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.notesDepth = const Value.absent(),
     this.liveAnswersEnabled = const Value.absent(),
     this.webAnswersEnabled = const Value.absent(),
+    this.micSensitivity = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -1880,6 +1924,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<int>? notesDepth,
     Expression<bool>? liveAnswersEnabled,
     Expression<bool>? webAnswersEnabled,
+    Expression<int>? micSensitivity,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1888,6 +1933,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (liveAnswersEnabled != null)
         'live_answers_enabled': liveAnswersEnabled,
       if (webAnswersEnabled != null) 'web_answers_enabled': webAnswersEnabled,
+      if (micSensitivity != null) 'mic_sensitivity': micSensitivity,
     });
   }
 
@@ -1897,6 +1943,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<NotesDepth>? notesDepth,
     Value<bool>? liveAnswersEnabled,
     Value<bool>? webAnswersEnabled,
+    Value<MicSensitivity>? micSensitivity,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -1904,6 +1951,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       notesDepth: notesDepth ?? this.notesDepth,
       liveAnswersEnabled: liveAnswersEnabled ?? this.liveAnswersEnabled,
       webAnswersEnabled: webAnswersEnabled ?? this.webAnswersEnabled,
+      micSensitivity: micSensitivity ?? this.micSensitivity,
     );
   }
 
@@ -1931,6 +1979,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (webAnswersEnabled.present) {
       map['web_answers_enabled'] = Variable<bool>(webAnswersEnabled.value);
     }
+    if (micSensitivity.present) {
+      map['mic_sensitivity'] = Variable<int>(
+        $PreferencesTable.$convertermicSensitivity.toSql(micSensitivity.value),
+      );
+    }
     return map;
   }
 
@@ -1941,7 +1994,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('transcriptLanguage: $transcriptLanguage, ')
           ..write('notesDepth: $notesDepth, ')
           ..write('liveAnswersEnabled: $liveAnswersEnabled, ')
-          ..write('webAnswersEnabled: $webAnswersEnabled')
+          ..write('webAnswersEnabled: $webAnswersEnabled, ')
+          ..write('micSensitivity: $micSensitivity')
           ..write(')'))
         .toString();
   }
@@ -3890,6 +3944,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<NotesDepth> notesDepth,
       Value<bool> liveAnswersEnabled,
       Value<bool> webAnswersEnabled,
+      Value<MicSensitivity> micSensitivity,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -3898,6 +3953,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<NotesDepth> notesDepth,
       Value<bool> liveAnswersEnabled,
       Value<bool> webAnswersEnabled,
+      Value<MicSensitivity> micSensitivity,
     });
 
 class $$PreferencesTableFilterComposer
@@ -3935,6 +3991,12 @@ class $$PreferencesTableFilterComposer
     column: $table.webAnswersEnabled,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<MicSensitivity, MicSensitivity, int>
+  get micSensitivity => $composableBuilder(
+    column: $table.micSensitivity,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -3968,6 +4030,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<bool> get webAnswersEnabled => $composableBuilder(
     column: $table.webAnswersEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get micSensitivity => $composableBuilder(
+    column: $table.micSensitivity,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -4005,6 +4072,12 @@ class $$PreferencesTableAnnotationComposer
     column: $table.webAnswersEnabled,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<MicSensitivity, int> get micSensitivity =>
+      $composableBuilder(
+        column: $table.micSensitivity,
+        builder: (column) => column,
+      );
 }
 
 class $$PreferencesTableTableManager
@@ -4044,12 +4117,14 @@ class $$PreferencesTableTableManager
                 Value<NotesDepth> notesDepth = const Value.absent(),
                 Value<bool> liveAnswersEnabled = const Value.absent(),
                 Value<bool> webAnswersEnabled = const Value.absent(),
+                Value<MicSensitivity> micSensitivity = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
                 notesDepth: notesDepth,
                 liveAnswersEnabled: liveAnswersEnabled,
                 webAnswersEnabled: webAnswersEnabled,
+                micSensitivity: micSensitivity,
               ),
           createCompanionCallback:
               ({
@@ -4059,12 +4134,14 @@ class $$PreferencesTableTableManager
                 Value<NotesDepth> notesDepth = const Value.absent(),
                 Value<bool> liveAnswersEnabled = const Value.absent(),
                 Value<bool> webAnswersEnabled = const Value.absent(),
+                Value<MicSensitivity> micSensitivity = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
                 notesDepth: notesDepth,
                 liveAnswersEnabled: liveAnswersEnabled,
                 webAnswersEnabled: webAnswersEnabled,
+                micSensitivity: micSensitivity,
               ),
           withReferenceMapper: (p0) => p0
               .map(

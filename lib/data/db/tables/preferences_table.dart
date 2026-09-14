@@ -35,6 +35,23 @@ enum NotesDepth {
       };
 }
 
+/// How eagerly quiet audio is taken for speech.
+///
+/// One setting over several thresholds — see `SensitivityProfile` — because the
+/// user's question is "does it hear a quiet meeting", not which of five
+/// numbers happens to be in the way.
+enum MicSensitivity {
+  low,
+  medium,
+  high;
+
+  String get label => switch (this) {
+        MicSensitivity.low => 'Málo',
+        MicSensitivity.medium => 'Středně',
+        MicSensitivity.high => 'Hodně',
+      };
+}
+
 /// App settings that have to survive a restart but are not secrets.
 ///
 /// A single row, always id 0. The API key lives in the platform keystore
@@ -63,6 +80,9 @@ class Preferences extends Table {
   /// than discovers later.
   BoolColumn get webAnswersEnabled =>
       boolean().withDefault(const Constant(false))();
+
+  IntColumn get micSensitivity =>
+      intEnum<MicSensitivity>().withDefault(const Constant(1))(); // medium
 
   @override
   Set<Column> get primaryKey => {id};

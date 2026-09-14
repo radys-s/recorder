@@ -137,10 +137,13 @@ const List<String> kReplayAudioFileNames = [
 /// one-sentence factual question needs and what keeps the extra hop from
 /// doubling the wait for a card. If answers start coming back thin, the larger
 /// `groq/compound` is a one-word change here.
-// `compound`, not `compound-mini`: the mini variant answered half these
-// questions straight from its training data without searching at all, and
-// rejected the other half with `request_too_large` once the pages it did
-// fetch were folded back into its context.
+///
+/// Two known habits of the mini variant are handled in code rather than by
+/// switching: it sometimes answers from training data without searching (the
+/// hop then returns null, so no card claims a web source — see
+/// `WebAnswerService.lookUp`), and it sometimes trips `request_too_large` once
+/// fetched pages are folded into its context (re-tossed, see
+/// [kWebRetryBudget]).
 const String kGroqWebAnswerModel = 'groq/compound-mini';
 
 /// Longer than [kAnswerTimeout] because this call includes a real web round
@@ -165,6 +168,11 @@ const Duration kWebAnswerTimeout = Duration(seconds: 25);
 /// of how many requests were spent. A call that is merely slow therefore gets
 /// no second attempt at all — the budget is already gone by the time it fails.
 const Duration kWebRetryBudget = Duration(seconds: 18);
+
+/// A hard cap on tosses inside [kWebRetryBudget]. The budget assumes each
+/// rejection takes a few seconds to arrive; one that comes back instantly
+/// would otherwise be re-sent dozens of times before the clock ran out.
+const int kWebMaxAttempts = 4;
 
 /// How many sources a card shows. Three fits one row of chips on a phone, and
 /// a wall of links is not what someone glancing at their phone mid-meeting is

@@ -102,6 +102,15 @@ class LiveAnswerService {
         return;
       }
 
+      // Nothing to hold the verdict to. The card would otherwise be headed by
+      // the raw passage — and, with the web switch on, that passage would be
+      // the search query, which is exactly the transcript slice the web hop
+      // promises never to send.
+      if (decision.quote.isEmpty && decision.question.isEmpty) {
+        AppLog.d(_tag, 'segment ${segment.id}: question with no wording, no card');
+        return;
+      }
+
       // The question has to have been asked in the words the room actually
       // used. The previous segment counts too, since a chunk cut can split a
       // question from its first half.
@@ -110,9 +119,13 @@ class LiveAnswerService {
         segment.sequence,
       );
       final spoken = '${previous ?? ''} $text';
+      // ...but part of it has to be in the newest passage. A question that
+      // lives only in the previous segment was that segment's to answer, and
+      // letting it through here puts the same card in the timeline twice.
       final grounded = decision.quote.isNotEmpty
-          ? isGroundedIn(decision.quote, spoken)
-          : isGroundedIn(decision.question, spoken, minShare: 1 / 3);
+          ? isGroundedIn(decision.quote, spoken) &&
+              isGroundedIn(decision.quote, text, minShare: 1 / 3)
+          : isGroundedIn(decision.question, text, minShare: 1 / 3);
       if (!grounded) {
         AppLog.d(
           _tag,
@@ -130,7 +143,7 @@ class LiveAnswerService {
       }
 
       final question =
-          decision.question.isEmpty ? text.trim() : decision.question;
+          decision.question.isNotEmpty ? decision.question : decision.quote;
 
       var answer = decision.answer;
       var basis = decision.basis;
@@ -179,16 +192,21 @@ class LiveAnswerService {
     }
   }
 
-  /// The tail of the meeting up to and including this segment.
+  /// The tail of the meeting *before* this segment.
   ///
   /// The question is very often answerable from what was already said, and the
   /// prompt asks the model to prefer exactly that — so the context is not
   /// decoration, it is where most good answers come from.
+  ///
+  /// The segment itself is left out: its text is already in the database by
+  /// the time this runs, and it goes into the request on its own as the newest
+  /// passage. Including it here too handed the model the same words twice,
+  /// under two headings that told it they were different parts of the meeting.
   Future<String> _context(TranscriptSegment segment) async {
     final segments = await _segmentsDao.segmentsForMeeting(segment.meetingId);
     final parts = <String>[
       for (final s in segments)
-        if (s.sequence <= segment.sequence &&
+        if (s.sequence < segment.sequence &&
             s.content != null &&
             s.content!.trim().isNotEmpty)
           s.content!.trim(),
@@ -207,13 +225,12 @@ class LiveAnswerService {
     final decoded = extractJsonObject(raw);
     if (decoded == null) return null;
 
-    final confidence = decoded['confidence'];
     final basis = _string(decoded['basis']).toLowerCase();
     return _AnswerDecision(
-      isQuestion: decoded['is_question'] == true,
+      isQuestion: _bool(decoded['is_question']) ?? false,
       // Only an explicit false filters. A response that forgot the field is
       // not evidence of small talk, and must not cost the user a card.
-      onTopic: decoded['on_topic'] != false,
+      onTopic: _bool(decoded['on_topic']) ?? true,
       quote: _string(decoded['quote']),
       question: _string(decoded['question']),
       answer: _string(decoded['answer']),
@@ -223,12 +240,43 @@ class LiveAnswerService {
       basis: const {'meeting', 'knowledge', 'unknown'}.contains(basis)
           ? basis
           : 'meeting',
-      confidence: confidence is num ? confidence.toDouble() : 0,
+      confidence: _confidence(decoded['confidence']),
     );
   }
 
   static String _string(Object? value) =>
       value is String ? value.trim() : '';
+
+  /// JSON mode guarantees an object, not the types inside it. Reasoning models
+  /// write `"true"` or `1` often enough that reading only a literal `true`
+  /// silently turned real questions into "not a question". Null means the
+  /// value says nothing either way, and the caller picks the safe default.
+  static bool? _bool(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      return switch (value.trim().toLowerCase()) {
+        'true' || 'yes' || '1' || 'ano' => true,
+        'false' || 'no' || '0' || 'ne' => false,
+        _ => null,
+      };
+    }
+    return null;
+  }
+
+  /// The same leniency for the score: `"0.8"`, a Czech `"0,8"`, and a
+  /// percentage (`85`) all mean what they plainly mean. Anything unreadable is
+  /// zero, which drops the card — the cheap direction to be wrong in.
+  static double _confidence(Object? value) {
+    final parsed = switch (value) {
+      num() => value.toDouble(),
+      String() => double.tryParse(value.trim().replaceAll(',', '.')),
+      _ => null,
+    };
+    if (parsed == null || parsed.isNaN || parsed < 0) return 0;
+    if (parsed > 1 && parsed <= 100) return parsed / 100;
+    return parsed > 1 ? 1 : parsed;
+  }
 
   /// English instructions, Czech output — same reasoning as the notes prompts:
   /// the instruction-following is steadier, and the output language is pinned

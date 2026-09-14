@@ -146,6 +146,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const _LanguageSection(),
+          const _SensitivitySection(),
           const _LiveAnswersSection(),
           if (kDebugMode) const _DiagnosticsSection(),
         ],
@@ -189,6 +190,43 @@ class _LanguageSection extends ConsumerWidget {
               ? (set) => ref
                   .read(preferencesDaoProvider)
                   .setTranscriptLanguage(set.first)
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// How readily quiet audio counts as speech. See `SensitivityProfile` for
+/// what each step changes; the same setting is on the meeting screen's app
+/// bar, since a meeting that is too quiet is noticed while it is running.
+class _SensitivitySection extends ConsumerWidget {
+  const _SensitivitySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(preferencesProvider);
+    final selected = prefs.valueOrNull?.micSensitivity;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(
+          title: 'Citlivost poslechu',
+          description: 'Hodně zachytí i tichou schůzku nebo vzdáleného '
+              'mluvčího a tichý zvuk zesílí, jen občas přepíše i šum. '
+              'Málo se hodí do hlučné místnosti. Změna platí hned, i během '
+              'nahrávání.',
+        ),
+        SegmentedButton<MicSensitivity>(
+          segments: [
+            for (final value in MicSensitivity.values)
+              ButtonSegment(value: value, label: Text(value.label)),
+          ],
+          selected: {selected ?? MicSensitivity.medium},
+          onSelectionChanged: prefs.hasValue
+              ? (set) =>
+                  ref.read(preferencesDaoProvider).setMicSensitivity(set.first)
               : null,
         ),
       ],
@@ -266,7 +304,8 @@ class _DiagnosticsSection extends ConsumerWidget {
     // Switching the source mid-recording would leave stop() holding a
     // different object than start() opened, so the toggles are locked while
     // a recording is running.
-    final recording = ref.watch(recordingControllerProvider).isRecording;
+    final recording =
+        ref.watch(recordingControllerProvider.select((s) => s.isRecording));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

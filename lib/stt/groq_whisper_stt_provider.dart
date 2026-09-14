@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import '../core/constants.dart';
 import '../core/groq_failure.dart';
 import '../core/logging.dart';
+import '../core/sensitivity.dart';
+import '../data/db/tables/preferences_table.dart';
 import '../data/secure/api_key_store.dart';
 import 'stt_provider.dart';
 import 'whisper_segment_filter.dart';
@@ -42,6 +44,7 @@ class GroqWhisperSttProvider implements SttProvider {
     required File audioFile,
     String? promptContext,
     String? languageCode,
+    MicSensitivity sensitivity = MicSensitivity.medium,
   }) async {
     final apiKey = await _apiKeyStore.read();
     if (apiKey == null) {
@@ -64,9 +67,11 @@ class GroqWhisperSttProvider implements SttProvider {
       // verbose_json also returns the detected language and duration, which
       // are worth having for diagnostics and cost nothing extra.
       'response_format': 'verbose_json',
-      // Greedy decoding. At a higher temperature Whisper retries a segment it
-      // is unsure of by sampling, which is exactly where invented words come
-      // from.
+      // Start from greedy decoding. Whisper still falls back to sampling at a
+      // higher temperature for a segment it decodes badly — that is the API's
+      // own behaviour and cannot be switched off here — but starting at zero
+      // keeps the common case deterministic, and the segment filter catches
+      // what the fallback invents.
       'temperature': '0',
       'language': ?languageCode,
       'prompt': ?_trimPrompt(promptContext),
@@ -78,7 +83,7 @@ class GroqWhisperSttProvider implements SttProvider {
         data: form,
         options: Options(headers: {'Authorization': 'Bearer $apiKey'}),
       );
-      return _parse(response.data);
+      return _parse(response.data, SensitivityProfile.of(sensitivity));
     } on DioException catch (e) {
       throw _classify(e);
     }
@@ -92,7 +97,7 @@ class GroqWhisperSttProvider implements SttProvider {
         : trimmed.substring(trimmed.length - _maxPromptChars);
   }
 
-  TranscriptionResult _parse(Object? data) {
+  TranscriptionResult _parse(Object? data, SensitivityProfile profile) {
     if (data is! Map) {
       throw SttPermanentException(
         'Unexpected response shape: ${data.runtimeType}',
@@ -106,7 +111,11 @@ class GroqWhisperSttProvider implements SttProvider {
     // Segments Whisper itself scored as silence or a runaway loop are cut out
     // here, before the text goes anywhere — the transcript, live answers or
     // the notes.
-    final filtered = filterWhisperSegments(data['segments']);
+    final filtered = filterWhisperSegments(
+      data['segments'],
+      noSpeechProbThreshold: profile.noSpeechProbThreshold,
+      lowAvgLogprobThreshold: profile.lowAvgLogprobThreshold,
+    );
     final kept = filtered != null && filtered.dropped > 0
         ? filtered.text
         : text.trim();

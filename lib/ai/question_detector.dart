@@ -39,11 +39,19 @@ bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
   if (text.contains('?')) return true;
 
   final sentences = [
-    for (final s in text.split(RegExp(r'[.!?\n]+')))
+    // `…` too: Whisper writes a trailing-off sentence with the single
+    // character, and without it two sentences read as one whose opener is
+    // the first one's.
+    for (final s in text.split(RegExp(r'[.!?…\n]+')))
       if (normalizeForArtifactMatch(s).isNotEmpty) s,
   ];
 
   for (final sentence in sentences) {
+    // A sentence with a condition in front is a plan, not a question that
+    // happens to open with `jestli`. What follows the condition is left to the
+    // pause rule: re-reading it here as a fresh sentence start would turn
+    // "Pokud nevíte, kdo to má na starosti, zeptejte se Petra." into a hit.
+    if (_mainClauseAfterCondition(sentence) != null) continue;
     if (_opensWithInterrogative(normalizeForArtifactMatch(sentence))) {
       return true;
     }
@@ -54,7 +62,8 @@ bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
   }
 
   if (endedOnPause && sentences.isNotEmpty) {
-    for (final clause in _clauses(sentences.last)) {
+    final last = sentences.last;
+    for (final clause in _clauses(_mainClauseAfterCondition(last) ?? last)) {
       if (_opensWithInterrogative(clause)) return true;
       if (_kYesNoOpener.hasMatch(clause)) return true;
     }
@@ -88,32 +97,130 @@ bool chunkEndedOnPause(Duration chunkDuration, Duration maxPauseCutDuration) =>
 /// "A kolik nás to vlastně bude stát" yields "kolik nas to vlastne bude stat",
 /// which opens with an interrogative. "Rozpočet je dva miliony" does not split
 /// at all and opens with "rozpocet", so it stays out.
-Iterable<String> _clauses(String sentence) sync* {
+List<String> _clauses(String sentence) {
+  final parts = <String>[];
   for (final part in sentence.split(RegExp(r'[,;:]|\s[-–—]\s'))) {
     final normalized = normalizeForArtifactMatch(part);
     if (normalized.isEmpty) continue;
 
-    for (final clause in normalized
-        .split(RegExp(r'\b(?:a|ale|nebo|takze|tak|and|but|or|so)\b'))) {
-      final trimmed = clause.trim();
-      if (trimmed.isNotEmpty) yield trimmed;
+    // Czech always sets a comma before `že`, and a `že` clause belongs to the
+    // one in front of it. Split apart, "Víte, že to nefunguje." left a bare
+    // "víte" behind, which reads as a question on its own.
+    if (parts.isNotEmpty &&
+        (normalized == 'ze' || normalized.startsWith('ze '))) {
+      parts[parts.length - 1] = '${parts.last} $normalized';
+    } else {
+      parts.add(normalized);
     }
   }
+
+  return [
+    for (final part in parts)
+      for (final clause in part
+          .split(RegExp(r'\b(?:a|ale|nebo|takze|tak|and|but|or|so)\b')))
+        if (clause.trim().isNotEmpty) clause.trim(),
+  ];
 }
 
 bool _opensWithInterrogative(String normalized) {
   if (normalized.isEmpty) return false;
 
-  final words = normalized.split(' ');
-  if (!_kInterrogatives.contains(words.first)) return false;
+  var words = normalized.split(' ');
+  final second = words.length > 1 ? words[1] : '';
 
-  // `co nejdřív`, `co nejrychleji` — "as soon as possible", not a question,
-  // and common enough in a work meeting that leaving it in would send a
-  // steady trickle of statements to the model.
-  if (words.length > 1 && words[1].startsWith('nej')) return false;
+  // English `do` is only ever an auxiliary with a subject behind it. On its own
+  // it is the Czech preposition — "Do pátku to pošlu." — which opens ordinary
+  // statements all day long.
+  if (words.first == 'do' && _kDoSubjects.contains(second)) return true;
 
-  return true;
+  // "Na kdy to plánujeme", "Za kolik", "S kým", "O čem": Czech puts the
+  // preposition in front of the interrogative, and the question starts one
+  // word later than the first rule looks.
+  if (_kPrepositions.contains(words.first) &&
+      (_kInterrogatives.contains(second) ||
+          _kInterrogativeCases.contains(second))) {
+    words = words.sublist(1);
+  } else if (!_kInterrogatives.contains(words.first)) {
+    return false;
+  }
+
+  return !_kNotAQuestion.hasMatch(words.join(' '));
 }
+
+/// "Jestli to nestihneme, posuneme termín." opens with `jestli`, but it means
+/// "if" there, not "whether" — the sentence is a plan, and its question-shaped
+/// opener is only the condition. Returns what follows the condition, or null
+/// when the sentence does not open with one.
+///
+/// Also null when what follows is somebody saying they do not know: "Jestli to
+/// stihneme do pátku, to nevím." is exactly the indirect question the user
+/// asked for, and must be judged whole.
+String? _mainClauseAfterCondition(String sentence) {
+  final comma = sentence.indexOf(',');
+  if (comma < 0) return null;
+
+  final head = normalizeForArtifactMatch(sentence.substring(0, comma));
+  if (!_kConditionOpener.hasMatch(head)) return null;
+
+  final tail = normalizeForArtifactMatch(sentence.substring(comma + 1));
+  if (_kUnknownTail.hasMatch(tail)) return null;
+
+  return sentence.substring(comma + 1);
+}
+
+final RegExp _kConditionOpener = RegExp(r'^(?:jestli|jestlize|pokud|kdyz)\b');
+
+final RegExp _kUnknownTail = RegExp(
+  r'^(?:to )?(?:(?:ale|jeste|zatim|fakt|opravdu|presne|uplne) )?'
+  r'(?:nevim|nevime|netusim|netusime|nikdo nevi|nevi se|neni jasne|'
+  r'je otazka|uvidime|se uvidi|nejsem si jist|nejsme si jisti)',
+);
+
+/// Openers that begin with an interrogative word and are still not questions.
+/// Matched against the folded sentence after any leading preposition.
+final RegExp _kNotAQuestion = RegExp(
+  r'^(?:'
+  // `co nejdřív`, `jak nejrychleji` — "as soon/fast as possible", common
+  // enough in a work meeting that leaving it in would send a steady trickle
+  // of statements to the model. Only after `co` and `jak`: "Kdo nejvíc
+  // utratil" is a real question.
+  r'(?:co|jak) nej|'
+  // "Co se týče rozpočtu, …" — "as for".
+  r'co se (?:tyce|tyka)\b|'
+  // "Jak víte, …", "Jak jsem říkal, …", "Jak už bylo řečeno, …" — a reminder,
+  // not a question. "Jak jste to myslel" keeps its `to` and stays a question.
+  r'jak (?:vite|vis|vime|je znamo|znamo|rikam|rikate)\b|'
+  r'jak (?:(?:uz|jiz|jsem|jste|jsme|jsi|bylo|se|si|vam|ti|nam|jim|drive|predtim) ){1,3}'
+  r'(?:rik|rek|zmin|psal|napsal|uved|slib|domluv|dohod|mluvil|ukaz|vysvetl|recen)|'
+  // "Mohl jsem to udělat líp." — only the conditional is a request.
+  r'mohl[aio]?(?: (?!(?:by|bys|byste|bychom)\b)|$)|'
+  // "Víte, že …" — "you know, …".
+  r'vi(?:s|te) ze\b|'
+  // "Zdá se, že to funguje." folds to `zda se`, the most common false
+  // positive of all. Only with the `že` behind it: "Zda se nám to vyplatí."
+  // is the rhetorical question M19b was built to catch.
+  r'zda (?:se|si)(?: (?:mi|ti|nam|vam|jim|mu|ji))? ze\b'
+  r')',
+);
+
+/// Subjects that make a sentence-initial `do` an English auxiliary.
+const Set<String> _kDoSubjects = {
+  'you', 'we', 'they', 'i', 'anyone', 'anybody', 'people', 'your', 'our',
+};
+
+/// Folded Czech prepositions that can stand in front of an interrogative.
+const Set<String> _kPrepositions = {
+  'na', 'za', 'o', 's', 'se', 'k', 'ke', 'v', 've', 'z', 'ze', 'do', 'od',
+  'pro', 'po', 'pred', 'pres', 'u', 'bez', 'kvuli', 'mezi', 'nad', 'pod',
+  'proti', 'podle', 'behem',
+};
+
+/// Case forms of the interrogatives that only occur after a preposition —
+/// "o kom", "v čem", "na kterém" — and would be noise at a sentence start.
+const Set<String> _kInterrogativeCases = {
+  'kom', 'cem', 'kolika', 'jakem', 'jakych', 'jakemu', 'kterem', 'kterych',
+  'ktereho', 'kteremu', 'kterym',
+};
 
 /// Written in the folded, lowercase form [normalizeForArtifactMatch] produces,
 /// so a transcript that lost its diacritics still matches.
@@ -131,14 +238,16 @@ const Set<String> _kInterrogatives = {
   'kolik',
   'ktery', 'ktera', 'ktere', 'kterou', 'kteri',
   'zda', 'jestli',
-  'muzes', 'muzete', 'mohl', 'mohli',
+  'muzes', 'muzete', 'mohl', 'mohla', 'mohli',
   'vis', 'vite', 'nevis', 'nevite',
   'umis', 'umite', 'znas', 'znate',
   'chces', 'chcete',
   // English — still reachable, since the transcript language is a setting.
+  // `do` is handled on its own in [_opensWithInterrogative]: bare, it is the
+  // Czech preposition.
   'who', 'whom', 'whose', 'what', 'where', 'when', 'why', 'how', 'which',
   'can', 'could', 'would', 'should', 'shall', 'may', 'might',
-  'do', 'does', 'did', 'is', 'are', 'was', 'were', 'will', 'has', 'have', 'am',
+  'does', 'did', 'is', 'are', 'was', 'were', 'will', 'has', 'have', 'am',
 };
 
 /// Phrases that put a question on the table without a question's intonation.
@@ -155,6 +264,7 @@ final RegExp _kIndirectQuestion = RegExp(
   r'\b(?:'
   r'zajimalo by (?:me|nas)|zajima (?:me|nas)|'
   r'otazka (?:je|zni|zustava)|otazkou je|zustava otazka|'
+  r'(?:to )?je (?:ta |velka |otevrena )?otazka|'
   r'nevim(?:e)? (?:\w+ )?(?:jestli|zda|kolik|jak\w*|kdy|kdo|co|proc|kde|kam|kter\w*)|'
   r'netusi(?:m|me)|nejsem si jist\w*|nejsme si jisti|'
   r'chtel(?:a|i)? (?:bych|bychom) vedet|'

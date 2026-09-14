@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import '../data/db/tables/preferences_table.dart';
+
 /// What a provider gives back for one audio chunk.
 class TranscriptionResult {
   const TranscriptionResult({
@@ -61,9 +63,13 @@ abstract class SttProvider {
   /// treats it as the preceding text, which biases it towards continuing the
   /// same sentence across a chunk boundary — the mitigation for the accepted
   /// mid-word cuts.
+  ///
+  /// [sensitivity] decides how readily a segment the model scores as probable
+  /// silence is still kept as quiet speech.
   Future<TranscriptionResult> transcribe({
     required File audioFile,
     String? promptContext,
     String? languageCode,
+    MicSensitivity sensitivity = MicSensitivity.medium,
   });
 }

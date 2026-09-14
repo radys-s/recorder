@@ -9,13 +9,16 @@ import '../core/constants.dart';
 import '../core/logging.dart';
 import '../core/paths.dart';
 import '../core/providers.dart';
+import '../core/sensitivity.dart';
 import '../data/db/app_database.dart';
+import '../data/db/tables/preferences_table.dart';
 import '../data/db/tables/transcript_segments_table.dart';
 import '../data/db/tables/upload_queue_table.dart';
 import 'audio_capture_service.dart';
 import 'foreground_recording_service.dart';
 import 'pcm_audio_source.dart';
 import 'pcm_chunker.dart';
+import 'pcm_gain.dart';
 import 'pcm_stats.dart';
 import 'wav_writer.dart';
 
@@ -37,6 +40,10 @@ class RecordingState {
   final int? meetingId;
   final DateTime? startedAt;
   final int chunkCount;
+
+  /// Bytes captured so far, as of the last closed chunk. Not updated per
+  /// stream event: that is ten state changes a second, and every widget
+  /// watching the whole state rebuilt on each of them.
   final int totalBytes;
   final String? error;
 
@@ -94,12 +101,27 @@ class RecordingController extends Notifier<RecordingState> {
   /// relative to it. See [toStoredPath] for why they must.
   String? _docsPath;
   int? _meetingId;
+  int _totalBytes = 0;
+
+  /// The sensitivity in force. Unlike the chunk profile it may change
+  /// mid-recording — a quiet meeting is noticed while it is happening — so it
+  /// is followed live through [_prefsSubscription].
+  SensitivityProfile _profile = SensitivityProfile.medium;
+  MicSensitivity? _sensitivity;
+  ProviderSubscription<AsyncValue<Preference>>? _prefsSubscription;
+
+  /// [start] and [stop] both await several platform calls before [state]
+  /// says anything changed, so a double tap would otherwise open the
+  /// microphone twice or flush and close the same meeting twice.
+  bool _starting = false;
+  bool _stopping = false;
 
   @override
   RecordingState build() {
     ref.onDispose(() {
       _levelTimer?.cancel();
       _subscription?.cancel();
+      _prefsSubscription?.close();
       // The source is owned by audioSourceProvider, which disposes it itself.
       level.dispose();
     });
@@ -112,7 +134,8 @@ class RecordingController extends Notifier<RecordingState> {
       state.isRecording ? stop() : start(title: title);
 
   Future<void> start({String? title}) async {
-    if (state.isRecording) return;
+    if (state.isRecording || _starting || _stopping) return;
+    _starting = true;
     state = state.copyWith(clearError: true);
 
     try {
@@ -162,7 +185,13 @@ class RecordingController extends Notifier<RecordingState> {
             fast ? kFastChunkHardCapDuration : kChunkHardCapDuration,
       );
       AppLog.d(_tag, 'chunk profile: ${fast ? 'fast (live answers)' : 'normal'}');
+      _applySensitivity(prefs.micSensitivity);
+      _prefsSubscription = ref.listen(preferencesProvider, (_, next) {
+        final sensitivity = next.valueOrNull?.micSensitivity;
+        if (sensitivity != null) _applySensitivity(sensitivity);
+      });
       _meter.reset();
+      _totalBytes = 0;
 
       _subscription = stream.listen(
         _onData,
@@ -192,37 +221,83 @@ class RecordingController extends Notifier<RecordingState> {
       );
     } on MicrophonePermissionDeniedException {
       AppLog.e(_tag, 'microphone permission denied');
+      await _abandonStart();
       state = state.copyWith(error: 'Přístup k mikrofonu byl zamítnut.');
     } catch (e, st) {
       AppLog.e(_tag, 'failed to start recording', e, st);
+      await _abandonStart();
       state = state.copyWith(error: '$e');
+    } finally {
+      _starting = false;
+    }
+  }
+
+  /// Undoes whatever a failed [start] got as far as. Without this a failure
+  /// after the source opened — the database, the documents directory — left
+  /// the microphone running with nothing reading it, the foreground
+  /// notification up, and a meeting row that never ends.
+  Future<void> _abandonStart() async {
+    _levelTimer?.cancel();
+    _levelTimer = null;
+    _prefsSubscription?.close();
+    _prefsSubscription = null;
+    try {
+      await _subscription?.cancel();
+      await _source?.stop();
+      await _foregroundService.stop();
+    } catch (e, st) {
+      AppLog.e(_tag, 'cleanup after a failed start failed too', e, st);
+    }
+    _subscription = null;
+    _source = null;
+    _chunker = null;
+
+    final meetingId = _meetingId;
+    _meetingId = null;
+    if (meetingId != null) {
+      try {
+        await _db.meetingsDao.markEnded(meetingId, DateTime.now());
+      } catch (e, st) {
+        AppLog.e(_tag, 'could not close meeting $meetingId', e, st);
+      }
     }
   }
 
   Future<void> stop() async {
-    if (!state.isRecording) return;
+    if (!state.isRecording || _stopping) return;
+    _stopping = true;
 
-    _levelTimer?.cancel();
-    _levelTimer = null;
-    await _subscription?.cancel();
-    _subscription = null;
-    await _source?.stop();
-    _source = null;
-    await _foregroundService.stop();
+    try {
+      _levelTimer?.cancel();
+      _levelTimer = null;
+      _prefsSubscription?.close();
+      _prefsSubscription = null;
+      await _subscription?.cancel();
+      _subscription = null;
+      await _source?.stop();
+      _source = null;
+      await _foregroundService.stop();
 
-    // Emits whatever partial chunk is still buffered, so the tail of the
-    // meeting is not lost.
-    _chunker?.flush();
-    _chunker = null;
+      // Emits whatever partial chunk is still buffered, so the tail of the
+      // meeting is not lost.
+      _chunker?.flush();
+      _chunker = null;
 
-    final meetingId = _meetingId;
-    if (meetingId != null) {
-      await _db.meetingsDao.markEnded(meetingId, DateTime.now());
+      final meetingId = _meetingId;
+      if (meetingId != null) {
+        await _db.meetingsDao.markEnded(meetingId, DateTime.now());
+      }
+      _meetingId = null;
+    } catch (e, st) {
+      // The recording is over either way; a state stuck on "recording" would
+      // leave the banner up with a stop button that does nothing.
+      AppLog.e(_tag, 'error while stopping', e, st);
+      state = state.copyWith(error: '$e');
+    } finally {
+      level.value = (rms: 0, peak: 0);
+      state = state.copyWith(isRecording: false, totalBytes: _totalBytes);
+      _stopping = false;
     }
-    _meetingId = null;
-
-    level.value = (rms: 0, peak: 0);
-    state = state.copyWith(isRecording: false);
     // The flushed tail chunk is still being written at this point, so the
     // counts here are "everything but the tail" by definition.
     AppLog.d(
@@ -232,10 +307,23 @@ class RecordingController extends Notifier<RecordingState> {
     );
   }
 
+  /// Idempotent: the preferences stream re-emits on every unrelated setting,
+  /// and a freshly built chunker needs the thresholds even when the setting
+  /// itself did not change.
+  void _applySensitivity(MicSensitivity sensitivity) {
+    final changed = sensitivity != _sensitivity;
+    _sensitivity = sensitivity;
+    _profile = SensitivityProfile.of(sensitivity);
+    _chunker
+      ?..voicedRmsThreshold = _profile.voicedRmsThreshold
+      ..silenceRmsThreshold = _profile.silenceRmsThreshold;
+    if (changed) AppLog.d(_tag, 'sensitivity: ${sensitivity.name}');
+  }
+
   void _onData(Uint8List bytes) {
     _meter.addBytes(bytes);
+    _totalBytes += bytes.length;
     _chunker?.addBytes(bytes);
-    state = state.copyWith(totalBytes: state.totalBytes + bytes.length);
   }
 
   /// Called synchronously by the chunker. The persistence work is async, but
@@ -243,7 +331,12 @@ class RecordingController extends Notifier<RecordingState> {
   /// there is nothing for the next stream event to race with.
   void _onChunk(PcmChunk chunk) {
     AppLog.d(_tag, 'chunk closed: $chunk');
-    unawaited(_persistChunk(chunk, _meetingId, _sessionDir, _docsPath));
+    state = state.copyWith(totalBytes: _totalBytes);
+    // The profile is captured now: the thresholds that measured this chunk
+    // are the ones that should judge it.
+    unawaited(
+      _persistChunk(chunk, _meetingId, _sessionDir, _docsPath, _profile),
+    );
   }
 
   Future<void> _persistChunk(
@@ -251,6 +344,7 @@ class RecordingController extends Notifier<RecordingState> {
     int? meetingId,
     String? dir,
     String? docsPath,
+    SensitivityProfile profile,
   ) async {
     if (meetingId == null || dir == null || docsPath == null) return;
 
@@ -261,21 +355,25 @@ class RecordingController extends Notifier<RecordingState> {
     final storedPath = toStoredPath(docsPath, path);
 
     try {
-      final file = await writeWavFile(
-        path: path,
-        pcmFrames: chunk.frames,
-        pcmByteLength: chunk.byteLength,
-      );
-      final size = await file.length();
-
       // A flushed tail can be a fraction of a second long. Sending that to
       // Whisper produces a hallucinated word, so it is recorded as an already
       // finished, empty segment instead of being queued.
       final tooShort = chunk.duration < kMinTranscribableDuration;
       // Room tone gets the same treatment: nothing in it for Whisper to
       // transcribe, and plenty for it to invent. See [kMinVoicedDuration].
-      final noSpeech = chunk.voicedMs < kMinVoicedDuration.inMilliseconds;
+      final noSpeech = chunk.voicedMs < profile.minVoicedDuration.inMilliseconds;
       final skip = tooShort || noSpeech;
+
+      // Only audio that is going to Whisper is worth raising, and only on the
+      // high setting — see [SensitivityProfile.maxGain].
+      final gain =
+          skip ? 1.0 : normalizingGain(chunk.frames, maxGain: profile.maxGain);
+      final file = await writeWavFile(
+        path: path,
+        pcmFrames: applyGain(chunk.frames, gain),
+        pcmByteLength: chunk.byteLength,
+      );
+      final size = await file.length();
 
       // The segment row goes in regardless of network state — that is what
       // makes "transcript so far, mid-recording" work by construction.
@@ -318,7 +416,8 @@ class RecordingController extends Notifier<RecordingState> {
       AppLog.d(
         _tag,
         'chunk ${chunk.sequence} -> $name ($size B, ${chunk.duration.inMilliseconds}ms, '
-        'voiced ${chunk.voicedMs}ms), '
+        'voiced ${chunk.voicedMs}ms'
+        '${gain == 1 ? '' : ', gain ×${gain.toStringAsFixed(1)}'}), '
         'segment $segmentId enqueued',
       );
 

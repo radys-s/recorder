@@ -11,6 +11,7 @@ import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
 import '../../data/db/app_database.dart';
+import '../../data/db/tables/preferences_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
 import 'meeting_detail_providers.dart';
 import 'widgets/answer_card_tile.dart';
@@ -53,11 +54,18 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     super.dispose();
   }
 
-  /// Follows the transcript only while this meeting is the one being recorded.
-  /// Scrolling a finished transcript out from under someone reading it would
-  /// be worse than not following at all.
+  /// How many rows the transcript had at the last build; the tail is followed
+  /// only when that grows.
+  int _itemCount = 0;
+
+  /// Follows the transcript only while this meeting is the one being recorded,
+  /// only when a row was added, and only for a reader already at the bottom.
+  /// It used to run on every build — and a build came with every audio buffer —
+  /// so scrolling up to reread something mid-meeting was yanked straight back.
   void _followTail() {
     if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.maxScrollExtent - position.pixels > 160) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
@@ -103,14 +111,28 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
       );
   }
 
+  Future<void> _setSensitivity(MicSensitivity value) async {
+    await ref.read(preferencesDaoProvider).setMicSensitivity(value);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('Citlivost poslechu: ${value.label}')),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final meeting = ref.watch(meetingProvider(widget.meetingId));
-    final recording = ref.watch(recordingControllerProvider);
-    final isThisOneRecording =
-        recording.isRecording && recording.meetingId == widget.meetingId;
+    final isThisOneRecording = ref.watch(
+      recordingControllerProvider.select(
+        (s) => s.isRecording && s.meetingId == widget.meetingId,
+      ),
+    );
     final prefs = ref.watch(preferencesProvider);
     final liveAnswers = prefs.valueOrNull?.liveAnswersEnabled ?? false;
+    final sensitivity =
+        prefs.valueOrNull?.micSensitivity ?? MicSensitivity.medium;
 
     return DefaultTabController(
       length: 2,
@@ -118,6 +140,23 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         appBar: AppBar(
           title: Text(meeting.valueOrNull?.title ?? 'Schůzka'),
           actions: [
+            // Here as well as in Settings: a meeting that is too quiet is
+            // noticed while it is running, and the change applies at once.
+            PopupMenuButton<MicSensitivity>(
+              icon: const Icon(Icons.hearing),
+              tooltip: 'Citlivost poslechu: ${sensitivity.label}',
+              enabled: prefs.hasValue,
+              initialValue: sensitivity,
+              onSelected: _setSensitivity,
+              itemBuilder: (_) => [
+                for (final value in MicSensitivity.values)
+                  CheckedPopupMenuItem(
+                    value: value,
+                    checked: value == sensitivity,
+                    child: Text(value.label),
+                  ),
+              ],
+            ),
             IconButton(
               // The two icons differ only in fill, so a hard swap reads as a
               // glitch rather than as a state change. Scaling through the
@@ -223,7 +262,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
   Widget _transcriptList(bool isThisOneRecording, List<AnswerCard> cards) {
     final segments = ref.watch(meetingSegmentsProvider(widget.meetingId));
-    if (isThisOneRecording) _followTail();
 
     return AsyncView(
       value: segments,
@@ -268,6 +306,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
           final own = bySegment[segment.id];
           if (own != null) items.addAll(own);
         }
+
+        if (isThisOneRecording && items.length > _itemCount) _followTail();
+        _itemCount = items.length;
 
         // Which rows are new *this* build, and in what order — so the first
         // paint of an already-recorded meeting reads as a sequence, while a

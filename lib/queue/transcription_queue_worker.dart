@@ -184,6 +184,7 @@ class TranscriptionQueueWorker {
         audioFile: File(await resolveStoredPath(row.localFilePath)),
         promptContext: prompt,
         languageCode: prefs.transcriptLanguage.code,
+        sensitivity: prefs.micSensitivity,
       );
 
       // Whisper answers silence with a plausible sentence rather than nothing,

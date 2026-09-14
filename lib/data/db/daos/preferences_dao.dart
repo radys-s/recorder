@@ -54,4 +54,7 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> setWebAnswersEnabled(bool value) =>
       _write(PreferencesCompanion(webAnswersEnabled: Value(value)));
+
+  Future<void> setMicSensitivity(MicSensitivity value) =>
+      _write(PreferencesCompanion(micSensitivity: Value(value)));
 }

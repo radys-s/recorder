@@ -27,7 +27,15 @@ class NotesGenerator {
     required int meetingId,
     required NotesDepth depth,
   }) async {
-    await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
+    // Outside the main try on purpose, but still caught: if the row cannot even
+    // be marked, there is no row to put the failure on either, and the
+    // "never throws" promise above is what the button relies on.
+    try {
+      await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
+    } catch (e, st) {
+      AppLog.e(_tag, 'meeting $meetingId: could not start generation', e, st);
+      return;
+    }
 
     try {
       final transcript = await _transcript(meetingId);
@@ -55,10 +63,19 @@ class NotesGenerator {
       AppLog.d(_tag, 'meeting $meetingId: notes ready (${notes.length} chars)');
     } on AiException catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
-      await _notesDao.markFailed(meetingId, e.message);
+      await _fail(meetingId, e.message);
     } catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
-      await _notesDao.markFailed(meetingId, '$e');
+      await _fail(meetingId, '$e');
+    }
+  }
+
+  /// A failure while recording a failure is logged, not thrown.
+  Future<void> _fail(int meetingId, String message) async {
+    try {
+      await _notesDao.markFailed(meetingId, message);
+    } catch (e, st) {
+      AppLog.e(_tag, 'meeting $meetingId: could not record failure', e, st);
     }
   }
 
