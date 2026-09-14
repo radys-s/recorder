@@ -50,9 +50,13 @@ class NotesGenerator {
       AppLog.d(_tag,
           'meeting $meetingId: ${transcript.length} chars, depth=${depth.name}');
 
-      final notes = transcript.length > kNotesWindowThreshold
-          ? await _generateWindowed(transcript, depth)
-          : await _generateSingle(transcript, depth);
+      // Trimmed here rather than trusted to the provider: a reply of nothing but
+      // whitespace would otherwise be stored as "ready" notes the user cannot
+      // see, replacing the previous ones.
+      final notes = (transcript.length > kNotesWindowThreshold
+              ? await _generateWindowed(transcript, depth)
+              : await _generateSingle(transcript, depth))
+          .trim();
 
       if (notes.isEmpty) {
         await _notesDao.markFailed(meetingId, 'Model vrátil prázdnou odpověď.');

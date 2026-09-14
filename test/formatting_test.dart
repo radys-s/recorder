@@ -71,6 +71,26 @@ void main() {
       );
     });
 
+    test('"yesterday" holds across a daylight-saving change', () {
+      // 29 March 2026 is 23 hours long in Central Europe. A difference in
+      // hours divided by 24 rounds that down to zero days. Only meaningful
+      // when the test machine runs in a DST time zone, harmless elsewhere.
+      final monday = DateTime(2026, 3, 30, 9);
+      expect(
+        formatMeetingDate(DateTime(2026, 3, 29, 10), now: monday),
+        'Včera 10:00',
+      );
+      expect(formatDateGroup(DateTime(2026, 3, 29, 23, 30), now: monday),
+          'Včera');
+      expect(formatDateGroup(DateTime(2026, 3, 28, 23, 30), now: monday),
+          '28. 3.');
+      final octoberMonday = DateTime(2026, 10, 26, 0, 30);
+      expect(
+        formatDateGroup(DateTime(2026, 10, 25, 1, 0), now: octoberMonday),
+        'Včera',
+      );
+    });
+
     test('a late-evening meeting is still "today", not rounded by the hour', () {
       expect(
         formatMeetingDate(DateTime(2026, 9, 7, 0, 1), now: now),

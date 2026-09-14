@@ -122,10 +122,17 @@ class LiveAnswerService {
       // ...but part of it has to be in the newest passage. A question that
       // lives only in the previous segment was that segment's to answer, and
       // letting it through here puts the same card in the timeline twice.
-      final grounded = decision.quote.isNotEmpty
+      final quoteHolds = decision.quote.isNotEmpty
           ? isGroundedIn(decision.quote, spoken) &&
               isGroundedIn(decision.quote, text, minShare: 1 / 3)
           : isGroundedIn(decision.question, text, minShare: 1 / 3);
+      // The quote vouches for the passage, not for the card's heading. A quote
+      // of a word or two ("A kolik?") passes any check, and the tidied question
+      // shown above the answer was then free to be one nobody asked. Tidying
+      // may borrow the subject from earlier in the meeting, so the meeting is
+      // what the question is held to — but its words must have been said.
+      final grounded = quoteHolds &&
+          isGroundedIn(decision.question, '$context $spoken', minShare: 1 / 2);
       if (!grounded) {
         AppLog.d(
           _tag,

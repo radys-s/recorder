@@ -65,7 +65,11 @@ bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
     final last = sentences.last;
     for (final clause in _clauses(_mainClauseAfterCondition(last) ?? last)) {
       if (_opensWithInterrogative(clause)) return true;
-      if (_kYesNoOpener.hasMatch(clause)) return true;
+      if (_kYesNoOpener.hasMatch(
+        _withoutLeadingParticles(clause.split(' ')).join(' '),
+      )) {
+        return true;
+      }
     }
   }
 
@@ -125,7 +129,7 @@ List<String> _clauses(String sentence) {
 bool _opensWithInterrogative(String normalized) {
   if (normalized.isEmpty) return false;
 
-  var words = normalized.split(' ');
+  var words = _withoutLeadingParticles(normalized.split(' '));
   final second = words.length > 1 ? words[1] : '';
 
   // English `do` is only ever an auxiliary with a subject behind it. On its own
@@ -147,6 +151,27 @@ bool _opensWithInterrogative(String normalized) {
   return !_kNotAQuestion.hasMatch(words.join(' '));
 }
 
+/// Spoken Czech opens a question with a filler far more often than written
+/// Czech does — "A kolik to bude stát", "No a kdy začneme", "Takže kdo to
+/// podepíše" — and Whisper keeps the filler while dropping the question mark.
+/// Without this, rule 2 saw "a" as the sentence's first word and let exactly
+/// the flat-intonation question the user reported go by. Up to two are
+/// skipped, and never the last word.
+List<String> _withoutLeadingParticles(List<String> words) {
+  var skip = 0;
+  while (skip < 2 &&
+      skip < words.length - 1 &&
+      _kLeadingParticles.contains(words[skip])) {
+    skip++;
+  }
+  return skip == 0 ? words : words.sublist(skip);
+}
+
+const Set<String> _kLeadingParticles = {
+  'a', 'no', 'tak', 'takze', 'ale', 'jo', 'hele', 'teda', 'tedy',
+  'and', 'so', 'but', 'well',
+};
+
 /// "Jestli to nestihneme, posuneme termín." opens with `jestli`, but it means
 /// "if" there, not "whether" — the sentence is a plan, and its question-shaped
 /// opener is only the condition. Returns what follows the condition, or null
@@ -156,11 +181,21 @@ bool _opensWithInterrogative(String normalized) {
 /// stihneme do pátku, to nevím." is exactly the indirect question the user
 /// asked for, and must be judged whole.
 String? _mainClauseAfterCondition(String sentence) {
-  final comma = sentence.indexOf(',');
+  var comma = sentence.indexOf(',');
   if (comma < 0) return null;
 
   final head = normalizeForArtifactMatch(sentence.substring(0, comma));
   if (!_kConditionOpener.hasMatch(head)) return null;
+
+  // "Pokud nevíte, kdo to má na starosti, zeptejte se Petra." — the clause
+  // right after a condition that ends on not knowing is still part of that
+  // condition: it is *what* is not known. Cutting at the first comma handed
+  // "kdo to má na starosti" to the pause rule as the main clause, and an
+  // instruction came out as a question.
+  if (_kKnowingAtEnd.hasMatch(head)) {
+    final next = sentence.indexOf(',', comma + 1);
+    if (next >= 0) comma = next;
+  }
 
   final tail = normalizeForArtifactMatch(sentence.substring(comma + 1));
   if (_kUnknownTail.hasMatch(tail)) return null;
@@ -168,7 +203,18 @@ String? _mainClauseAfterCondition(String sentence) {
   return sentence.substring(comma + 1);
 }
 
-final RegExp _kConditionOpener = RegExp(r'^(?:jestli|jestlize|pokud|kdyz)\b');
+/// Leading fillers allowed too — otherwise "Ale jestli to nestihneme, posuneme
+/// termín." skipped this check and [_withoutLeadingParticles] then read the
+/// `jestli` as a sentence-initial "whether".
+final RegExp _kConditionOpener = RegExp(
+  r'^(?:(?:a|no|tak|takze|ale|jo|hele|teda|tedy) ){0,2}'
+  r'(?:jestli|jestlize|pokud|kdyz)\b',
+);
+
+final RegExp _kKnowingAtEnd = RegExp(
+  r'\b(?:ne)?(?:vim|vime|vis|vite|vi|tusim|tusime|tusis|tusite|tusi)$|'
+  r'\b(?:jist|jasn|zjist)\w*$',
+);
 
 final RegExp _kUnknownTail = RegExp(
   r'^(?:to )?(?:(?:ale|jeste|zatim|fakt|opravdu|presne|uplne) )?'

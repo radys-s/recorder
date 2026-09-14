@@ -100,8 +100,10 @@ void main() {
     // there. That is the only case in which a mid-sentence interrogative is
     // allowed to count.
     test('a trailing rhetorical question with no question mark matches', () {
-      const text = 'Musíme to stihnout do konce roku. '
-          'A kolik nás to vlastně bude stát.';
+      // Mid-sentence, after a comma: a sentence of its own that opens with
+      // "A kolik" now matches without the pause (see the filler test below).
+      const text = 'Musíme to stihnout do konce roku, '
+          'a kolik nás to vlastně bude stát.';
       expect(looksLikeQuestion(text), isFalse);
       expect(looksLikeQuestion(text, endedOnPause: true), isTrue);
     });
@@ -155,6 +157,95 @@ void main() {
         ),
         isFalse,
       );
+    });
+  });
+
+  group('looksLikeQuestion, edge cases from review', () {
+    test('a filler in front of the interrogative still opens a question', () {
+      expect(looksLikeQuestion('A kolik nás to bude stát.'), isTrue);
+      expect(looksLikeQuestion('No a kdy začneme.'), isTrue);
+      expect(looksLikeQuestion('Takže kdo to podepíše.'), isTrue);
+      expect(looksLikeQuestion('No stihneme to do pátku.', endedOnPause: true),
+          isTrue);
+    });
+
+    test('a filler alone, or in front of a statement, is not a question', () {
+      expect(looksLikeQuestion('No jo.'), isFalse);
+      expect(looksLikeQuestion('A tak.', endedOnPause: true), isFalse);
+      expect(looksLikeQuestion('Tak to je všechno.', endedOnPause: true),
+          isFalse);
+      expect(looksLikeQuestion('A do pátku to pošlu.', endedOnPause: true),
+          isFalse);
+    });
+
+    test('a condition with a filler in front is still a condition', () {
+      const text = 'Ale jestli to nestihneme, posuneme termín.';
+      expect(looksLikeQuestion(text), isFalse);
+      expect(looksLikeQuestion(text, endedOnPause: true), isFalse);
+    });
+
+    test('what is not known belongs to the condition, not to the main clause',
+        () {
+      const text = 'Pokud nevíte, kdo to má na starosti, zeptejte se Petra.';
+      expect(looksLikeQuestion(text), isFalse);
+      expect(looksLikeQuestion(text, endedOnPause: true), isFalse);
+      expect(
+        looksLikeQuestion(
+          'Když není jasné, kdo to platí, napište mi.',
+          endedOnPause: true,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a condition followed by a real question still matches on a pause',
+        () {
+      expect(
+        looksLikeQuestion('Když to nevyjde, kdo to zaplatí.', endedOnPause: true),
+        isTrue,
+      );
+      expect(looksLikeQuestion('Jestli to stihneme do pátku, to nevím.'),
+          isTrue);
+    });
+
+    test('"víte, že" and "zdá se, že" are statements even on a pause', () {
+      for (final text in ['Víte, že to nefunguje.', 'Zdá se, že to funguje.']) {
+        expect(looksLikeQuestion(text), isFalse, reason: text);
+        expect(looksLikeQuestion(text, endedOnPause: true), isFalse,
+            reason: text);
+      }
+      expect(looksLikeQuestion('Zda se nám to vyplatí.'), isTrue);
+    });
+
+    test('Czech "do" is a preposition, English "do" an auxiliary', () {
+      expect(looksLikeQuestion('Do pátku to pošlu.', endedOnPause: true),
+          isFalse);
+      expect(looksLikeQuestion('Do we have the budget for it.'), isTrue);
+      expect(looksLikeQuestion('Do you know the deadline.'), isTrue);
+    });
+
+    test('a preposition in front of the interrogative', () {
+      expect(looksLikeQuestion('Na kdy to plánujeme.'), isTrue);
+      expect(looksLikeQuestion('S kým to máme probrat.'), isTrue);
+      expect(looksLikeQuestion('Za kolika dny to bude.'), isTrue);
+    });
+
+    test('idioms that open with an interrogative', () {
+      for (final text in [
+        'Co se týče rozpočtu, jsme v plánu.',
+        'Jak víte, rozpočet je napjatý.',
+        'Jak jsem říkal, začneme v pondělí.',
+        'Mohl jsem to udělat líp.',
+      ]) {
+        expect(looksLikeQuestion(text), isFalse, reason: text);
+        expect(looksLikeQuestion(text, endedOnPause: true), isFalse,
+            reason: text);
+      }
+      expect(looksLikeQuestion('Mohl bys to poslat.'), isTrue);
+    });
+
+    test('an ellipsis separates sentences', () {
+      expect(looksLikeQuestion('Takže… kdo to podepíše.'), isTrue);
     });
   });
 
