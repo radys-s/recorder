@@ -60,12 +60,12 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     final dao = ref.read(savedNotesDaoProvider);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final meetingTitle =
-        ref.read(meetingProvider(widget.meetingId)).valueOrNull?.title;
+    final meeting = ref.read(meetingProvider(widget.meetingId)).valueOrNull;
 
     final picked = await showSaveNoteSheet(
       context,
-      initialTitle: meetingTitle ?? 'Poznámky ze schůzky',
+      initialTitle: meeting?.title ?? 'Poznámky ze schůzky',
+      initialFolderId: meeting?.subjectId,
     );
     if (picked == null) return;
 

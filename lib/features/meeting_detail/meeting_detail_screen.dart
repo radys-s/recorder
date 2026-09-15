@@ -15,13 +15,15 @@ import '../../data/db/app_database.dart';
 import '../../data/db/tables/preferences_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
 import '../meetings_list/meeting_actions.dart';
+import '../subjects/widgets/lesson_context_strip.dart';
+import '../subjects/widgets/lesson_sheet.dart';
 import 'meeting_detail_providers.dart';
 import 'widgets/answer_card_tile.dart';
 import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
 import 'widgets/transcript_segment_tile.dart';
 
-enum _MeetingAction { rename, delete }
+enum _MeetingAction { lesson, rename, delete }
 
 /// A single meeting and its transcript, growing live while recording.
 class MeetingDetailScreen extends ConsumerStatefulWidget {
@@ -192,6 +194,8 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               tooltip: 'Další akce',
               enabled: meeting.valueOrNull != null,
               onSelected: (action) => switch (action) {
+                _MeetingAction.lesson =>
+                  showLessonSheet(context, ref, meeting.requireValue!),
                 _MeetingAction.rename =>
                   renameMeetingFlow(context, ref, meeting.requireValue!),
                 _MeetingAction.delete => confirmAndDeleteMeeting(
@@ -202,6 +206,13 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   ),
               },
               itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: _MeetingAction.lesson,
+                  child: MenuRow(
+                    icon: Icons.school_outlined,
+                    label: 'Předmět a karty',
+                  ),
+                ),
                 const PopupMenuItem(
                   value: _MeetingAction.rename,
                   child: MenuRow(
@@ -237,10 +248,17 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 label: const Text('Zastavit'),
               )
             : null,
-        body: TabBarView(
+        body: Column(
           children: [
-            _buildTranscript(isThisOneRecording),
-            MeetingNotesTab(meetingId: widget.meetingId),
+            if (meeting.valueOrNull case final m?) LessonContextStrip(meeting: m),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildTranscript(isThisOneRecording),
+                  MeetingNotesTab(meetingId: widget.meetingId),
+                ],
+              ),
+            ),
           ],
         ),
       ),

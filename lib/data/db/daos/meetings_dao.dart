@@ -2,9 +2,12 @@ import 'package:drift/drift.dart';
 
 import '../app_database.dart';
 import '../tables/answer_cards_table.dart';
+import '../tables/chat_messages_table.dart';
+import '../tables/context_cards_table.dart';
 import '../tables/meeting_notes_table.dart';
 import '../tables/meetings_table.dart';
 import '../tables/saved_notes_table.dart';
+import '../tables/subjects_table.dart';
 import '../tables/transcript_segments_table.dart';
 import '../tables/upload_queue_table.dart';
 
@@ -19,9 +22,13 @@ class MeetingSummary {
     required this.transcribedCount,
     required this.failedCount,
     required this.durationMs,
+    this.subject,
   });
 
   final Meeting meeting;
+
+  /// The lesson's subject, or null for an ordinary meeting.
+  final Subject? subject;
   final int segmentCount;
   final int transcribedCount;
   final int failedCount;
@@ -45,6 +52,9 @@ class MeetingSummary {
     AnswerCards,
     MeetingNotes,
     SavedNotes,
+    Subjects,
+    MeetingCards,
+    ChatMessages,
   ],
 )
 class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin {
@@ -75,6 +85,8 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
         transcriptSegments,
         transcriptSegments.meetingId.equalsExp(meetings.id),
       ),
+      // One subject per meeting at most, so this join does not multiply rows.
+      leftOuterJoin(subjects, subjects.id.equalsExp(meetings.subjectId)),
     ])
       ..addColumns([count, longest, transcribed, failed])
       ..groupBy([meetings.id])
@@ -83,6 +95,7 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
     return query.map((row) {
       return MeetingSummary(
         meeting: row.readTable(meetings),
+        subject: row.readTableOrNull(subjects),
         segmentCount: row.read(count) ?? 0,
         transcribedCount: row.read(transcribed) ?? 0,
         failedCount: row.read(failed) ?? 0,
@@ -127,6 +140,10 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
         await (delete(transcriptSegments)
               ..where((t) => t.meetingId.equals(id)))
             .go();
+        await (delete(meetingCards)..where((t) => t.meetingId.equals(id)))
+            .go();
+        await (delete(chatMessages)..where((t) => t.meetingId.equals(id)))
+            .go();
         await (update(savedNotes)..where((t) => t.meetingId.equals(id)))
             .write(const SavedNotesCompanion(meetingId: Value(null)));
         await (delete(meetings)..where((t) => t.id.equals(id))).go();
@@ -151,6 +168,12 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
               ..where((t) => t.meetingId.isNotInQuery(existing)))
             .go();
         removed += await (delete(transcriptSegments)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        removed += await (delete(chatMessages)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        await (delete(meetingCards)
               ..where((t) => t.meetingId.isNotInQuery(existing)))
             .go();
         await (update(savedNotes)

@@ -11,14 +11,17 @@ import 'daos/meeting_notes_dao.dart';
 import 'daos/meetings_dao.dart';
 import 'daos/preferences_dao.dart';
 import 'daos/saved_notes_dao.dart';
+import 'daos/subjects_dao.dart';
 import 'daos/transcript_segments_dao.dart';
 import 'daos/upload_queue_dao.dart';
 import 'tables/answer_cards_table.dart';
+import 'tables/chat_messages_table.dart';
+import 'tables/context_cards_table.dart';
 import 'tables/meeting_notes_table.dart';
 import 'tables/meetings_table.dart';
-import 'tables/note_folders_table.dart';
 import 'tables/preferences_table.dart';
 import 'tables/saved_notes_table.dart';
+import 'tables/subjects_table.dart';
 import 'tables/transcript_segments_table.dart';
 import 'tables/upload_queue_table.dart';
 
@@ -32,8 +35,13 @@ part 'app_database.g.dart';
     Preferences,
     MeetingNotes,
     AnswerCards,
-    NoteFolders,
+    Subjects,
     SavedNotes,
+    ContextCards,
+    CardImages,
+    MeetingCards,
+    TimetableSlots,
+    ChatMessages,
   ],
   daos: [
     MeetingsDao,
@@ -43,6 +51,7 @@ part 'app_database.g.dart';
     MeetingNotesDao,
     AnswerCardsDao,
     SavedNotesDao,
+    SubjectsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -52,8 +61,12 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
+  /// `createTable` always creates the table as it is *now*, so a column added
+  /// in a later version must only be added when the table already existed
+  /// before this upgrade — hence the `from >= N` guards, N being the version
+  /// that created the table.
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (m, from, to) async {
@@ -69,19 +82,42 @@ class AppDatabase extends _$AppDatabase {
           if (from < 5) {
             await m.createTable(answerCards);
           }
-          if (from < 6) {
+          if (from == 5) {
             await m.addColumn(answerCards, answerCards.basis);
           }
           if (from < 7) {
-            await m.addColumn(answerCards, answerCards.sources);
-            await m.addColumn(preferences, preferences.webAnswersEnabled);
+            if (from >= 5) await m.addColumn(answerCards, answerCards.sources);
+            if (from >= 3) {
+              await m.addColumn(preferences, preferences.webAnswersEnabled);
+            }
           }
-          if (from < 8) {
+          if (from < 8 && from >= 3) {
             await m.addColumn(preferences, preferences.micSensitivity);
           }
           if (from < 9) {
-            await m.createTable(noteFolders);
+            await m.createTable(subjects);
             await m.createTable(savedNotes);
+          }
+          if (from < 10) {
+            if (from == 9) {
+              await m.addColumn(subjects, subjects.rules);
+              await m.addColumn(subjects, subjects.colorIndex);
+              await m.addColumn(subjects, subjects.sortOrder);
+            }
+            await m.addColumn(meetings, meetings.subjectId);
+            await m.addColumn(meetings, meetings.rules);
+            if (from >= 5) {
+              await m.addColumn(answerCards, answerCards.detail);
+              await m.addColumn(answerCards, answerCards.cardId);
+            }
+            if (from >= 3) {
+              await m.addColumn(preferences, preferences.globalRules);
+            }
+            await m.createTable(contextCards);
+            await m.createTable(cardImages);
+            await m.createTable(meetingCards);
+            await m.createTable(timetableSlots);
+            await m.createTable(chatMessages);
           }
         },
       );

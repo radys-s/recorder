@@ -1,23 +1,26 @@
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
-import '../tables/note_folders_table.dart';
 import '../tables/preferences_table.dart';
 import '../tables/saved_notes_table.dart';
+import '../tables/subjects_table.dart';
+import 'subjects_dao.dart';
 
 part 'saved_notes_dao.g.dart';
 
-/// A folder plus how many notes are in it, for the library's filter chips.
+/// A subject plus how many notes are filed under it, for the library's filter
+/// chips.
 class FolderSummary {
   const FolderSummary({required this.folder, required this.noteCount});
 
-  final NoteFolder folder;
+  final Subject folder;
   final int noteCount;
 }
 
-/// The saved-notes library: notes the user kept, and the folders they sort
-/// them into.
-@DriftAccessor(tables: [NoteFolders, SavedNotes])
+/// The saved-notes library: notes the user kept, and the subjects they file
+/// them under. Subjects were note folders before schema v10, which is why the
+/// method names still say folder.
+@DriftAccessor(tables: [Subjects, SavedNotes])
 class SavedNotesDao extends DatabaseAccessor<AppDatabase>
     with _$SavedNotesDaoMixin {
   SavedNotesDao(super.db);
@@ -25,32 +28,34 @@ class SavedNotesDao extends DatabaseAccessor<AppDatabase>
   static const maxFolderNameLength = 60;
   static const maxTitleLength = 120;
 
-  /// Folders in the order they were made, each with its note count. Creation
+  /// Subjects in the order they were made, each with its note count. Creation
   /// order rather than alphabetical: SQLite's NOCASE only folds ASCII, so
-  /// „Čeština" would sort after „Z", and a new folder landing at the end —
+  /// „Čeština" would sort after „Z", and a new subject landing at the end —
   /// right next to the chip that created it — is easier to find anyway.
   Stream<List<FolderSummary>> watchFolders() {
     final count = savedNotes.id.count();
-    final query = select(noteFolders).join([
-      leftOuterJoin(savedNotes, savedNotes.folderId.equalsExp(noteFolders.id)),
+    final query = select(subjects).join([
+      leftOuterJoin(savedNotes, savedNotes.folderId.equalsExp(subjects.id)),
     ])
       ..addColumns([count])
-      ..groupBy([noteFolders.id])
+      ..groupBy([subjects.id])
       ..orderBy([
-        OrderingTerm.asc(noteFolders.createdAt),
-        OrderingTerm.asc(noteFolders.id),
+        OrderingTerm.asc(subjects.sortOrder),
+        OrderingTerm.asc(subjects.createdAt),
+        OrderingTerm.asc(subjects.id),
       ]);
 
     return query
         .map((row) => FolderSummary(
-              folder: row.readTable(noteFolders),
+              folder: row.readTable(subjects),
               noteCount: row.read(count) ?? 0,
             ))
         .watch();
   }
 
-  Future<List<NoteFolder>> folders() => (select(noteFolders)
+  Future<List<Subject>> folders() => (select(subjects)
         ..orderBy([
+          (t) => OrderingTerm.asc(t.sortOrder),
           (t) => OrderingTerm.asc(t.createdAt),
           (t) => OrderingTerm.asc(t.id),
         ]))
@@ -82,7 +87,7 @@ class SavedNotesDao extends DatabaseAccessor<AppDatabase>
     final now = DateTime.now();
     return into(savedNotes).insert(
       SavedNotesCompanion.insert(
-        title: _required(title, maxTitleLength, 'title'),
+        title: requiredText(title, maxTitleLength, 'title'),
         content: content.trim(),
         folderId: Value(folderId),
         meetingId: Value(meetingId),
@@ -107,7 +112,7 @@ class SavedNotesDao extends DatabaseAccessor<AppDatabase>
     final trimmed = content.trim();
     await (update(savedNotes)..where((t) => t.id.equals(id))).write(
       SavedNotesCompanion(
-        title: Value(_required(title, maxTitleLength, 'title')),
+        title: Value(requiredText(title, maxTitleLength, 'title')),
         content: Value(trimmed),
         depth: trimmed == current.content
             ? const Value.absent()
@@ -126,55 +131,37 @@ class SavedNotesDao extends DatabaseAccessor<AppDatabase>
   Future<void> deleteNote(int id) =>
       (delete(savedNotes)..where((t) => t.id.equals(id))).go();
 
-  /// Creates a folder, or returns the one that already has this name.
+  /// Creates a subject, or returns the one that already has this name.
   ///
   /// Compared case-insensitively in Dart rather than with SQL `lower()`, which
-  /// only folds ASCII: „čeština" and „Čeština" must be the same folder, not two
-  /// chips that look identical.
+  /// only folds ASCII: „čeština" and „Čeština" must be the same subject, not
+  /// two chips that look identical.
   Future<int> createFolder(String name) async {
-    final clean = _required(name, maxFolderNameLength, 'name');
+    final clean = requiredText(name, maxFolderNameLength, 'name');
     final key = clean.toLowerCase();
-    for (final folder in await folders()) {
+    final existing = await folders();
+    for (final folder in existing) {
       if (folder.name.toLowerCase() == key) return folder.id;
     }
-    return into(noteFolders).insert(
-      NoteFoldersCompanion.insert(name: clean, createdAt: DateTime.now()),
+    return into(subjects).insert(
+      SubjectsCompanion.insert(
+        name: clean,
+        createdAt: DateTime.now(),
+        // Spread new subjects over the palette instead of all starting blue.
+        colorIndex: Value(existing.length % SubjectsDao.paletteSize),
+      ),
     );
   }
 
   Future<void> renameFolder(int id, String name) =>
-      (update(noteFolders)..where((t) => t.id.equals(id))).write(
-        NoteFoldersCompanion(
-          name: Value(_required(name, maxFolderNameLength, 'name')),
+      (update(subjects)..where((t) => t.id.equals(id))).write(
+        SubjectsCompanion(
+          name: Value(requiredText(name, maxFolderNameLength, 'name')),
         ),
       );
 
-  /// Deletes the folder and keeps its notes, which move to „Bez složky". A
-  /// folder is a label on notes; removing the label must not cost the notes.
-  Future<void> deleteFolder(int id) => transaction(() async {
-        await (update(savedNotes)..where((t) => t.folderId.equals(id)))
-            .write(const SavedNotesCompanion(folderId: Value(null)));
-        await (delete(noteFolders)..where((t) => t.id.equals(id))).go();
-      });
-
-  /// Trimmed and cut to [max] UTF-16 units — the unit drift's length check
-  /// counts in — without splitting a surrogate pair. Blank is an error: the
-  /// UI disables its save button for it, so reaching here blank is a bug.
-  static String _required(String value, int max, String field) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      throw ArgumentError.value(value, field, 'must not be blank');
-    }
-    if (trimmed.length <= max) return trimmed;
-
-    final buffer = StringBuffer();
-    var length = 0;
-    for (final rune in trimmed.runes) {
-      final units = rune > 0xFFFF ? 2 : 1;
-      if (length + units > max) break;
-      buffer.writeCharCode(rune);
-      length += units;
-    }
-    return buffer.toString().trimRight();
-  }
+  /// Deletes the subject and keeps its notes, which move to „Bez předmětu". A
+  /// subject is a label on notes; removing the label must not cost the notes.
+  /// Its cards go with it — see [SubjectsDao.deleteSubject].
+  Future<void> deleteFolder(int id) => db.subjectsDao.deleteSubject(id);
 }

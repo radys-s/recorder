@@ -5,13 +5,15 @@ import '../../core/formatting.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
-import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/menu_row.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
 import '../settings/settings_screen.dart';
+import '../subjects/subject_actions.dart';
+import '../subjects/subjects_providers.dart';
+import '../subjects/widgets/subject_badge.dart';
 import 'notes_library_providers.dart';
 import 'saved_note_screen.dart';
 import 'widgets/folder_sheets.dart';
@@ -46,35 +48,12 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
     }
   }
 
-  Future<void> _renameFolder(NoteFolder folder) async {
-    final dao = ref.read(savedNotesDaoProvider);
-    final name = await showTextInputDialog(
-      context,
-      title: 'Přejmenovat složku',
-      label: 'Název',
-      initialValue: folder.name,
-      maxLength: SavedNotesDao.maxFolderNameLength,
-    );
-    if (name == null || name == folder.name) return;
-    await dao.renameFolder(folder.id, name);
-  }
+  Future<void> _renameFolder(Subject folder) =>
+      renameSubjectFlow(context, ref, folder);
 
   Future<void> _deleteFolder(FolderSummary summary) async {
-    final dao = ref.read(savedNotesDaoProvider);
-    final count = summary.noteCount;
-    final confirmed = await showConfirmDialog(
-      context,
-      icon: Icons.folder_delete_outlined,
-      title: 'Smazat složku „${summary.folder.name}"?',
-      message: count == 0
-          ? 'Složka je prázdná.'
-          : 'Poznámky v ní ($count) se nesmažou — přesunou se do Bez složky.',
-      confirmLabel: 'Smazat složku',
-      destructive: true,
-    );
-    if (!confirmed) return;
-    await dao.deleteFolder(summary.folder.id);
-    if (mounted) setState(() => _filter = FolderFilter.all);
+    final deleted = await confirmAndDeleteSubject(context, ref, summary.folder);
+    if (deleted && mounted) setState(() => _filter = FolderFilter.all);
   }
 
   void _folderAction(_FolderAction action, FolderSummary summary) {
@@ -107,21 +86,21 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
           if (selected != null)
             PopupMenuButton<_FolderAction>(
               icon: const Icon(Icons.more_vert),
-              tooltip: 'Složka',
+              tooltip: 'Předmět',
               onSelected: (action) => _folderAction(action, selected!),
               itemBuilder: (_) => const [
                 PopupMenuItem(
                   value: _FolderAction.rename,
                   child: MenuRow(
                     icon: Icons.drive_file_rename_outline,
-                    label: 'Přejmenovat složku',
+                    label: 'Přejmenovat předmět',
                   ),
                 ),
                 PopupMenuItem(
                   value: _FolderAction.delete,
                   child: MenuRow(
-                    icon: Icons.folder_delete_outlined,
-                    label: 'Smazat složku',
+                    icon: Icons.delete_outline,
+                    label: 'Smazat předmět',
                     destructive: true,
                   ),
                 ),
@@ -200,11 +179,11 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
             ),
             ListTile(
               leading: Icon(
-                Icons.folder_delete_outlined,
+                Icons.delete_outline,
                 color: Theme.of(context).colorScheme.error,
               ),
               title: Text(
-                'Smazat složku',
+                'Smazat předmět',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onTap: () => Navigator.of(context).pop(_FolderAction.delete),
@@ -227,7 +206,7 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
         icon: Icons.bookmarks_outlined,
         title: 'Knihovna je zatím prázdná',
         message: 'Otevři schůzku, v záložce Poznámky je vytvoř a klepni na '
-            'Uložit. Tady je pak najdeš roztříděné do složek.',
+            'Uložit. Tady je pak najdeš roztříděné podle předmětů.',
       );
     }
 
@@ -237,13 +216,13 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
           ? const EmptyState(
               icon: Icons.search_off,
               title: 'Nic nenalezeno',
-              message: 'Zkus jiné slovo nebo jinou složku.',
+              message: 'Zkus jiné slovo nebo jiný předmět.',
             )
           : const EmptyState(
               icon: Icons.folder_open_outlined,
               title: 'Tady zatím nic není',
               message: 'Poznámku sem přesuneš v jejím detailu přes '
-                  'Přesunout do složky.',
+                  'Přesunout do předmětu.',
             );
     }
 
@@ -314,26 +293,28 @@ class _FolderBar extends StatelessWidget {
         GestureDetector(
           onLongPress: () => onLongPress(summary),
           child: _FilterChip(
-            icon: Icons.folder_outlined,
+            avatar: SubjectDot(
+              color: subjectColor(context, summary.folder.colorIndex),
+            ),
             label: summary.folder.name,
             count: summary.noteCount,
             selected: filter.folderId == summary.folder.id,
             onSelected: () => onSelected(FolderFilter.folder(summary.folder.id)),
           ),
         ),
-      // Only once there are folders: before that every note is unfiled and the
+      // Only once there are subjects: before that every note is unfiled and the
       // chip would be a second „Vše".
       if (folders.isNotEmpty)
         _FilterChip(
-          icon: Icons.inbox_outlined,
-          label: 'Bez složky',
+          avatar: const Icon(Icons.inbox_outlined, size: 18),
+          label: 'Bez předmětu',
           count: unfiled,
           selected: filter == FolderFilter.unfiled,
           onSelected: () => onSelected(FolderFilter.unfiled),
         ),
       ActionChip(
-        avatar: const Icon(Icons.create_new_folder_outlined, size: 18),
-        label: const Text('Nová složka'),
+        avatar: const Icon(Icons.add, size: 18),
+        label: const Text('Nový předmět'),
         onPressed: onCreate,
       ),
     ];
@@ -357,14 +338,14 @@ class _FilterChip extends StatelessWidget {
     required this.count,
     required this.selected,
     required this.onSelected,
-    this.icon,
+    this.avatar,
   });
 
   final String label;
   final int count;
   final bool selected;
   final VoidCallback onSelected;
-  final IconData? icon;
+  final Widget? avatar;
 
   @override
   Widget build(BuildContext context) {
@@ -372,7 +353,7 @@ class _FilterChip extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return ChoiceChip(
-      avatar: icon == null ? null : Icon(icon, size: 18),
+      avatar: avatar,
       selected: selected,
       onSelected: (_) => onSelected(),
       label: Row(

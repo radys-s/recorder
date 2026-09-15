@@ -46,9 +46,9 @@ void main() {
     await pumpLibrary(tester);
 
     expect(find.text('Knihovna je zatím prázdná'), findsOneWidget);
-    // No folders yet, so no „Bez složky" chip duplicating „Vše".
-    expect(chip('Bez složky'), findsNothing);
-    expect(find.text('Nová složka'), findsOneWidget);
+    // No subjects yet, so no „Bez předmětu" chip duplicating „Vše".
+    expect(chip('Bez předmětu'), findsNothing);
+    expect(find.text('Nový předmět'), findsOneWidget);
   });
 
   libraryTest('folder chips and search narrow the list', (tester) async {
@@ -70,7 +70,7 @@ void main() {
     expect(find.text('Slovní druhy'), findsOneWidget);
     expect(find.text('Rozpočet Q3'), findsNothing);
 
-    await tester.tap(chip('Bez složky'));
+    await tester.tap(chip('Bez předmětu'));
     await settle(tester);
     expect(find.text('Slovní druhy'), findsNothing);
     expect(find.text('Rozpočet Q3'), findsOneWidget);

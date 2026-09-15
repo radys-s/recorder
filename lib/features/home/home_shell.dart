@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../meetings_list/meetings_list_screen.dart';
 import '../notes_library/notes_library_screen.dart';
+import '../subjects/subjects_screen.dart';
 
-/// The two places the app lives: meetings, and the notes kept from them.
+/// The three places the app lives: recordings, subjects with their cards, and
+/// the notes kept from lessons.
 ///
 /// An [IndexedStack] rather than swapping screens, so switching tabs keeps each
-/// one's scroll position, search text and selected folder. Each tab owns its
+/// one's scroll position, search text and selected subject. Each tab owns its
 /// app bar and button; the detail screens are pushed over the whole shell, so
 /// the bar underneath does not follow into a meeting.
 class HomeShell extends StatefulWidget {
@@ -26,6 +28,7 @@ class _HomeShellState extends State<HomeShell> {
         index: _index,
         children: const [
           MeetingsListScreen(),
+          SubjectsScreen(),
           NotesLibraryScreen(),
         ],
       ),
@@ -36,7 +39,12 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(
             icon: Icon(Icons.mic_none_outlined),
             selectedIcon: Icon(Icons.mic),
-            label: 'Schůzky',
+            label: 'Nahrávky',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.school_outlined),
+            selectedIcon: Icon(Icons.school),
+            label: 'Předměty',
           ),
           NavigationDestination(
             icon: Icon(Icons.bookmarks_outlined),

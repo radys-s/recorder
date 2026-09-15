@@ -2,27 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/spacing.dart';
-import '../../../core/widgets/dialogs.dart';
-import '../../../data/db/daos/saved_notes_dao.dart';
+import '../../subjects/subject_actions.dart';
+import '../../subjects/subjects_providers.dart';
+import '../../subjects/widgets/subject_badge.dart';
 import '../notes_library_providers.dart';
 
-/// Asks for a folder name and creates the folder. Resolves to its id — the
-/// existing one when a folder of that name is already there — or null when
-/// cancelled.
-Future<int?> createFolderFlow(BuildContext context, WidgetRef ref) async {
-  final dao = ref.read(savedNotesDaoProvider);
-  final name = await showTextInputDialog(
-    context,
-    title: 'Nová složka',
-    label: 'Název, třeba Čeština',
-    confirmLabel: 'Vytvořit',
-    maxLength: SavedNotesDao.maxFolderNameLength,
-  );
-  if (name == null) return null;
-  return dao.createFolder(name);
-}
+/// Asks for a subject name and creates it. Folders became subjects in schema
+/// v10; the library keeps its own name for the flow.
+Future<int?> createFolderFlow(BuildContext context, WidgetRef ref) =>
+    createSubjectFlow(context, ref);
 
-/// Where to move a note. Resolves to a record so that "no folder" (`folderId`
+/// Where to move a note. Resolves to a record so that "no subject" (`folderId`
 /// null) and "cancelled" (the whole result null) cannot be confused.
 Future<({int? folderId})?> showMoveToFolderSheet(
   BuildContext context, {
@@ -46,13 +36,13 @@ class _MoveToFolderSheet extends ConsumerWidget {
     final folders = ref.watch(noteFoldersProvider).valueOrNull ?? const [];
 
     Widget tile({
-      required IconData icon,
+      required Widget leading,
       required String label,
       required int? folderId,
     }) {
       final selected = folderId == currentFolderId;
       return ListTile(
-        leading: Icon(icon),
+        leading: leading,
         title: Text(label),
         trailing: selected
             ? Icon(Icons.check, color: theme.colorScheme.primary)
@@ -73,24 +63,32 @@ class _MoveToFolderSheet extends ConsumerWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(Gap.xl, 0, Gap.xl, Gap.sm),
-              child: Text('Přesunout do složky',
+              child: Text('Přesunout do předmětu',
                   style: theme.textTheme.titleMedium),
             ),
             tile(
-              icon: Icons.inbox_outlined,
-              label: 'Bez složky',
+              leading: const Icon(Icons.inbox_outlined),
+              label: 'Bez předmětu',
               folderId: null,
             ),
             for (final summary in folders)
               tile(
-                icon: Icons.folder_outlined,
+                leading: SizedBox(
+                  width: 24,
+                  child: Center(
+                    child: SubjectDot(
+                      color: subjectColor(context, summary.folder.colorIndex),
+                      size: 12,
+                    ),
+                  ),
+                ),
                 label: summary.folder.name,
                 folderId: summary.folder.id,
               ),
             const Divider(indent: Gap.lg, endIndent: Gap.lg),
             ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined),
-              title: const Text('Nová složka…'),
+              leading: const Icon(Icons.add),
+              title: const Text('Nový předmět…'),
               onTap: () async {
                 final id = await createFolderFlow(context, ref);
                 if (id != null && context.mounted) {
@@ -105,8 +103,8 @@ class _MoveToFolderSheet extends ConsumerWidget {
   }
 }
 
-/// A row of folder chips to pick one from, with „Bez složky" first and a chip
-/// that creates a new folder last.
+/// A row of subject chips to pick one from, with „Bez předmětu" first and a
+/// chip that creates a new subject last.
 class FolderChipPicker extends ConsumerWidget {
   const FolderChipPicker({
     super.key,
@@ -127,20 +125,22 @@ class FolderChipPicker extends ConsumerWidget {
       children: [
         ChoiceChip(
           avatar: const Icon(Icons.inbox_outlined, size: 18),
-          label: const Text('Bez složky'),
+          label: const Text('Bez předmětu'),
           selected: selected == null,
           onSelected: (_) => onChanged(null),
         ),
         for (final summary in folders)
           ChoiceChip(
-            avatar: const Icon(Icons.folder_outlined, size: 18),
+            avatar: SubjectDot(
+              color: subjectColor(context, summary.folder.colorIndex),
+            ),
             label: Text(summary.folder.name),
             selected: selected == summary.folder.id,
             onSelected: (_) => onChanged(summary.folder.id),
           ),
         ActionChip(
           avatar: const Icon(Icons.add, size: 18),
-          label: const Text('Nová složka'),
+          label: const Text('Nový předmět'),
           onPressed: () async {
             final id = await createFolderFlow(context, ref);
             if (id != null) onChanged(id);

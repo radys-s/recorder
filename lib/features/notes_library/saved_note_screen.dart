@@ -114,7 +114,7 @@ class SavedNoteScreen extends ConsumerWidget {
                       value: _NoteAction.move,
                       child: MenuRow(
                         icon: Icons.drive_file_move_outline,
-                        label: 'Přesunout do složky',
+                        label: 'Přesunout do předmětu',
                       ),
                     ),
                     if (note.meetingId != null)
@@ -180,15 +180,15 @@ class _SavedNoteBody extends ConsumerWidget {
           spacing: Gap.sm,
           runSpacing: Gap.sm,
           children: [
-            // The folder chip is also the quickest way to refile the note.
+            // The subject chip is also the quickest way to refile the note.
             InkWell(
               onTap: onMove,
               borderRadius: BorderRadius.circular(Gap.sm),
               child: StatusChip(
                 icon: folderName == null
                     ? Icons.inbox_outlined
-                    : Icons.folder_outlined,
-                label: folderName ?? 'Bez složky',
+                    : Icons.school_outlined,
+                label: folderName ?? 'Bez předmětu',
                 tone: folderName == null ? ChipTone.neutral : ChipTone.progress,
               ),
             ),

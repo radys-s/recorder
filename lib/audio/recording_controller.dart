@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -133,7 +134,14 @@ class RecordingController extends Notifier<RecordingState> {
   Future<void> toggle({String? title}) =>
       state.isRecording ? stop() : start(title: title);
 
-  Future<void> start({String? title}) async {
+  /// [subjectId], [cardIds] and [rules] come from the start sheet: the lesson's
+  /// subject, the cards pinned for it, and rules for this lesson only.
+  Future<void> start({
+    String? title,
+    int? subjectId,
+    List<int> cardIds = const [],
+    String? rules,
+  }) async {
     if (state.isRecording || _starting || _stopping) return;
     _starting = true;
     state = state.copyWith(clearError: true);
@@ -158,11 +166,16 @@ class RecordingController extends Notifier<RecordingState> {
       final startedAt = DateTime.now();
       final meetingId = await _db.meetingsDao.insertMeeting(
         MeetingsCompanion.insert(
-          title: title ?? _defaultTitle(startedAt),
+          title: title ?? _defaultTitle(startedAt, lesson: subjectId != null),
           createdAt: startedAt,
+          subjectId: Value(subjectId),
         ),
       );
       _meetingId = meetingId;
+      if (subjectId != null && cardIds.isNotEmpty) {
+        await _db.subjectsDao.pinCards(meetingId, cardIds);
+      }
+      if (rules != null) await _db.subjectsDao.setMeetingRules(meetingId, rules);
 
       final docs = await getApplicationDocumentsDirectory();
       _docsPath = docs.path;
@@ -431,9 +444,9 @@ class RecordingController extends Notifier<RecordingState> {
     }
   }
 
-  static String _defaultTitle(DateTime at) {
+  static String _defaultTitle(DateTime at, {required bool lesson}) {
     String two(int v) => v.toString().padLeft(2, '0');
-    return 'Schůzka ${two(at.day)}.${two(at.month)}. '
+    return '${lesson ? 'Hodina' : 'Schůzka'} ${two(at.day)}.${two(at.month)}. '
         '${two(at.hour)}:${two(at.minute)}';
   }
 }

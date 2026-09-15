@@ -84,6 +84,10 @@ class Preferences extends Table {
   IntColumn get micSensitivity =>
       intEnum<MicSensitivity>().withDefault(const Constant(1))(); // medium
 
+  /// How the AI should answer everywhere, unless a subject or lesson says
+  /// otherwise.
+  TextColumn get globalRules => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

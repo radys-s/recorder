@@ -44,6 +44,13 @@ class AnswerCards extends Table {
   /// card written before web answers existed.
   TextColumn get sources => text().nullable()();
 
+  /// The explanation behind [answer], which in class mode is one short line.
+  /// Null on cards written before that split.
+  TextColumn get detail => text().nullable()();
+
+  /// The context card the answer was drawn from, when basis is `card`.
+  IntColumn get cardId => integer().nullable()();
+
   /// Set by the close button on the pinned panel. Dismissing hides the panel,
   /// never the timeline card — the answer stays part of the meeting's record.
   BoolColumn get dismissed => boolean().withDefault(const Constant(false))();

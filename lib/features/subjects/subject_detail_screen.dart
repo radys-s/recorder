@@ -1,0 +1,448 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/formatting.dart';
+import '../../core/spacing.dart';
+import '../../core/widgets/async_view.dart';
+import '../../core/widgets/empty_state.dart';
+import '../../data/db/app_database.dart';
+import '../../data/db/daos/subjects_dao.dart';
+import '../../stt/transcript_sanitizer.dart';
+import '../meeting_detail/meeting_detail_screen.dart';
+import '../meetings_list/meeting_actions.dart';
+import '../notes_library/notes_library_providers.dart';
+import 'card_editor_screen.dart';
+import 'subject_actions.dart';
+import 'subjects_providers.dart';
+import 'widgets/subject_badge.dart';
+
+/// One subject: its cards, its recorded lessons, and its settings.
+class SubjectDetailScreen extends ConsumerStatefulWidget {
+  const SubjectDetailScreen({super.key, required this.subjectId});
+
+  final int subjectId;
+
+  static Route<void> route(int subjectId) => MaterialPageRoute<void>(
+        builder: (_) => SubjectDetailScreen(subjectId: subjectId),
+      );
+
+  @override
+  ConsumerState<SubjectDetailScreen> createState() =>
+      _SubjectDetailScreenState();
+}
+
+class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 3, vsync: this)
+    ..addListener(_onTab);
+
+  void _onTab() {
+    if (!_tabs.indexIsChanging) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = ref.watch(subjectProvider(widget.subjectId));
+    final subject = value.valueOrNull;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: subject == null
+            ? const Text('Předmět')
+            : Row(
+                children: [
+                  SubjectDot(
+                    color: subjectColor(context, subject.colorIndex),
+                    size: 12,
+                  ),
+                  const SizedBox(width: Gap.sm),
+                  Flexible(
+                    child: Text(subject.name, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(text: 'Karty'),
+            Tab(text: 'Hodiny'),
+            Tab(text: 'Nastavení'),
+          ],
+        ),
+      ),
+      floatingActionButton: subject != null && _tabs.index == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => Navigator.of(context)
+                  .push(CardEditorScreen.route(subjectId: subject.id)),
+              icon: const Icon(Icons.add),
+              label: const Text('Nová karta'),
+            )
+          : null,
+      body: AsyncView(
+        value: value,
+        message: 'Předmět se nepodařilo načíst.',
+        onRetry: () => ref.invalidate(subjectProvider(widget.subjectId)),
+        builder: (subject) => subject == null
+            ? const EmptyState(
+                icon: Icons.school_outlined,
+                title: 'Předmět už neexistuje',
+              )
+            : TabBarView(
+                controller: _tabs,
+                children: [
+                  _CardsTab(subjectId: subject.id),
+                  _LessonsTab(subjectId: subject.id),
+                  _SettingsTab(key: ValueKey(subject.id), subject: subject),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+// ------------------------------------------------------------------ cards
+
+class _CardsTab extends ConsumerStatefulWidget {
+  const _CardsTab({required this.subjectId});
+
+  final int subjectId;
+
+  @override
+  ConsumerState<_CardsTab> createState() => _CardsTabState();
+}
+
+class _CardsTabState extends ConsumerState<_CardsTab> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = ref.watch(subjectCardsProvider(widget.subjectId));
+
+    return AsyncView(
+      value: cards,
+      message: 'Karty se nepodařilo načíst.',
+      onRetry: () => ref.invalidate(subjectCardsProvider(widget.subjectId)),
+      builder: (all) {
+        if (all.isEmpty) {
+          return const EmptyState(
+            icon: Icons.style_outlined,
+            title: 'Zatím žádné karty',
+            message: 'Karta je kontext pro AI: kniha, úryvek, téma nebo '
+                'pojmy. Když ji připneš k hodině, AI podle ní odpovídá.',
+          );
+        }
+
+        final words = normalizeForArtifactMatch(_search.text)
+            .split(' ')
+            .where((w) => w.isNotEmpty)
+            .toList();
+        final visible = [
+          for (final card in all)
+            if (words.every(normalizeForArtifactMatch(
+                    '${card.title}\n${card.content}')
+                .contains))
+              card,
+        ];
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(
+              Gap.lg, Gap.md, Gap.lg, Gap.fabClearance),
+          children: [
+            if (all.length > 3) ...[
+              TextField(
+                controller: _search,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  hintText: 'Hledat v kartách',
+                  prefixIcon: Icon(Icons.search),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: Gap.md),
+            ],
+            if (visible.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: Gap.xl),
+                child: Center(child: Text('Nic nenalezeno')),
+              ),
+            for (final card in visible)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Gap.sm),
+                child: _CardTile(card: card),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CardTile extends StatelessWidget {
+  const _CardTile({required this.card});
+
+  final ContextCard card;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final preview = notePreview(card.content);
+
+    return Card(
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          CardEditorScreen.route(subjectId: card.subjectId, card: card),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.md),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: scheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(Gap.md),
+                ),
+                child: Icon(
+                  Icons.style_outlined,
+                  size: 19,
+                  color: scheme.onTertiaryContainer,
+                ),
+              ),
+              const SizedBox(width: Gap.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      card.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: Gap.xs),
+                    Text(
+                      preview.isEmpty ? 'Bez obsahu' : preview,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontStyle: preview.isEmpty ? FontStyle.italic : null,
+                      ),
+                    ),
+                    const SizedBox(height: Gap.sm),
+                    Text(
+                      'Upraveno ${formatMeetingDate(card.updatedAt)}',
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(color: scheme.outline),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- lessons
+
+class _LessonsTab extends ConsumerWidget {
+  const _LessonsTab({required this.subjectId});
+
+  final int subjectId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lessons = ref.watch(subjectLessonsProvider(subjectId));
+    final theme = Theme.of(context);
+
+    return AsyncView(
+      value: lessons,
+      message: 'Hodiny se nepodařilo načíst.',
+      onRetry: () => ref.invalidate(subjectLessonsProvider(subjectId)),
+      builder: (list) {
+        if (list.isEmpty) {
+          return const EmptyState(
+            icon: Icons.mic_none_outlined,
+            title: 'Zatím žádné hodiny',
+            message: 'Když při nahrávání vybereš tento předmět, hodina se '
+                'objeví tady.',
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.xl),
+          itemCount: list.length,
+          itemBuilder: (_, i) {
+            final meeting = list[i];
+            final named = !isDefaultMeetingTitle(meeting.title);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: Gap.sm),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: Text(
+                    named ? meeting.title : formatMeetingDate(meeting.createdAt),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: named
+                      ? Text(formatMeetingDate(meeting.createdAt),
+                          style: theme.textTheme.bodySmall)
+                      : null,
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context)
+                      .push(MeetingDetailScreen.route(meeting.id)),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// --------------------------------------------------------------- settings
+
+class _SettingsTab extends ConsumerStatefulWidget {
+  const _SettingsTab({super.key, required this.subject});
+
+  final Subject subject;
+
+  @override
+  ConsumerState<_SettingsTab> createState() => _SettingsTabState();
+}
+
+class _SettingsTabState extends ConsumerState<_SettingsTab> {
+  late final _rules = TextEditingController(text: widget.subject.rules ?? '');
+
+  bool get _rulesChanged =>
+      _rules.text.trim() != (widget.subject.rules ?? '');
+
+  @override
+  void dispose() {
+    _rules.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveRules() async {
+    await ref
+        .read(subjectsDaoProvider)
+        .setSubjectRules(widget.subject.id, _rules.text);
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Pravidla uložena.')));
+  }
+
+  Future<void> _delete() async {
+    final navigator = Navigator.of(context);
+    final deleted =
+        await confirmAndDeleteSubject(context, ref, widget.subject);
+    if (deleted) navigator.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final subject = widget.subject;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.xxl),
+      children: [
+        Text('Pravidla pro AI', style: theme.textTheme.titleSmall),
+        const SizedBox(height: Gap.sm),
+        TextField(
+          controller: _rules,
+          minLines: 3,
+          maxLines: 8,
+          textCapitalization: TextCapitalization.sentences,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            hintText: 'Třeba: odpovídej jednou větou, používej odborné pojmy',
+            helperText: 'Platí pro všechny hodiny tohoto předmětu. Pravidla '
+                'napsaná v hodině mají přednost.',
+            helperMaxLines: 3,
+          ),
+        ),
+        const SizedBox(height: Gap.sm),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonal(
+            onPressed: _rulesChanged ? _saveRules : null,
+            child: const Text('Uložit pravidla'),
+          ),
+        ),
+        const SizedBox(height: Gap.xl),
+        Text('Barva', style: theme.textTheme.titleSmall),
+        const SizedBox(height: Gap.md),
+        Wrap(
+          spacing: Gap.md,
+          runSpacing: Gap.md,
+          children: [
+            for (var i = 0; i < SubjectsDao.paletteSize; i++)
+              Semantics(
+                button: true,
+                selected: i == subject.colorIndex,
+                label: 'Barva ${i + 1}',
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => ref
+                      .read(subjectsDaoProvider)
+                      .setSubjectColor(subject.id, i),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: subjectColor(context, i),
+                      shape: BoxShape.circle,
+                      border: i == subject.colorIndex
+                          ? Border.all(color: scheme.onSurface, width: 3)
+                          : null,
+                    ),
+                    child: i == subject.colorIndex
+                        ? const Icon(Icons.check, color: Colors.white, size: 20)
+                        : null,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: Gap.xl),
+        const Divider(),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.drive_file_rename_outline),
+          title: const Text('Přejmenovat předmět'),
+          onTap: () => renameSubjectFlow(context, ref, subject),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.delete_outline, color: scheme.error),
+          title: Text('Smazat předmět', style: TextStyle(color: scheme.error)),
+          onTap: _delete,
+        ),
+      ],
+    );
+  }
+}

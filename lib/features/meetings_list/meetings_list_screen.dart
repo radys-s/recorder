@@ -16,6 +16,8 @@ import '../../data/db/app_database.dart';
 import '../../data/db/daos/meetings_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../settings/settings_screen.dart';
+import '../subjects/widgets/lesson_sheet.dart';
+import '../subjects/widgets/subject_badge.dart';
 import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
 
@@ -41,7 +43,13 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (_starting) return;
     _starting = true;
     try {
-      await ref.read(recordingControllerProvider.notifier).start();
+      final setup = await showStartRecordingSheet(context, ref);
+      if (setup == null || !mounted) return;
+      await ref.read(recordingControllerProvider.notifier).start(
+            subjectId: setup.subjectId,
+            cardIds: setup.cardIds,
+            rules: setup.rules,
+          );
 
       final meetingId = ref.read(recordingControllerProvider).meetingId;
       if (meetingId == null || !mounted) return;
@@ -62,7 +70,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Schůzky'),
+        title: const Text('Nahrávky'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -118,7 +126,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (list.isEmpty) {
       return const EmptyState(
         icon: Icons.mic_none_outlined,
-        title: 'Zatím žádné schůzky',
+        title: 'Zatím žádné nahrávky',
         message: 'Začni tlačítkem Nahrávat dole. Přepis '
             'začne přibývat během pár vteřin.',
       );
@@ -329,6 +337,7 @@ class _MeetingCard extends ConsumerWidget {
   /// gets no chips at all, which is what makes the ones that do stand out.
   List<Widget> _chips(bool isLive) {
     return [
+      if (summary.subject != null) SubjectBadge(subject: summary.subject!),
       if (isLive)
         const StatusChip(
           icon: Icons.fiber_manual_record,

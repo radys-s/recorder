@@ -4,22 +4,28 @@ import '../../../core/spacing.dart';
 import '../../../data/db/daos/saved_notes_dao.dart';
 import 'folder_sheets.dart';
 
-/// Title and folder for a note about to be saved, or null when cancelled.
+/// Title and subject for a note about to be saved, or null when cancelled.
+/// [initialFolderId] preselects the lesson's own subject.
 Future<({String title, int? folderId})?> showSaveNoteSheet(
   BuildContext context, {
   required String initialTitle,
+  int? initialFolderId,
 }) {
   return showModalBottomSheet<({String title, int? folderId})>(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _SaveNoteSheet(initialTitle: initialTitle),
+    builder: (_) => _SaveNoteSheet(
+      initialTitle: initialTitle,
+      initialFolderId: initialFolderId,
+    ),
   );
 }
 
 class _SaveNoteSheet extends StatefulWidget {
-  const _SaveNoteSheet({required this.initialTitle});
+  const _SaveNoteSheet({required this.initialTitle, this.initialFolderId});
 
   final String initialTitle;
+  final int? initialFolderId;
 
   @override
   State<_SaveNoteSheet> createState() => _SaveNoteSheetState();
@@ -27,7 +33,7 @@ class _SaveNoteSheet extends StatefulWidget {
 
 class _SaveNoteSheetState extends State<_SaveNoteSheet> {
   late final _title = TextEditingController(text: widget.initialTitle);
-  int? _folderId;
+  late int? _folderId = widget.initialFolderId;
 
   @override
   void dispose() {
@@ -79,7 +85,7 @@ class _SaveNoteSheetState extends State<_SaveNoteSheet> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: Gap.lg),
-              Text('Složka', style: theme.textTheme.titleSmall),
+              Text('Předmět', style: theme.textTheme.titleSmall),
               const SizedBox(height: Gap.sm),
               FolderChipPicker(
                 selected: _folderId,
