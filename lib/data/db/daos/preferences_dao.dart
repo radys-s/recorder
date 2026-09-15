@@ -17,9 +17,15 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
 
   static const _rowId = 0;
 
+  /// A new install listens automatically. The column default stays medium,
+  /// because changing a default in SQLite means rebuilding the table.
   Future<void> _ensureRow() async {
-    await into(preferences).insertOnConflictUpdate(
-      const PreferencesCompanion(id: Value(_rowId)),
+    await into(preferences).insert(
+      const PreferencesCompanion(
+        id: Value(_rowId),
+        micSensitivity: Value(MicSensitivity.auto),
+      ),
+      mode: InsertMode.insertOrIgnore,
     );
   }
 
@@ -57,4 +63,12 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> setMicSensitivity(MicSensitivity value) =>
       _write(PreferencesCompanion(micSensitivity: Value(value)));
+
+  /// Rules for every lesson; blank clears them.
+  Future<void> setGlobalRules(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return _write(
+      PreferencesCompanion(globalRules: Value(trimmed.isEmpty ? null : trimmed)),
+    );
+  }
 }

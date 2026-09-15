@@ -38,6 +38,7 @@ class TranscriptionQueueWorker {
     this._stt, {
     Connectivity? connectivity,
     this.onTranscribed,
+    this.glossaryFor,
     this.tick = const Duration(seconds: 5),
   }) : _connectivity = connectivity ?? Connectivity();
 
@@ -60,6 +61,10 @@ class TranscriptionQueueWorker {
   /// never waits on an LLM call. A throw from it is caught here rather than
   /// killing the pass.
   final void Function(TranscriptSegment segment, String text)? onTranscribed;
+
+  /// Names and terms of the lesson's pinned cards, prepended to Whisper's
+  /// prompt so it spells them right. A failure here costs only the glossary.
+  final Future<String?> Function(int meetingId)? glossaryFor;
 
   StreamSubscription<int>? _queueSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -180,11 +185,21 @@ class TranscriptionQueueWorker {
       // language mid-meeting, and the next chunk should honour it.
       final prefs = await _prefsDao.current();
 
+      String? glossary;
+      if (segment != null && glossaryFor != null) {
+        try {
+          glossary = await glossaryFor!(segment.meetingId);
+        } catch (e, st) {
+          AppLog.e(_tag, 'glossary lookup failed', e, st);
+        }
+      }
+
       final result = await _stt.transcribe(
         audioFile: File(await resolveStoredPath(row.localFilePath)),
         promptContext: prompt,
         languageCode: prefs.transcriptLanguage.code,
         sensitivity: prefs.micSensitivity,
+        glossary: glossary,
       );
 
       // Whisper answers silence with a plausible sentence rather than nothing,
@@ -203,7 +218,10 @@ class TranscriptionQueueWorker {
           'row ${row.id} sanitized: ${_preview(result.text)} -> ${_preview(text)}',
         );
       }
-      if (isPromptEcho(text, prompt)) {
+      // A glossary is prompt too, and a silent chunk can come back as a list
+      // of the lesson's names.
+      if (isPromptEcho(text, prompt) ||
+          isPromptEcho(text, [?glossary, ?prompt].join(' '))) {
         AppLog.d(_tag, 'row ${row.id}: prompt echo dropped: ${_preview(text)}');
         text = '';
       }

@@ -23,15 +23,35 @@ enum TranscriptLanguage {
 }
 
 /// How much of the meeting the AI notes should cover.
+///
+/// Stored by index, so new depths are appended rather than slotted in where
+/// they belong; [ordered] is the order a picker shows them in. [full] kept its
+/// index when [detailed] took over the name „Podrobné".
 enum NotesDepth {
   brief,
   standard,
-  full;
+  full,
+  detailed,
+  keywords;
+
+  static const ordered = [keywords, brief, standard, detailed, full];
 
   String get label => switch (this) {
+        NotesDepth.keywords => 'Heslovitě',
         NotesDepth.brief => 'Jen to hlavní',
         NotesDepth.standard => 'Vyvážené',
-        NotesDepth.full => 'Podrobné',
+        NotesDepth.detailed => 'Podrobné',
+        NotesDepth.full => 'Kompletní',
+      };
+
+  String get description => switch (this) {
+        NotesDepth.keywords => 'Pár hesel: rozhodnutí, úkoly, termíny.',
+        NotesDepth.brief => 'Krátký seznam toho, co padlo a kdo co udělá.',
+        NotesDepth.standard =>
+          'Shrnutí, probírané body, rozhodnutí a úkoly.',
+        NotesDepth.detailed =>
+          'Každé téma zvlášť s hlavními argumenty a čísly.',
+        NotesDepth.full => 'Téměř vše, co zaznělo, včetně námitek a příkladů.',
       };
 }
 
@@ -39,16 +59,21 @@ enum NotesDepth {
 ///
 /// One setting over several thresholds — see `SensitivityProfile` — because the
 /// user's question is "does it hear a quiet meeting", not which of five
-/// numbers happens to be in the way.
+/// numbers happens to be in the way. [auto] measures the room as the recording
+/// starts and keeps following it.
 enum MicSensitivity {
   low,
   medium,
-  high;
+  high,
+  auto;
+
+  static const ordered = [auto, low, medium, high];
 
   String get label => switch (this) {
         MicSensitivity.low => 'Málo',
         MicSensitivity.medium => 'Středně',
         MicSensitivity.high => 'Hodně',
+        MicSensitivity.auto => 'Automaticky',
       };
 }
 

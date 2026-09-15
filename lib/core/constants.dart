@@ -73,6 +73,19 @@ const Duration kAnswerTimeout = Duration(seconds: 20);
 /// user a glance and a moment of doubt, a missing one costs nothing.
 const double kAnswerMinConfidence = 0.5;
 
+/// „Odpověz teď" looks at this much of the end of the lesson.
+const Duration kAnswerNowWindow = Duration(seconds: 30);
+
+/// How long „Odpověz teď" waits for the chunk it just cut to be transcribed.
+const Duration kAnswerNowMaxWait = Duration(seconds: 12);
+
+/// A second tap within this long answers without cutting another chunk.
+const Duration kAnswerNowCutDebounce = Duration(seconds: 5);
+
+/// A question typed into the chat: the student is waiting for it, but it is
+/// allowed a bigger context than an automatic answer.
+const Duration kChatAnswerTimeout = Duration(seconds: 25);
+
 /// Secure storage key for the user's Groq API key.
 const String kGroqApiKeyStorageKey = 'groq_api_key';
 
@@ -89,6 +102,22 @@ const double kSilenceRmsThreshold = 0.01;
 /// How much continuous silence is needed to cut *before* reaching the target
 /// length. Past the target a single silent frame is enough.
 const Duration kConfidentSilenceDuration = Duration(milliseconds: 600);
+
+/// A relative dip this long between the minimum and the target is the end of
+/// a sentence in continuous speech; the gap between two words is shorter.
+const Duration kSentencePauseDuration = Duration(milliseconds: 400);
+
+/// Past the target a dip this long is enough.
+const Duration kShortPauseDuration = Duration(milliseconds: 200);
+
+/// At the hard cap the chunk is cut at the quietest point of this much audio
+/// before it, rather than mid-word.
+const Duration kCutLookbackDuration = Duration(seconds: 3);
+
+/// Automatic sensitivity: the first estimate of the room after this much
+/// audio, then a fresh one over each window.
+const Duration kCalibrationWarmup = Duration(seconds: 3);
+const Duration kCalibrationWindow = Duration(seconds: 20);
 
 /// Below this length a chunk carries no words, only room tone — and Whisper
 /// answers silence with a confident hallucination ("you", "Thank you.") rather

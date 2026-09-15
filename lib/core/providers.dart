@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ai/chat_answer_service.dart';
 import '../ai/groq_chat_provider.dart';
+import '../ai/lesson_context_source.dart';
 import '../ai/live_answer_service.dart';
 import '../ai/llm_provider.dart';
 import '../ai/notes_generator.dart';
@@ -14,6 +16,7 @@ import '../audio/pcm_audio_source.dart';
 import '../audio/wav_replay_audio_source.dart';
 import '../data/db/app_database.dart';
 import '../data/db/daos/answer_cards_dao.dart';
+import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
 import '../data/secure/api_key_store.dart';
@@ -108,6 +111,33 @@ final liveAnswerServiceProvider = Provider<LiveAnswerService>((ref) {
     db.answerCardsDao,
     db.preferencesDao,
     ref.watch(webAnswerServiceProvider),
+    lessonContext: ref.watch(lessonContextSourceProvider),
+  );
+});
+
+/// What the student gave the AI for a lesson: rules, chat context, cards.
+final lessonContextSourceProvider = Provider<LessonContextSource>((ref) {
+  return LessonContextSource(ref.watch(appDatabaseProvider));
+});
+
+final chatMessagesDaoProvider = Provider<ChatMessagesDao>((ref) {
+  return ref.watch(appDatabaseProvider).chatMessagesDao;
+});
+
+/// The lesson chat, watched, in recording order.
+final chatMessagesProvider =
+    StreamProvider.family<List<ChatMessage>, int>((ref, meetingId) {
+  return ref.watch(chatMessagesDaoProvider).watchForMeeting(meetingId);
+});
+
+/// Questions typed into the lesson chat.
+final chatAnswerServiceProvider = Provider<ChatAnswerService>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return ChatAnswerService(
+    ref.watch(llmProvider),
+    db.chatMessagesDao,
+    db.transcriptSegmentsDao,
+    ref.watch(lessonContextSourceProvider),
   );
 });
 
@@ -125,6 +155,9 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
     db.transcriptSegmentsDao,
     db.preferencesDao,
     ref.watch(sttProvider),
+    // Names from the lesson's pinned cards, so Whisper spells them right.
+    glossaryFor: (meetingId) =>
+        ref.read(lessonContextSourceProvider).glossary(meetingId),
     // Fired and forgotten: the worker is a pure STT queue and must not wait
     // on an LLM call, and a slow answer must never delay the next chunk's
     // transcription.

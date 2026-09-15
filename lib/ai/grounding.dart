@@ -15,15 +15,23 @@ import '../stt/transcript_sanitizer.dart';
 ///
 /// A claim with fewer than two such words is too short to judge and passes.
 bool isGroundedIn(String claim, String source, {double minShare = 2 / 3}) {
-  final words = _contentWords(claim);
+  final words = contentWords(claim);
   if (words.length < 2) return true;
 
-  final available = {for (final w in _contentWords(source)) w.substring(0, 4)};
-  final hits = words.where((w) => available.contains(w.substring(0, 4))).length;
+  final available = contentStems(source);
+  final hits = words.where((w) => available.contains(wordStem(w))).length;
   return hits >= words.length * minShare;
 }
 
-List<String> _contentWords(String text) => [
+/// Folded words of four letters or more — the ones worth comparing.
+List<String> contentWords(String text) => [
       for (final w in normalizeForArtifactMatch(text).split(' '))
         if (w.length >= 4) w,
     ];
+
+/// The four-letter prefix two inflected forms of a Czech word share.
+String wordStem(String contentWord) => contentWord.substring(0, 4);
+
+/// The distinct stems of [text], for overlap scoring.
+Set<String> contentStems(String text) =>
+    {for (final w in contentWords(text)) wordStem(w)};

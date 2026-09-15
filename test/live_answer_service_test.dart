@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/answer_source.dart';
+import 'package:recorder/ai/context_builder.dart';
+import 'package:recorder/ai/lesson_context_source.dart';
 import 'package:recorder/ai/live_answer_service.dart';
 import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/ai/web_answer_service.dart';
@@ -82,6 +84,41 @@ class _Web implements WebAnswerService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _Lesson implements LessonContextSource {
+  _Lesson(this.material);
+  final LessonMaterial material;
+  final used = <int>[];
+
+  @override
+  Future<LessonMaterial> load(int meetingId) async => material;
+
+  @override
+  Future<void> markUsed(int cardId) async => used.add(cardId);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _BrokenLesson extends _Lesson {
+  _BrokenLesson() : super(const LessonMaterial());
+
+  @override
+  Future<LessonMaterial> load(int meetingId) async => throw StateError('db');
+}
+
+const _czechLesson = LessonMaterial(
+  subjectName: 'Čeština',
+  cards: [
+    LessonCard(
+      id: 41,
+      title: 'Babička',
+      content: 'Povídka Boženy Němcové.',
+      summary: 'Obrazy venkovského života.',
+      pinned: true,
+    ),
+  ],
+);
+
 /// Returns [reply] for every call, or throws it when it is an exception.
 class _Llm extends LlmProvider {
   _Llm(this.reply);
@@ -150,6 +187,7 @@ class _World {
     bool live = true,
     bool web = false,
     WebAnswer? webResult,
+    this.lesson,
   })  : llm = _Llm(reply),
         segments = segments ??
             [_seg(0, _budget), _seg(1, _spent), _seg(2, _question)],
@@ -160,8 +198,12 @@ class _World {
       cards,
       _Prefs(live: live, web: web),
       webService,
+      lessonContext: lesson,
+      pollInterval: const Duration(milliseconds: 1),
     );
   }
+
+  final _Lesson? lesson;
 
   final _Llm llm;
   final List<TranscriptSegment> segments;
@@ -179,6 +221,107 @@ class _World {
 }
 
 void main() {
+  group('in a lesson', () {
+    test('an answer from a card names the card and skips the web', () async {
+      final world = _World(
+        reply: _verdict(set: {
+          'basis': 'card',
+          'card': '„Babička"',
+          'short': 'Asi 1,2 milionu.',
+          'detail': 'Dva miliony minus čtyřicet procent.',
+        }),
+        web: true,
+        lesson: _Lesson(_czechLesson),
+      );
+      await world.handle(2);
+
+      final card = world.cards.inserted.single;
+      expect(card.basis.value, 'card');
+      expect(card.cardId.value, 41);
+      expect(card.answer.value, 'Asi 1,2 milionu.');
+      expect(card.detail.value, 'Dva miliony minus čtyřicet procent.');
+      expect(world.webService.questions, isEmpty);
+      await Future<void>.delayed(Duration.zero);
+      expect(world.lesson!.used, [41]);
+
+      final sent = world.llm.calls.single;
+      expect(sent.first.content, contains('Class mode'));
+      expect(sent.last.content, contains('[Babička]'));
+    });
+
+    test('a card the model was never shown becomes knowledge', () async {
+      final world = _World(
+        reply: _verdict(set: {'basis': 'card', 'card': 'Máj'}),
+        lesson: _Lesson(_czechLesson),
+      );
+      await world.handle(2);
+      final card = world.cards.inserted.single;
+      expect(card.basis.value, 'knowledge');
+      expect(card.cardId.value, isNull);
+    });
+
+    test('classroom chatter the model marks off topic gets no card', () async {
+      final world = _World(
+        reply: _verdict(set: {'on_topic': false, 'answer': ''}),
+        lesson: _Lesson(_czechLesson),
+      );
+      await world.handle(2);
+      expect(world.cards.inserted, isEmpty);
+    });
+
+    test('broken lesson material falls back to the meeting prompt', () async {
+      final world = _World(reply: _verdict(), lesson: _BrokenLesson());
+      await world.handle(2);
+      expect(world.cards.inserted, hasLength(1));
+      expect(world.llm.calls.single.first.content, isNot(contains('Class mode')));
+    });
+  });
+
+  group('answer now', () {
+    test('answers the end of the lesson on the last segment', () async {
+      final world = _World(
+        reply: _verdict(set: {'on_topic': false}),
+        live: false,
+      );
+      final outcome = await world.service.answerNow(7);
+      expect(outcome, AnswerNowOutcome.answered);
+      // No on-topic veto, no live switch: the student asked.
+      expect(world.cards.inserted.single.segmentId.value, 102);
+      expect(world.userMessage, contains('answer now'));
+    });
+
+    test('says so when there is no question or nothing was heard', () async {
+      final none = _World(reply: _verdict(set: {'is_question': false}));
+      expect(await none.service.answerNow(7), AnswerNowOutcome.noQuestion);
+      expect(none.cards.inserted, isEmpty);
+
+      final silent = _World(reply: _verdict(), segments: [_seg(0, null)]);
+      expect(await silent.service.answerNow(7), AnswerNowOutcome.nothingHeard);
+      expect(silent.llm.calls, isEmpty);
+    });
+
+    test('gives up waiting for a chunk that never comes back', () async {
+      final pending = TranscriptSegment(
+        id: 199,
+        meetingId: 7,
+        sequence: 3,
+        startMs: 60000,
+        endMs: 64000,
+        status: SegmentStatus.uploading,
+        localAudioPath: 'x.wav',
+        createdAt: DateTime(2026, 9, 14),
+      );
+      final world = _World(
+        reply: _verdict(),
+        segments: [_seg(0, _budget), _seg(1, _spent), _seg(2, _question), pending],
+      );
+      final outcome = await world.service
+          .answerNow(7, maxWait: const Duration(milliseconds: 20));
+      expect(outcome, AnswerNowOutcome.answered);
+      expect(world.cards.inserted.single.segmentId.value, 102);
+    });
+  });
+
   test('with live answers off, nothing is sent', () async {
     final world = _World(reply: _verdict(), live: false);
     await world.handle(2);

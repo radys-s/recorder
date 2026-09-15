@@ -75,6 +75,15 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
       }
     });
 
+    // Same reasoning for a chat reply: a pending bubble would say
+    // „Přemýšlím…" forever.
+    await _step('fail interrupted chat replies', () async {
+      final stuck = await db.chatMessagesDao.failInterruptedReplies();
+      if (stuck > 0) {
+        AppLog.d(_tag, 'failed $stuck chat reply(ies) killed mid-flight');
+      }
+    });
+
     // Started here rather than lazily on first use: starting the worker is
     // what picks up chunks a previous run left unsent, and that has to happen
     // even if the user never opens the screen those chunks belong to.

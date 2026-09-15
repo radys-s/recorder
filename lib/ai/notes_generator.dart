@@ -168,8 +168,10 @@ class NotesGenerator {
   /// there. Being stingy here does not save money — only used tokens are
   /// billed — it just truncates the end of the notes.
   static int _maxTokens(NotesDepth depth) => switch (depth) {
+        NotesDepth.keywords => 1200,
         NotesDepth.brief => 1500,
         NotesDepth.standard => 3000,
+        NotesDepth.detailed => 4500,
         NotesDepth.full => 6000,
       };
 
@@ -231,9 +233,27 @@ ${_depthPrompt(depth)}''';
   /// Each depth is given as the shape of the finished notes rather than as a
   /// description of them, section names in Czech because that is what this app
   /// is used in — the language rule above still decides the actual output.
+  ///
+  /// Each depth also carries a word budget. Without one the model decided the
+  /// length itself, and „Vyvážené" came out nearly as short as „Jen to hlavní"
+  /// while „Podrobné" ran on.
   static String _depthPrompt(NotesDepth depth) => switch (depth) {
+        NotesDepth.keywords => '''
+At most 5 lines, about 40 words in total, and nothing else: no opening sentence,
+no headings. This depth is the one exception to the rule about whole sentences:
+each line begins with "- " and is a short keyword phrase. The shape, from an
+unrelated meeting — take the form, never the content:
+
+  - Kalkulace: Marek, do středy
+  - Objednávka materiálu odložena do příchodu vzorku
+  - Další schůzka čt 9:00
+
+Only outcomes: decisions, accepted tasks with owner and deadline, dates. An
+accepted task is never dropped; background and discussion always are. If
+nothing was concluded, one line naming the topic and "bez závěru".''',
         NotesDepth.brief => '''
-Write 3 to 6 bullets and nothing else: no opening sentence, no headings. The
+Write 3 to 6 bullets, at most 80 words in total, and nothing else: no opening
+sentence, no headings. The
 shape, from an unrelated meeting — take the form, never the content:
 
   - Marek dodá revidovanou kalkulaci do středy.
@@ -258,13 +278,17 @@ plain. If a date was agreed for the next meeting, one of the lines is that.
 No background, no discussion. If the meeting concluded nothing at all, write one
 line saying what it was about and that nothing was decided.''',
         NotesDepth.standard => '''
-The shape, for a reader who is through it in under a minute:
+120 to 250 words — clearly more than a list of outcomes, for a reader who is
+through it in a minute or two. The shape:
 
-  <one or two sentences, no heading above them: what the meeting was about,
-  what came out of it, and when the next one is if that was agreed>
+  <two or three sentences, no heading above them: what the meeting was about
+  and what came out of it>
+
+  Probírané body:
+  - <one line per topic: what was said about it and where it ended up>
 
   Rozhodnutí:
-  - ...
+  - <the decision, and the reason given for it if one was said>
 
   Úkoly:
   - <kdo> <co> <do kdy>
@@ -274,11 +298,38 @@ The shape, for a reader who is through it in under a minute:
 
   Další schůzka: <kdy>
 
-Skip any section the meeting produced nothing for, the last one included. Each
-fact belongs to one section only — at this depth the notes are short enough
-that a repeat is immediately visible.''',
+"Probírané body" is what makes this depth more than the short one: every topic
+the meeting spent real time on gets its line, including one that ended without
+a decision. Skip any other section the meeting produced nothing for. Each fact
+belongs to one section only. If the meeting was too short to reach 120 words
+without padding, write less — never pad.''',
+        NotesDepth.detailed => '''
+300 to 550 words. The shape:
+
+  <two or three sentences, no heading above them: what the meeting was about
+  and what came out of it>
+
+  <Téma>:
+  - 2 to 4 bullets: the main points, the numbers and the arguments that
+    decided it, and where the topic ended up
+  - ...
+
+  <Téma>:
+  - ...
+
+  Úkoly:
+  - <kdo> <co> <do kdy>
+
+  Další schůzka: <kdy>
+
+One heading per topic, in the order the meeting took them, small related points
+grouped under one heading. Keep what a reader needs to understand each outcome;
+leave out asides, repetition and minor examples — that is what separates this
+depth from the complete write-up. Leave out the last line if no next meeting was
+agreed.''',
         NotesDepth.full => '''
-The shape:
+As long as the meeting needs: keep every argument, objection, example and number
+that was said. The shape:
 
   <two or three sentences, no heading above them: what the meeting was about
   and what came out of it>

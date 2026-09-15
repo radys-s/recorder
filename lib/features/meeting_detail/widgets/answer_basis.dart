@@ -12,8 +12,22 @@ import '../../../core/spacing.dart';
 ///
 /// An answer drawn from the meeting itself gets no badge: it is the normal
 /// case, and a label on every card would be noise rather than information.
-({String label, IconData icon})? answerBasisBadge(String basis) =>
-    switch (basis) {
+///
+/// A chat reply stores a card basis as `card:<title>`, since its row has no
+/// card column; an automatic answer passes the title as [cardTitle].
+({String label, IconData icon})? answerBasisBadge(
+  String basis, {
+  String? cardTitle,
+}) {
+  if (basis == 'card' || basis.startsWith('card:')) {
+    final title = cardTitle ??
+        (basis.startsWith('card:') ? basis.substring(5).trim() : '');
+    return (
+      label: title.isEmpty ? 'Z karty' : 'Z karty „$title"',
+      icon: Icons.style_outlined,
+    );
+  }
+  return switch (basis) {
       'web' => (label: 'Z internetu', icon: Icons.public),
       'knowledge' => (
           label: 'Obecná znalost, nezaznělo na schůzce',
@@ -25,17 +39,19 @@ import '../../../core/spacing.dart';
         ),
       _ => null,
     };
+}
 
 /// The badge itself, or nothing at all for an answer that came from the
 /// meeting. Deliberately quiet — it is a caveat, not a headline.
 class AnswerBasisBadge extends StatelessWidget {
-  const AnswerBasisBadge({super.key, required this.basis});
+  const AnswerBasisBadge({super.key, required this.basis, this.cardTitle});
 
   final String basis;
+  final String? cardTitle;
 
   @override
   Widget build(BuildContext context) {
-    final badge = answerBasisBadge(basis);
+    final badge = answerBasisBadge(basis, cardTitle: cardTitle);
     if (badge == null) return const SizedBox.shrink();
 
     final theme = Theme.of(context);

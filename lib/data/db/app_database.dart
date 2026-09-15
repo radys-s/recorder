@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'daos/answer_cards_dao.dart';
+import 'daos/chat_messages_dao.dart';
 import 'daos/meeting_notes_dao.dart';
 import 'daos/meetings_dao.dart';
 import 'daos/preferences_dao.dart';
@@ -52,6 +53,7 @@ part 'app_database.g.dart';
     AnswerCardsDao,
     SavedNotesDao,
     SubjectsDao,
+    ChatMessagesDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -61,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -118,6 +120,11 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(meetingCards);
             await m.createTable(timetableSlots);
             await m.createTable(chatMessages);
+          }
+          if (from < 11 && from >= 3) {
+            // Automatic sensitivity arrived in v11; existing installs switch
+            // to it once, and a manual choice made afterwards sticks.
+            await customStatement('UPDATE preferences SET mic_sensitivity = 3');
           }
         },
       );

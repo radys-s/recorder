@@ -66,10 +66,14 @@ abstract class SttProvider {
   ///
   /// [sensitivity] decides how readily a segment the model scores as probable
   /// silence is still kept as quiet speech.
+  ///
+  /// [glossary] is a short list of names and terms from the lesson's cards,
+  /// placed in the prompt ahead of [promptContext].
   Future<TranscriptionResult> transcribe({
     required File audioFile,
     String? promptContext,
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
+    String? glossary,
   });
 }

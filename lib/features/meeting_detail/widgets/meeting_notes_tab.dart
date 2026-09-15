@@ -123,14 +123,26 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
         Text('Hloubka poznámek',
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: Gap.sm),
-        SegmentedButton<NotesDepth>(
-          segments: [
-            for (final value in NotesDepth.values)
-              ButtonSegment(value: value, label: Text(value.label)),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            for (final value in NotesDepth.ordered)
+              ChoiceChip(
+                label: Text(value.label),
+                selected: value == depth,
+                onSelected: generating
+                    ? null
+                    : (_) => setState(() => _picked = value),
+              ),
           ],
-          selected: {depth},
-          onSelectionChanged:
-              generating ? null : (set) => setState(() => _picked = set.first),
+        ),
+        const SizedBox(height: Gap.xs),
+        Text(
+          depth.description,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
         ),
         const SizedBox(height: Gap.md),
         FilledButton.icon(

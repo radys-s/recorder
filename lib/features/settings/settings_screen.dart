@@ -148,6 +148,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _LanguageSection(),
           const _SensitivitySection(),
           const _LiveAnswersSection(),
+          const _GlobalRulesSection(),
           if (kDebugMode) const _DiagnosticsSection(),
         ],
       ),
@@ -213,21 +214,26 @@ class _SensitivitySection extends ConsumerWidget {
       children: [
         const SectionHeader(
           title: 'Citlivost poslechu',
-          description: 'Hodně zachytí i tichou schůzku nebo vzdáleného '
-              'mluvčího a tichý zvuk zesílí, jen občas přepíše i šum. '
-              'Málo se hodí do hlučné místnosti. Změna platí hned, i během '
-              'nahrávání.',
+          description: 'Automaticky si na začátku nahrávání změří místnost a '
+              'průběžně se jí přizpůsobuje. Hodně zachytí i tichou schůzku '
+              'nebo vzdáleného mluvčího, jen občas přepíše i šum. Málo se hodí '
+              'do hlučné místnosti. Změna platí hned, i během nahrávání.',
         ),
-        SegmentedButton<MicSensitivity>(
-          segments: [
-            for (final value in MicSensitivity.values)
-              ButtonSegment(value: value, label: Text(value.label)),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            for (final value in MicSensitivity.ordered)
+              ChoiceChip(
+                label: Text(value.label),
+                selected: value == (selected ?? MicSensitivity.auto),
+                onSelected: prefs.hasValue
+                    ? (_) => ref
+                        .read(preferencesDaoProvider)
+                        .setMicSensitivity(value)
+                    : null,
+              ),
           ],
-          selected: {selected ?? MicSensitivity.medium},
-          onSelectionChanged: prefs.hasValue
-              ? (set) =>
-                  ref.read(preferencesDaoProvider).setMicSensitivity(set.first)
-              : null,
         ),
       ],
     );
@@ -284,6 +290,84 @@ class _LiveAnswersSection extends ConsumerWidget {
             'Když na otázku neodpovídá samotná schůzka, aplikace ji vyhledá '
             'na internetu a ukáže i zdroje. Odchází jen samotná otázka, '
             'nikdy přepis schůzky.',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Rules for every answer, everywhere. A subject's rules and what is typed in
+/// a lesson's chat override them.
+class _GlobalRulesSection extends ConsumerStatefulWidget {
+  const _GlobalRulesSection();
+
+  @override
+  ConsumerState<_GlobalRulesSection> createState() =>
+      _GlobalRulesSectionState();
+}
+
+class _GlobalRulesSectionState extends ConsumerState<_GlobalRulesSection> {
+  final _controller = TextEditingController();
+  bool _loaded = false;
+  String _saved = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await ref.read(preferencesDaoProvider).setGlobalRules(_controller.text);
+    if (!mounted) return;
+    setState(() => _saved = _controller.text.trim());
+    FocusScope.of(context).unfocus();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Pravidla uložena.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = ref.watch(preferencesProvider);
+    // Filled once, from the first value; later emissions come from unrelated
+    // settings and must not overwrite what is being typed.
+    if (!_loaded && prefs.hasValue) {
+      _loaded = true;
+      _saved = prefs.requireValue.globalRules ?? '';
+      _controller.text = _saved;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(
+          title: 'Pravidla pro AI',
+          description: 'Platí pro všechny odpovědi. Pravidla předmětu a to, '
+              'co napíšeš do chatu během hodiny, mají přednost.',
+        ),
+        TextField(
+          controller: _controller,
+          enabled: _loaded,
+          minLines: 2,
+          maxLines: 6,
+          maxLength: 1000,
+          textCapitalization: TextCapitalization.sentences,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            hintText: 'Např. Odpovídej stručně a vždy uveď příklad.',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonalIcon(
+            onPressed: _loaded && _controller.text.trim() != _saved
+                ? _save
+                : null,
+            icon: const Icon(Icons.check),
+            label: const Text('Uložit pravidla'),
           ),
         ),
       ],

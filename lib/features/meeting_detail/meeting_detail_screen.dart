@@ -18,7 +18,10 @@ import '../meetings_list/meeting_actions.dart';
 import '../subjects/widgets/lesson_context_strip.dart';
 import '../subjects/widgets/lesson_sheet.dart';
 import 'meeting_detail_providers.dart';
+import 'timeline.dart';
 import 'widgets/answer_card_tile.dart';
+import 'widgets/chat_bar.dart';
+import 'widgets/chat_message_tile.dart';
 import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
 import 'widgets/transcript_segment_tile.dart';
@@ -138,7 +141,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     final prefs = ref.watch(preferencesProvider);
     final liveAnswers = prefs.valueOrNull?.liveAnswersEnabled ?? false;
     final sensitivity =
-        prefs.valueOrNull?.micSensitivity ?? MicSensitivity.medium;
+        prefs.valueOrNull?.micSensitivity ?? MicSensitivity.auto;
 
     return DefaultTabController(
       length: 2,
@@ -155,7 +158,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               initialValue: sensitivity,
               onSelected: _setSensitivity,
               itemBuilder: (_) => [
-                for (final value in MicSensitivity.values)
+                for (final value in MicSensitivity.ordered)
                   CheckedPopupMenuItem(
                     value: value,
                     checked: value == sensitivity,
@@ -240,14 +243,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             ],
           ),
         ),
-        floatingActionButton: isThisOneRecording
-            ? FloatingActionButton.extended(
-                onPressed: () =>
-                    ref.read(recordingControllerProvider.notifier).stop(),
-                icon: const Icon(Icons.stop),
-                label: const Text('Zastavit'),
-              )
-            : null,
         body: Column(
           children: [
             if (meeting.valueOrNull case final m?) LessonContextStrip(meeting: m),
@@ -269,6 +264,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     final cards =
         ref.watch(answerCardsProvider(widget.meetingId)).valueOrNull ??
             const <AnswerCard>[];
+    final messages =
+        ref.watch(chatMessagesProvider(widget.meetingId)).valueOrNull ??
+            const <ChatMessage>[];
 
     // The newest card, pinned only while this meeting is the one recording —
     // on a finished meeting the timeline cards are the record and a panel
@@ -311,12 +309,20 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   onDismiss: () => _dismissCard(latest.id),
                 ),
         ),
-        Expanded(child: _transcriptList(isThisOneRecording, cards)),
+        Expanded(
+          child: _transcriptList(isThisOneRecording, cards, messages),
+        ),
+        // Stopping lives in the recording banner, so the bar has the bottom.
+        ChatBar(meetingId: widget.meetingId, recording: isThisOneRecording),
       ],
     );
   }
 
-  Widget _transcriptList(bool isThisOneRecording, List<AnswerCard> cards) {
+  Widget _transcriptList(
+    bool isThisOneRecording,
+    List<AnswerCard> cards,
+    List<ChatMessage> messages,
+  ) {
     final segments = ref.watch(meetingSegmentsProvider(widget.meetingId));
 
     return AsyncView(
@@ -333,7 +339,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 (s.content?.trim().isNotEmpty ?? false))
             .toList();
 
-        if (visible.isEmpty) {
+        if (visible.isEmpty && messages.isEmpty) {
           return EmptyState(
             icon: isThisOneRecording
                 ? Icons.graphic_eq
@@ -348,22 +354,15 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
           );
         }
 
-        // Cards are merged into the timeline right after the segment their
-        // question was heard in, so the answer sits where it was asked. The
-        // existing auto-scroll then brings it into view for free.
-        final bySegment = <int, List<AnswerCard>>{};
-        for (final card in cards) {
-          (bySegment[card.segmentId] ??= <AnswerCard>[]).add(card);
-        }
+        // Answers sit right after the segment their question was heard in,
+        // chat messages where they were typed.
+        final items = mergeTimeline(visible, cards, messages);
 
-        final items = <Object>[];
-        for (final segment in visible) {
-          items.add(segment);
-          final own = bySegment[segment.id];
-          if (own != null) items.addAll(own);
+        // A reply to a typed question is followed on a finished lesson too.
+        if (items.length > _itemCount &&
+            (isThisOneRecording || items.last is ChatMessage)) {
+          _followTail();
         }
-
-        if (isThisOneRecording && items.length > _itemCount) _followTail();
         _itemCount = items.length;
 
         // Which rows are new *this* build, and in what order — so the first
@@ -379,14 +378,14 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         return ListView.separated(
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(
-              Gap.lg, Gap.sm, Gap.lg, Gap.fabClearance),
+              Gap.lg, Gap.sm, Gap.lg, Gap.lg),
           itemCount: items.length,
           // A rule butting up against a card reads as a mistake; between two
           // segments it is what keeps the transcript legible.
           separatorBuilder: (_, i) =>
-              items[i] is AnswerCard || items[i + 1] is AnswerCard
-                  ? const SizedBox.shrink()
-                  : const Divider(height: 1),
+              items[i] is TranscriptSegment && items[i + 1] is TranscriptSegment
+                  ? const Divider(height: 1)
+                  : const SizedBox.shrink(),
           itemBuilder: (_, i) {
             final item = items[i];
             final order = entering[_rowKey(item)];
@@ -398,6 +397,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   : Duration.zero,
               child: switch (item) {
                 AnswerCard() => AnswerCardTile(card: item),
+                ChatMessage() => ChatMessageTile(message: item),
                 TranscriptSegment() => TranscriptSegmentTile(
                     segment: item,
                     onRetry: () => _retry(item),
@@ -411,7 +411,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     );
   }
 
-  static String _rowKey(Object item) => item is AnswerCard
-      ? 'card:${item.id}'
-      : 'seg:${(item as TranscriptSegment).id}';
+  static String _rowKey(Object item) => switch (item) {
+        AnswerCard() => 'card:${item.id}',
+        ChatMessage() => 'msg:${item.id}',
+        TranscriptSegment() => 'seg:${item.id}',
+        _ => 'other:${item.hashCode}',
+      };
 }

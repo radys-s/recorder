@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
+import 'package:recorder/data/db/tables/preferences_table.dart';
 
 /// The v9 schema exactly as a v9 build created it, so the upgrade runs against
 /// what is really on the user's phone rather than against today's tables.
@@ -61,6 +62,8 @@ void main() {
 
     final prefs = await db.preferencesDao.current();
     expect(prefs.globalRules, isNull);
+    // v11 switches an existing install to automatic sensitivity once.
+    expect(prefs.micSensitivity, MicSensitivity.auto);
 
     // The new tables exist and take rows.
     final cardId = await db.subjectsDao

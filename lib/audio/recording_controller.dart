@@ -189,8 +189,12 @@ class RecordingController extends Notifier<RecordingState> {
       // whether answers are generated, not how the audio is cut.
       final prefs = await _db.preferencesDao.current();
       final fast = prefs.liveAnswersEnabled;
+      // A new recording measures its room from scratch.
+      _calibrator = null;
+      _sensitivity = null;
       _chunker = PcmChunker(
         onChunk: _onChunk,
+        onFrameLevel: _onFrameLevel,
         minDuration: fast ? kFastChunkMinDuration : kChunkMinDuration,
         targetDuration: fast ? kFastChunkTargetDuration : kChunkTargetDuration,
         hardCapDuration:
@@ -319,17 +323,57 @@ class RecordingController extends Notifier<RecordingState> {
     );
   }
 
+  DateTime? _lastCut;
+
+  /// Closes the current chunk now so the last few seconds get transcribed
+  /// without waiting for a pause — „Odpověz teď". At most once per
+  /// [kAnswerNowCutDebounce]; returns whether a chunk was cut.
+  bool cutNow() {
+    final chunker = _chunker;
+    if (!state.isRecording || chunker == null) return false;
+    final now = DateTime.now();
+    if (_lastCut != null && now.difference(_lastCut!) < kAnswerNowCutDebounce) {
+      return false;
+    }
+    // Too little to be worth a request of its own; the previous chunk already
+    // holds what was just said.
+    if (chunker.bufferedDuration < kMinTranscribableDuration) return false;
+    _lastCut = now;
+    return chunker.cut();
+  }
+
   /// Idempotent: the preferences stream re-emits on every unrelated setting,
   /// and a freshly built chunker needs the thresholds even when the setting
   /// itself did not change.
   void _applySensitivity(MicSensitivity sensitivity) {
     final changed = sensitivity != _sensitivity;
     _sensitivity = sensitivity;
-    _profile = SensitivityProfile.of(sensitivity);
+    if (sensitivity == MicSensitivity.auto) {
+      _calibrator ??= AutoCalibrator();
+      _profile = _calibrator!.latest ?? SensitivityProfile.auto;
+    } else {
+      _calibrator = null;
+      _profile = SensitivityProfile.of(sensitivity);
+    }
+    _setChunkerThresholds();
+    if (changed) AppLog.d(_tag, 'sensitivity: ${sensitivity.name}');
+  }
+
+  /// Only present while the sensitivity is automatic.
+  AutoCalibrator? _calibrator;
+
+  void _onFrameLevel(double rms) {
+    final next = _calibrator?.add(rms);
+    if (next == null) return;
+    _profile = next;
+    _setChunkerThresholds();
+    AppLog.d(_tag, 'auto sensitivity: $next');
+  }
+
+  void _setChunkerThresholds() {
     _chunker
       ?..voicedRmsThreshold = _profile.voicedRmsThreshold
       ..silenceRmsThreshold = _profile.silenceRmsThreshold;
-    if (changed) AppLog.d(_tag, 'sensitivity: ${sensitivity.name}');
   }
 
   void _onData(Uint8List bytes) {

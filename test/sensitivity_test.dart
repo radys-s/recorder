@@ -76,9 +76,82 @@ void main() {
       expect(l.maxGain, 1);
     });
 
-    test('labels are the three Czech words from the request', () {
+    test('labels, with automatic appended in storage and shown first', () {
       expect(MicSensitivity.values.map((s) => s.label),
-          ['Málo', 'Středně', 'Hodně']);
+          ['Málo', 'Středně', 'Hodně', 'Automaticky']);
+      expect(MicSensitivity.ordered.first, MicSensitivity.auto);
+      expect(MicSensitivity.ordered.toSet(), MicSensitivity.values.toSet());
+      expect(SensitivityProfile.of(MicSensitivity.auto),
+          SensitivityProfile.auto);
+    });
+  });
+
+  group('AutoCalibrator', () {
+    const warmupFrames = 30; // 3 s of 100 ms frames
+    const windowFrames = 200;
+
+    AutoCalibrator feed(Iterable<double> levels, List<SensitivityProfile> out) {
+      final c = AutoCalibrator();
+      for (final l in levels) {
+        final p = c.add(l);
+        if (p != null) out.add(p);
+      }
+      return c;
+    }
+
+    test('nothing before the warm-up, then one estimate per window', () {
+      final out = <SensitivityProfile>[];
+      final c = feed(List.filled(warmupFrames - 1, 0.001), out);
+      expect(out, isEmpty);
+      expect(c.latest, isNull);
+      c.add(0.001);
+      expect(c.latest, isNotNull);
+      for (var i = 0; i < windowFrames - 1; i++) {
+        expect(c.add(0.001), isNull);
+      }
+      expect(c.add(0.001), isNotNull);
+    });
+
+    test('a quiet room with a distant speaker gets high-like thresholds', () {
+      // 80 % room tone at -60 dBFS, 20 % speech at -40 dBFS.
+      final levels = [
+        for (var i = 0; i < 30; i++) i % 5 == 0 ? 0.01 : 0.001,
+      ];
+      final p = AutoCalibrator.profileFor(levels);
+      expect(p.voicedRmsThreshold, SensitivityProfile.high.voicedRmsThreshold);
+      expect(p.silenceRmsThreshold, 0.004);
+      expect(p.maxGain, 8);
+      expect(p.noSpeechProbThreshold, closeTo(0.8, 1e-9));
+    });
+
+    test('a noisy classroom gets low-like thresholds and no gain', () {
+      final levels = [
+        for (var i = 0; i < 30; i++) i % 3 == 0 ? 0.2 : 0.012,
+      ];
+      final p = AutoCalibrator.profileFor(levels);
+      expect(p.voicedRmsThreshold, SensitivityProfile.low.voicedRmsThreshold);
+      expect(p.silenceRmsThreshold, SensitivityProfile.low.silenceRmsThreshold);
+      expect(p.maxGain, 1);
+      expect(p.minVoicedDuration, const Duration(milliseconds: 600));
+    });
+
+    test('silence always sits above voiced, whatever the room', () {
+      for (final floor in [0.0, 0.0005, 0.002, 0.004, 0.02, 0.5]) {
+        final p = AutoCalibrator.profileFor(List.filled(30, floor));
+        expect(p.silenceRmsThreshold, greaterThan(p.voicedRmsThreshold),
+            reason: 'floor $floor');
+      }
+    });
+
+    test('follows the room when it gets louder', () {
+      final out = <SensitivityProfile>[];
+      feed([
+        ...List.filled(warmupFrames, 0.001),
+        ...List.filled(windowFrames, 0.012),
+      ], out);
+      expect(out, hasLength(2));
+      expect(out.last.voicedRmsThreshold,
+          greaterThan(out.first.voicedRmsThreshold));
     });
   });
 

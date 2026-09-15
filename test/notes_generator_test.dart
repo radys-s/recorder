@@ -133,8 +133,10 @@ void main() {
 
   test('each depth has its own token budget and its own shape', () async {
     const budgets = {
+      NotesDepth.keywords: 1200,
       NotesDepth.brief: 1500,
       NotesDepth.standard: 3000,
+      NotesDepth.detailed: 4500,
       NotesDepth.full: 6000,
     };
     final systems = <String>{};
@@ -144,7 +146,7 @@ void main() {
       expect(notes.depth, depth);
       systems.add(llm.calls.single.system);
     }
-    expect(systems, hasLength(3));
+    expect(systems, hasLength(5));
   });
 
   test('an empty transcript fails without calling the model', () async {

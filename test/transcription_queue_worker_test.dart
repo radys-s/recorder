@@ -168,6 +168,7 @@ class _Stt implements SttProvider {
   /// Called with the audio path; may throw, may hang on a completer.
   final FutureOr<TranscriptionResult> Function(String path) respond;
   final calls = <_SttCall>[];
+  final glossaries = <String?>[];
 
   @override
   Future<TranscriptionResult> transcribe({
@@ -175,7 +176,9 @@ class _Stt implements SttProvider {
     String? promptContext,
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
+    String? glossary,
   }) async {
+    glossaries.add(glossary);
     calls.add((
       path: audioFile.path,
       prompt: promptContext,
@@ -206,6 +209,7 @@ class _World {
     TranscriptLanguage language = TranscriptLanguage.czech,
     MicSensitivity sensitivity = MicSensitivity.medium,
     void Function(TranscriptSegment segment, String text)? onTranscribed,
+    Future<String?> Function(int meetingId)? glossaryFor,
   }) : stt = _Stt(respond) {
     worker = TranscriptionQueueWorker(
       queue,
@@ -214,6 +218,7 @@ class _World {
       stt,
       connectivity: connectivity,
       onTranscribed: onTranscribed,
+      glossaryFor: glossaryFor,
       // Only the events under test wake the worker, never the clock.
       tick: const Duration(hours: 1),
     );
@@ -316,12 +321,50 @@ void main() {
     expect(transcribed, [(world.segmentId(1), 'A tady pokračujeme dál.')]);
   });
 
+  test('the lesson glossary goes to Whisper with the meeting it belongs to',
+      () async {
+    final asked = <int>[];
+    final world = _World(
+      (_) => _text('Babička jde s dětmi na procházku.'),
+      glossaryFor: (meetingId) async {
+        asked.add(meetingId);
+        return 'Babička, Viktorka, Proško';
+      },
+    );
+    world.enqueue(1);
+    await world.worker.start();
+    await _until(() => world.row(1).status == QueueStatus.succeeded);
+    await world.worker.stop();
+
+    expect(asked, [3]);
+    expect(world.stt.glossaries.single, 'Babička, Viktorka, Proško');
+    expect(world.segment(1).content, 'Babička jde s dětmi na procházku.');
+  });
+
+  test('a failing glossary lookup still transcribes', () async {
+    final world = _World(
+      (_) => _text('Dobrý den.'),
+      glossaryFor: (_) async => throw StateError('db closed'),
+    );
+    world.enqueue(1);
+    await world.worker.start();
+    await _until(() => world.row(1).status == QueueStatus.succeeded);
+    await world.worker.stop();
+    expect(world.stt.glossaries.single, isNull);
+    expect(world.segment(1).content, 'Dobrý den.');
+  });
+
   group('text that nobody said', () {
-    Future<(_World, List<String>)> run(String sttText, {String? previous}) async {
+    Future<(_World, List<String>)> run(
+      String sttText, {
+      String? previous,
+      String? glossary,
+    }) async {
       final transcribed = <String>[];
       final world = _World(
         (_) => _text(sttText),
         onTranscribed: (_, text) => transcribed.add(text),
+        glossaryFor: glossary == null ? null : (_) async => glossary,
       );
       if (previous != null) world.addSegment(0, content: previous);
       world.enqueue(1);
@@ -345,6 +388,15 @@ void main() {
           await run('Tak to je všechno. Děkuji za pozornost.');
       expect(world.segment(1).content, 'Tak to je všechno.');
       expect(transcribed, ['Tak to je všechno.']);
+    });
+
+    test('an echo of the glossary is dropped', () async {
+      final (world, transcribed) = await run(
+        'Babička, Viktorka, Proško.',
+        glossary: 'Babička, Viktorka, Proško, Božena Němcová',
+      );
+      expect(world.segment(1).content, isNull);
+      expect(transcribed, isEmpty);
     });
 
     test('an echo of the previous chunk is dropped', () async {

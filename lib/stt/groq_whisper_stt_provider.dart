@@ -45,6 +45,7 @@ class GroqWhisperSttProvider implements SttProvider {
     String? promptContext,
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
+    String? glossary,
   }) async {
     final apiKey = await _apiKeyStore.read();
     if (apiKey == null) {
@@ -74,7 +75,7 @@ class GroqWhisperSttProvider implements SttProvider {
       // what the fallback invents.
       'temperature': '0',
       'language': ?languageCode,
-      'prompt': ?_trimPrompt(promptContext),
+      'prompt': ?whisperPrompt(glossary: glossary, context: promptContext),
     });
 
     try {
@@ -89,12 +90,19 @@ class GroqWhisperSttProvider implements SttProvider {
     }
   }
 
-  static String? _trimPrompt(String? context) {
-    final trimmed = context?.trim();
-    if (trimmed == null || trimmed.isEmpty) return null;
-    return trimmed.length <= _maxPromptChars
+  /// The lesson's glossary first, then the tail of the previous chunk — the
+  /// tail last, because Whisper continues from the end of its prompt.
+  static String? whisperPrompt({String? glossary, String? context}) {
+    final trimmed = context?.trim() ?? '';
+    final tail = trimmed.length <= _maxPromptChars
         ? trimmed
         : trimmed.substring(trimmed.length - _maxPromptChars);
+    final terms = glossary?.trim() ?? '';
+    final prompt = [
+      if (terms.isNotEmpty) terms.endsWith('.') ? terms : '$terms.',
+      if (tail.isNotEmpty) tail,
+    ].join(' ');
+    return prompt.isEmpty ? null : prompt;
   }
 
   TranscriptionResult _parse(Object? data, SensitivityProfile profile) {
