@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ai/card_digest_service.dart';
 import '../ai/chat_answer_service.dart';
+import '../ai/gemini_provider.dart';
 import '../ai/groq_chat_provider.dart';
 import '../ai/lesson_context_source.dart';
 import '../ai/live_answer_service.dart';
@@ -130,14 +132,46 @@ final chatMessagesProvider =
   return ref.watch(chatMessagesDaoProvider).watchForMeeting(meetingId);
 });
 
-/// Questions typed into the lesson chat.
+/// Questions typed into the lesson chat. The Gemini key is checked per
+/// question, so adding or removing it in Settings applies to the next one.
 final chatAnswerServiceProvider = Provider<ChatAnswerService>((ref) {
   final db = ref.watch(appDatabaseProvider);
+  final geminiKeys = ref.watch(geminiKeyStoreProvider);
   return ChatAnswerService(
     ref.watch(llmProvider),
     db.chatMessagesDao,
     db.transcriptSegmentsDao,
     ref.watch(lessonContextSourceProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: geminiKeys.hasKey,
+  );
+});
+
+/// The optional second key, in its own Keychain slot.
+final geminiKeyStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kGeminiApiKeyStorageKey),
+);
+
+final geminiProvider = Provider<GeminiProvider>((ref) {
+  return GeminiProvider(ref.watch(geminiKeyStoreProvider));
+});
+
+final hasGeminiKeyProvider = FutureProvider<bool>((ref) {
+  return ref.watch(geminiKeyStoreProvider).hasKey();
+});
+
+final maskedGeminiKeyProvider = FutureProvider<String?>((ref) {
+  return ref.watch(geminiKeyStoreProvider).maskedKey();
+});
+
+/// Summaries and keywords for cards, made when a card is saved.
+final cardDigestServiceProvider = Provider<CardDigestService>((ref) {
+  final geminiKeys = ref.watch(geminiKeyStoreProvider);
+  return CardDigestService(
+    ref.watch(appDatabaseProvider).subjectsDao,
+    groq: ref.watch(llmProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: geminiKeys.hasKey,
   );
 });
 

@@ -86,6 +86,12 @@ class ContextBudget {
   static const direct =
       ContextBudget(rules: 400, cards: 2600, chat: 800, tail: 1200);
 
+  /// A typed question answered by Gemini, whose context window and free tier
+  /// are not measured against Groq's 8 000 tokens a minute: whole pinned cards
+  /// instead of their best chunks, and most of the lesson.
+  static const gemini =
+      ContextBudget(rules: 1000, cards: 20000, chat: 3000, tail: 8000);
+
   final int rules;
   final int cards;
   final int chat;

@@ -8,6 +8,8 @@ import '../core/constants.dart';
 /// own: there are at most [kMaxAnswerSources] of them, nothing ever queries
 /// across them, and a nullable text column needs no migration for the rows
 /// that already exist.
+const String kGeminiRedirectHost = 'vertexaisearch.cloud.google.com';
+
 class AnswerSource {
   const AnswerSource({required this.title, required this.url});
 
@@ -17,8 +19,13 @@ class AnswerSource {
   /// What the chip says. A domain is what tells the reader whether to trust
   /// the answer — a page title from a search result is often the same clickbait
   /// for every hit, and rarely fits a chip anyway.
+  ///
+  /// Gemini's grounding links all point at one Google redirect host, and the
+  /// real site is only in the title it gives them, so there the title is used.
   String get domain {
-    final host = url.host;
+    final host = url.host == kGeminiRedirectHost && title.isNotEmpty
+        ? title.toLowerCase()
+        : url.host;
     return host.startsWith('www.') ? host.substring(4) : host;
   }
 

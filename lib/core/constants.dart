@@ -208,6 +208,38 @@ const int kWebMaxAttempts = 4;
 /// going to read.
 const int kMaxAnswerSources = 3;
 
+/// Secure storage key for the optional Google Gemini API key.
+const String kGeminiApiKeyStorageKey = 'gemini_api_key';
+
+const String kGeminiBaseUrl =
+    'https://generativelanguage.googleapis.com/v1beta';
+
+/// Photos, lookups and typed questions. Checked against Google's model list
+/// on 2026-09-15: `gemini-3.8-flash` is newer, but the newest model is where
+/// free-tier limits are tightest, and „Ověřit klíč" in Settings says whether
+/// this id is still offered to the key.
+const String kGeminiModel = 'gemini-3.5-flash';
+
+/// Card summaries: a cheap call nobody waits for.
+const String kGeminiLiteModel = 'gemini-3.5-flash-lite';
+
+/// Reasoning tokens count against `maxOutputTokens`; none of these calls
+/// needs more than a little.
+const String kGeminiThinkingLevel = 'LOW';
+
+/// A Gemini chat answer carries far more context than a Groq one.
+const Duration kGeminiChatTimeout = Duration(seconds: 40);
+
+/// How much of a card one digest call reads. Groq's share stays well under
+/// its 8 000-token minute; Gemini reads practically any card whole.
+const int kDigestGroqChars = 6000;
+const int kDigestGeminiChars = 60000;
+
+const Duration kCardDigestTimeout = Duration(seconds: 40);
+
+/// The stored card summary is cut to this.
+const int kCardSummaryMaxChars = 600;
+
 /// A chunk shorter than this was cut by the silence detector rather than by a
 /// hard cap, so the transcript it produced ends at a real pause in the room.
 ///

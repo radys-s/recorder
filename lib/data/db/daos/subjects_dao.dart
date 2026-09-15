@@ -145,6 +145,28 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
   Stream<ContextCard?> watchCard(int id) =>
       (select(contextCards)..where((t) => t.id.equals(id))).watchSingleOrNull();
 
+  Future<ContextCard?> card(int id) =>
+      (select(contextCards)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// Stores a digest, but only while the card still holds [content] — the one
+  /// it was made from. An edit that lands while the call is out wins, and its
+  /// own save triggers a fresh digest. Does not touch `updatedAt`: nothing the
+  /// user wrote changed. True when written.
+  Future<bool> setCardDigest(
+    int id, {
+    required String content,
+    required String summary,
+    required String keywords,
+  }) async {
+    final written = await (update(contextCards)
+          ..where((t) => t.id.equals(id) & t.content.equals(content)))
+        .write(ContextCardsCompanion(
+      summary: Value(summary),
+      keywords: Value(keywords.isEmpty ? null : keywords),
+    ));
+    return written > 0;
+  }
+
   Future<int> createCard({
     required int subjectId,
     required String title,

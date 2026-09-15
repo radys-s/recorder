@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
+import '../../ai/llm_provider.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/constants.dart';
 import '../../core/providers.dart';
@@ -145,6 +147,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
+          const _GeminiKeySection(),
           const _LanguageSection(),
           const _SensitivitySection(),
           const _LiveAnswersSection(),
@@ -152,6 +155,211 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (kDebugMode) const _DiagnosticsSection(),
         ],
       ),
+    );
+  }
+}
+
+/// The optional Google Gemini key: photos, lookups, card summaries and typed
+/// questions with a much larger context. Everything works without it.
+class _GeminiKeySection extends ConsumerStatefulWidget {
+  const _GeminiKeySection();
+
+  @override
+  ConsumerState<_GeminiKeySection> createState() => _GeminiKeySectionState();
+}
+
+class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
+  final _controller = TextEditingController();
+  bool _obscured = true;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _invalidate() {
+    ref.invalidate(hasGeminiKeyProvider);
+    ref.invalidate(maskedGeminiKeyProvider);
+  }
+
+  void _notify(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() => _run(() async {
+        final value = _controller.text.trim();
+        if (value.isEmpty) {
+          _notify('Nejdřív zadej klíč.');
+          return;
+        }
+        try {
+          await ref.read(geminiKeyStoreProvider).write(value);
+          _controller.clear();
+          _invalidate();
+          _notify('Gemini klíč uložen.');
+        } catch (e) {
+          _notify('Klíč se nepodařilo uložit: $e');
+        }
+      });
+
+  Future<void> _clear() => _run(() async {
+        try {
+          await ref.read(geminiKeyStoreProvider).delete();
+          _invalidate();
+          _notify('Gemini klíč smazán.');
+        } catch (e) {
+          _notify('Klíč se nepodařilo smazat: $e');
+        }
+      });
+
+  /// Asks Google which models the key may use. A bad key fails here with the
+  /// same message a real request would give.
+  Future<void> _verify() => _run(() async {
+        List<String> ids;
+        try {
+          ids = await listGeminiModels(ref.read(geminiKeyStoreProvider));
+        } on AiException catch (e) {
+          _notify(e.message);
+          return;
+        } catch (e) {
+          _notify('Ověření se nepovedlo: $e');
+          return;
+        }
+        if (!mounted) return;
+        final hasMain = ids.contains(kGeminiModel);
+        final hasLite = ids.contains(kGeminiLiteModel);
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: Icon(hasMain ? Icons.check_circle_outline : Icons.warning_amber),
+            title: Text(hasMain ? 'Klíč funguje' : 'Klíč funguje, ale…'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  Text(
+                    hasMain && hasLite
+                        ? 'Modely, které aplikace používá, jsou dostupné.'
+                        : 'Chybí ${[
+                            if (!hasMain) kGeminiModel,
+                            if (!hasLite) kGeminiLiteModel,
+                          ].join(' a ')}. Google model nejspíš přejmenoval — '
+                            'dej vědět, ať se v aplikaci vymění.',
+                  ),
+                  const SizedBox(height: Gap.md),
+                  for (final id in ids)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: SelectableText(
+                        id,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Zavřít'),
+              ),
+            ],
+          ),
+        );
+      });
+
+  @override
+  Widget build(BuildContext context) {
+    final masked = ref.watch(maskedGeminiKeyProvider).valueOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(
+          title: 'Google Gemini',
+          description: 'Nepovinné. Umí fotky, dohledávání, shrnutí karet a '
+              'odpovídá na otázky z chatu s větším kontextem. Bez klíče vše '
+              'běží přes Groq.',
+        ),
+        Card(
+          child: ListTile(
+            leading: Icon(masked == null ? Icons.key_off : Icons.key),
+            title: Text(masked ?? 'Žádný klíč není uložený'),
+            subtitle: Text(
+              masked == null
+                  ? 'Klíč zdarma dostaneš v Google AI Studiu.'
+                  : 'Uložením nového klíče tenhle přepíšeš.',
+            ),
+          ),
+        ),
+        const SizedBox(height: Gap.sm),
+        Text(
+          'Bezplatná verze Gemini může vstupy použít ke zlepšování služeb '
+          'Googlu. Posílají se jen fotky, dohledávání, karty a otázky z chatu '
+          '— nikdy průběžný přepis.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: Gap.lg),
+        TextField(
+          controller: _controller,
+          obscureText: _obscured,
+          enabled: !_busy,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(
+            labelText: 'Nový Gemini klíč',
+            hintText: 'AIza...',
+            suffixIcon: IconButton(
+              icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+              tooltip: _obscured ? 'Zobrazit klíč' : 'Skrýt klíč',
+              onPressed: () => setState(() => _obscured = !_obscured),
+            ),
+          ),
+        ),
+        const SizedBox(height: Gap.md),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _save,
+                icon: const Icon(Icons.save),
+                label: const Text('Uložit'),
+              ),
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy || masked == null ? null : _clear,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Smazat'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Gap.sm),
+        OutlinedButton.icon(
+          onPressed: _busy || masked == null ? null : _verify,
+          icon: const Icon(Icons.verified_outlined),
+          label: const Text('Ověřit klíč'),
+        ),
+      ],
     );
   }
 }

@@ -2,14 +2,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/constants.dart';
 
-/// The only place the user's Groq API key is ever persisted.
+/// The only place the user's API keys are ever persisted — one instance per
+/// key: Groq by default, Gemini with [kGeminiApiKeyStorageKey].
 ///
 /// Backed by the platform keystore (Android EncryptedSharedPreferences,
-/// iOS Keychain) — the key never lands in the drift database, in
+/// iOS Keychain) — a key never lands in the drift database, in
 /// SharedPreferences, or in a log line.
 class ApiKeyStore {
-  ApiKeyStore({FlutterSecureStorage? storage})
-      : _storage = storage ??
+  ApiKeyStore({
+    FlutterSecureStorage? storage,
+    this.storageKey = kGroqApiKeyStorageKey,
+  }) : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
               // The queue worker reads this key on its own schedule, including
@@ -25,19 +28,20 @@ class ApiKeyStore {
             );
 
   final FlutterSecureStorage _storage;
+  final String storageKey;
 
   /// Returns the stored key, or null if none is set. Whitespace-only values
   /// are treated as absent so a stray paste can't produce a 401 loop.
   Future<String?> read() async {
-    final value = await _storage.read(key: kGroqApiKeyStorageKey);
+    final value = await _storage.read(key: storageKey);
     final trimmed = value?.trim();
     return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
   }
 
   Future<void> write(String key) =>
-      _storage.write(key: kGroqApiKeyStorageKey, value: key.trim());
+      _storage.write(key: storageKey, value: key.trim());
 
-  Future<void> delete() => _storage.delete(key: kGroqApiKeyStorageKey);
+  Future<void> delete() => _storage.delete(key: storageKey);
 
   Future<bool> hasKey() async => await read() != null;
 

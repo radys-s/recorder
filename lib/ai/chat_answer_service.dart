@@ -16,13 +16,19 @@ import 'llm_provider.dart';
 /// question is worth answering and on topic by definition. The reply is its own
 /// chat row, pending until the call returns, so the bubble shows „Přemýšlím…"
 /// and a killed app leaves a visible failure rather than a silent gap.
+///
+/// With a Gemini key the question goes to Gemini with a much larger share of
+/// the lesson; if Gemini fails for any reason, Groq answers with its usual
+/// budget, so a second key can only ever add answers, never lose one.
 class ChatAnswerService {
   ChatAnswerService(
     this._llm,
     this._chat,
     this._segments,
-    this._lessonContext,
-  );
+    this._lessonContext, {
+    this._gemini,
+    this._hasGeminiKey,
+  });
 
   static const _tag = 'ai.chat';
 
@@ -30,6 +36,17 @@ class ChatAnswerService {
   final ChatMessagesDao _chat;
   final TranscriptSegmentsDao _segments;
   final LessonContextSource _lessonContext;
+  final LlmProvider? _gemini;
+  final Future<bool> Function()? _hasGeminiKey;
+
+  Future<bool> _geminiAvailable() async {
+    if (_gemini == null || _hasGeminiKey == null) return false;
+    try {
+      return await _hasGeminiKey();
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Answers the user message [userMessageId], reusing its reply row when this
   /// is a retry. Never throws.
@@ -62,29 +79,56 @@ class ChatAnswerService {
             s.content!.trim(),
       ].join(' ');
 
-      final built = buildLessonContext(
-        material: material,
-        transcript: transcript,
-        focus: message.body,
-        budget: ContextBudget.direct,
-      );
       final heading = material.isLesson ? 'Lesson so far' : 'Recording so far';
-      final raw = await _llm.complete(
-        model: kGroqAnswerModel,
-        messages: [
-          LlmMessage.system(_systemPrompt),
-          LlmMessage.user(
-            '${built.material.isEmpty ? '' : '${built.material}\n\n'}'
-            '$heading:\n${built.tail.isEmpty ? '(nothing transcribed yet)' : built.tail}'
-            '\n\nThe student asks:\n${message.body}',
-          ),
-        ],
-        temperature: 0.2,
-        // Reasoning tokens count against this too; see LiveAnswerService.
-        maxTokens: 1500,
-        jsonMode: true,
-        timeout: kChatAnswerTimeout,
-      );
+      List<LlmMessage> prompt(LessonContext built) => [
+            const LlmMessage.system(_systemPrompt),
+            LlmMessage.user(
+              '${built.material.isEmpty ? '' : '${built.material}\n\n'}'
+              '$heading:\n${built.tail.isEmpty ? '(nothing transcribed yet)' : built.tail}'
+              '\n\nThe student asks:\n${message.body}',
+            ),
+          ];
+
+      LessonContext? built;
+      String? raw;
+      if (await _geminiAvailable()) {
+        final wide = buildLessonContext(
+          material: material,
+          transcript: transcript,
+          focus: message.body,
+          budget: ContextBudget.gemini,
+        );
+        try {
+          raw = await _gemini!.complete(
+            model: kGeminiModel,
+            messages: prompt(wide),
+            maxTokens: 4000,
+            jsonMode: true,
+            timeout: kGeminiChatTimeout,
+          );
+          built = wide;
+        } on AiException catch (e) {
+          AppLog.e(_tag, 'message $userMessageId: Gemini failed, using Groq', e);
+        }
+      }
+
+      if (raw == null) {
+        built = buildLessonContext(
+          material: material,
+          transcript: transcript,
+          focus: message.body,
+          budget: ContextBudget.direct,
+        );
+        raw = await _llm.complete(
+          model: kGroqAnswerModel,
+          messages: prompt(built),
+          temperature: 0.2,
+          // Reasoning tokens count against this too; see LiveAnswerService.
+          maxTokens: 1500,
+          jsonMode: true,
+          timeout: kChatAnswerTimeout,
+        );
+      }
 
       final reply = parseChatReply(raw);
       if (reply == null) {
@@ -95,7 +139,7 @@ class ChatAnswerService {
       var basis = reply.basis;
       int? cardId;
       if (basis == 'card') {
-        cardId = built.cardIdFor(reply.card);
+        cardId = built!.cardIdFor(reply.card);
         if (cardId == null) basis = 'knowledge';
       }
 

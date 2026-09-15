@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/menu_row.dart';
@@ -53,21 +56,27 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     if (_saving || _title.text.trim().isEmpty) return;
     setState(() => _saving = true);
     final dao = ref.read(subjectsDaoProvider);
+    final digests = ref.read(cardDigestServiceProvider);
     final navigator = Navigator.of(context);
     try {
+      final int id;
       if (_isNew) {
-        await dao.createCard(
+        id = await dao.createCard(
           subjectId: widget.subjectId,
           title: _title.text,
           content: _content.text,
         );
       } else {
+        id = widget.card!.id;
         await dao.updateCard(
-          widget.card!.id,
+          id,
           title: _title.text,
           content: _content.text,
         );
       }
+      // In the background: the digest is a nicety for later lessons and must
+      // never hold the editor open. It skips cards that already have one.
+      unawaited(digests.digest(id));
       navigator.pop();
     } finally {
       if (mounted) setState(() => _saving = false);
