@@ -30,6 +30,10 @@
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Schůzky potřebují mikrofon, aby mohly nahrávat a přepisovat jednání.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Schůzky potřebují fotoaparát, aby mohly vyfotit tabuli nebo stránky knihy a přečíst z nich text.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Schůzky potřebují přístup k fotkám, abys mohl vybrat stránky, ze kterých se přečte text do karty.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.pravera.flutter_foreground_task.refresh</string>

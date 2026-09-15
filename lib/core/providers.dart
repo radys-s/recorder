@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
+import '../ai/card_lookup_service.dart';
+import '../ai/photo_text_service.dart';
 import '../ai/chat_answer_service.dart';
 import '../ai/gemini_provider.dart';
 import '../ai/groq_chat_provider.dart';
@@ -21,11 +25,14 @@ import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
+import '../data/card_deleter.dart';
 import '../data/secure/api_key_store.dart';
 import '../queue/transcription_queue_worker.dart';
 import '../stt/groq_whisper_stt_provider.dart';
 import '../stt/stt_provider.dart';
 import 'constants.dart';
+import 'paths.dart';
+import 'photo_picker.dart';
 
 /// App-scoped singletons that outlive any single screen. The drift database
 /// has its own provider in `data/db/app_database.dart`.
@@ -172,6 +179,48 @@ final cardDigestServiceProvider = Provider<CardDigestService>((ref) {
     groq: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
     hasGeminiKey: geminiKeys.hasKey,
+  );
+});
+
+final photoPickerProvider = Provider<PhotoPicker>((ref) => PhotoPicker());
+
+/// Page and board photos, read by Gemini.
+final photoTextServiceProvider = Provider<PhotoTextService>((ref) {
+  return PhotoTextService(ref.watch(geminiProvider));
+});
+
+final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return BoardPhotoService(
+    db.chatMessagesDao,
+    ref.watch(photoTextServiceProvider),
+    readBytes: (stored) async =>
+        File(await resolveStoredPath(stored)).readAsBytes(),
+    subjectName: (meetingId) async {
+      final meeting = await (db.select(db.meetings)
+            ..where((t) => t.id.equals(meetingId)))
+          .getSingleOrNull();
+      final subjectId = meeting?.subjectId;
+      return subjectId == null
+          ? null
+          : (await db.subjectsDao.subject(subjectId))?.name;
+    },
+  );
+});
+
+/// „Dohledat" in the card editor.
+final cardLookupServiceProvider = Provider<CardLookupService>((ref) {
+  return CardLookupService(
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    web: ref.watch(webAnswerServiceProvider),
+  );
+});
+
+final cardDeleterProvider = Provider<CardDeleter>((ref) {
+  return CardDeleter(
+    ref.watch(appDatabaseProvider).subjectsDao,
+    documentsPath: documentsPath,
   );
 });
 

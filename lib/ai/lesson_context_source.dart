@@ -28,7 +28,10 @@ class LessonContextSource {
     final chat = await _db.chatMessagesDao.messages(meetingId);
     final userChat = [
       for (final m in chat)
-        if (m.role == ChatRole.user && m.body.trim().isNotEmpty) m,
+        if (m.role == ChatRole.user &&
+            m.status == ChatStatus.ready &&
+            m.body.trim().isNotEmpty)
+          m,
     ];
 
     final cards = <LessonCard>[];
@@ -60,8 +63,12 @@ class LessonContextSource {
       ],
       chatContext: [
         for (final m in userChat)
-          if (m.intent == ChatIntent.context || m.intent == ChatIntent.photo)
-            m.body,
+          if (m.intent == ChatIntent.context)
+            m.body
+          else if (m.intent == ChatIntent.photo)
+            m.short == null
+                ? 'Photo of the board:\n${m.body}'
+                : 'Photo of the board (${m.short}):\n${m.body}',
       ],
       cards: cards,
     );

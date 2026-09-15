@@ -240,6 +240,23 @@ const Duration kCardDigestTimeout = Duration(seconds: 40);
 /// The stored card summary is cut to this.
 const int kCardSummaryMaxChars = 600;
 
+/// Photos are downscaled on pick: enough for OCR, a fraction of the image
+/// tokens and of the disk space a phone camera's original would take.
+const double kPhotoMaxDimension = 1600;
+const int kPhotoJpegQuality = 85;
+
+/// At most this many page photos go into one OCR call.
+const int kMaxPagePhotos = 10;
+
+/// Reading pages or a board is a vision call with a long reply.
+const Duration kGeminiPhotoTimeout = Duration(seconds: 90);
+
+/// „Dohledat" searches and writes a whole card.
+const Duration kCardLookupTimeout = Duration(seconds: 90);
+
+/// How many source links one card keeps across several look-ups.
+const int kMaxCardSources = 8;
+
 /// A chunk shorter than this was cut by the silence detector rather than by a
 /// hard cap, so the transcript it produced ends at a real pause in the room.
 ///

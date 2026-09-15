@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
@@ -62,6 +63,6 @@ Future<bool> confirmAndDeleteSubject(
     destructive: true,
   );
   if (!confirmed) return false;
-  await dao.deleteSubject(subject.id);
+  await ref.read(cardDeleterProvider).deleteSubject(subject.id);
   return true;
 }

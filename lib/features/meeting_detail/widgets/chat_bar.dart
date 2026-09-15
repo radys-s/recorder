@@ -1,11 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../ai/chat_intent.dart';
 import '../../../ai/live_answer_service.dart';
 import '../../../audio/recording_controller.dart';
+import '../../../core/logging.dart';
+import '../../../core/paths.dart';
+import '../../../core/photo_files.dart';
+import '../../../core/photo_picker.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../data/db/tables/chat_messages_table.dart';
@@ -60,6 +65,49 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     // Context and rules cost no request: the next answer call reads them.
     if (intent == ChatIntent.question) {
       unawaited(ref.read(chatAnswerServiceProvider).ask(id));
+    }
+  }
+
+  /// A photo of the board: stored and shown at once, read by Gemini in the
+  /// background. It becomes lesson context, so no answer is generated.
+  Future<void> _takeBoardPhoto() async {
+    final messenger = ScaffoldMessenger.of(context);
+    void say(String text) => messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+
+    if (!await ref.read(geminiKeyStoreProvider).hasKey()) {
+      say('Fotky čte Gemini. Přidej Gemini klíč v Nastavení.');
+      return;
+    }
+    // The moment of the tap, not of the shutter: that is when it was on the board.
+    final atMs = _atMs();
+    final PickedPhoto? photo;
+    try {
+      photo = await ref.read(photoPickerProvider).takePhoto();
+    } on PlatformException {
+      say('Fotoaparát se nepodařilo otevřít. Povol ho v Nastavení iPhonu.');
+      return;
+    }
+    if (photo == null) return;
+
+    try {
+      final docs = await documentsPath();
+      final stored = await savePhoto(
+        docsPath: docs,
+        dir: meetingPhotosDir(docs, widget.meetingId),
+        bytes: photo.bytes,
+        extension: photo.extension,
+      );
+      final id = await ref.read(chatMessagesDaoProvider).addPhotoMessage(
+            meetingId: widget.meetingId,
+            imagePath: stored,
+            atMs: atMs,
+          );
+      unawaited(ref.read(boardPhotoServiceProvider).read(id));
+    } catch (e, st) {
+      AppLog.e('chat.photo', 'board photo not stored', e, st);
+      say('Fotku se nepodařilo uložit.');
     }
   }
 
@@ -125,6 +173,12 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                 ),
               Row(
                 children: [
+                  if (widget.recording)
+                    IconButton(
+                      onPressed: _takeBoardPhoto,
+                      tooltip: 'Vyfotit tabuli',
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
                   Expanded(
                     child: TextField(
                       controller: _controller,

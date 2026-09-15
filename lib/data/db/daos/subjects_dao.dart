@@ -172,6 +172,7 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
     required String title,
     String content = '',
     CardKind kind = CardKind.text,
+    String? sources,
   }) {
     final now = DateTime.now();
     return into(contextCards).insert(
@@ -180,10 +181,39 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         title: requiredText(title, maxCardTitleLength, 'title'),
         kind: kind,
         content: Value(content.trim()),
+        sources: Value(sources),
         createdAt: now,
         updatedAt: now,
       ),
     );
+  }
+
+  /// The card's links, as `encodeAnswerSources` stores them. Not an edit of
+  /// what the AI reads, so the digest stays.
+  Future<void> setCardSources(int id, String? sources) =>
+      (update(contextCards)..where((t) => t.id.equals(id)))
+          .write(ContextCardsCompanion(sources: Value(sources)));
+
+  /// Appends page photos (stored paths) after the ones already there.
+  Future<void> addCardImages(int cardId, List<String> paths) async {
+    if (paths.isEmpty) return;
+    final existing = await cardImagePaths(cardId);
+    await batch((b) => b.insertAll(cardImages, [
+          for (var i = 0; i < paths.length; i++)
+            CardImagesCompanion.insert(
+              cardId: cardId,
+              path: paths[i],
+              ord: Value(existing.length + i),
+            ),
+        ]));
+  }
+
+  Future<List<String>> cardImagePaths(int cardId) async {
+    final rows = await (select(cardImages)
+          ..where((t) => t.cardId.equals(cardId))
+          ..orderBy([(t) => OrderingTerm.asc(t.ord), (t) => OrderingTerm.asc(t.id)]))
+        .get();
+    return [for (final r in rows) r.path];
   }
 
   /// A changed content invalidates the digest made from it; a changed title

@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import '../core/logging.dart';
 import '../core/paths.dart';
+import '../core/photo_files.dart';
 import 'db/daos/meetings_dao.dart';
 
 /// Deleting a meeting for good: its rows, then its audio.
@@ -36,12 +35,13 @@ class MeetingDeleter {
     AppLog.d(_tag, 'meeting $meetingId deleted');
 
     try {
-      final dir = Directory(
-        meetingRecordingsDir(await _documentsPath(), meetingId),
-      );
-      if (await dir.exists()) await dir.delete(recursive: true);
+      final docs = await _documentsPath();
+      await removeDirectory(meetingRecordingsDir(docs, meetingId));
+      // Board photos from the lesson chat. A card saved from one has its own
+      // copy under cards/, so nothing a card shows goes with the meeting.
+      await removeDirectory(meetingPhotosDir(docs, meetingId));
     } catch (e, st) {
-      AppLog.e(_tag, 'meeting $meetingId: audio not removed', e, st);
+      AppLog.e(_tag, 'meeting $meetingId: files not removed', e, st);
     }
   }
 }

@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:recorder/core/paths.dart';
+import 'package:recorder/core/photo_files.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/meeting_notes_table.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
@@ -194,6 +195,20 @@ void main() {
       expect((await meetingIdsByTable())['meetings'], [kept]);
       expect(await goneFile.parent.exists(), isFalse);
       expect(await keptFile.exists(), isTrue);
+    });
+
+    test('also deletes the meeting\'s board photos', () async {
+      final gone = await seedMeeting('Smazat');
+      final kept = await seedMeeting('Nechat');
+      final goneDir = Directory(meetingPhotosDir(docs.path, gone));
+      final keptDir = Directory(meetingPhotosDir(docs.path, kept));
+      await File(p.join(goneDir.path, 'a.jpg')).create(recursive: true);
+      await File(p.join(keptDir.path, 'b.jpg')).create(recursive: true);
+
+      await deleter().delete(gone);
+
+      expect(await goneDir.exists(), isFalse);
+      expect(await keptDir.exists(), isTrue);
     });
 
     test('a meeting with no audio on disk still deletes', () async {

@@ -60,6 +60,53 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  /// A board photo, pending until [completePhoto] fills in what is on it.
+  Future<int> addPhotoMessage({
+    required int meetingId,
+    required String imagePath,
+    required int atMs,
+  }) =>
+      into(chatMessages).insert(
+        ChatMessagesCompanion.insert(
+          meetingId: meetingId,
+          role: ChatRole.user,
+          intent: ChatIntent.photo,
+          imagePath: Value(imagePath),
+          atMs: atMs,
+          status: ChatStatus.pending,
+          createdAt: DateTime.now(),
+        ),
+      );
+
+  /// The text read off a photo goes in `text`, so the lesson context reads it
+  /// like any typed context; the one-line description goes in `short`.
+  Future<void> completePhoto(
+    int id, {
+    required String text,
+    String? description,
+  }) {
+    final body = text.trim();
+    final short = description?.trim() ?? '';
+    return (update(chatMessages)..where((t) => t.id.equals(id))).write(
+      ChatMessagesCompanion(
+        status: const Value(ChatStatus.ready),
+        body: Value(body.length <= maxLength ? body : body.substring(0, maxLength)),
+        short: Value(short.isEmpty ? null : short),
+        detail: const Value(null),
+      ),
+    );
+  }
+
+  /// [reason] is Czech. Kept out of `text`, which the lesson context reads.
+  Future<void> failPhoto(int id, String reason) =>
+      (update(chatMessages)..where((t) => t.id.equals(id))).write(
+        ChatMessagesCompanion(
+          status: const Value(ChatStatus.failed),
+          body: const Value(''),
+          detail: Value(reason),
+        ),
+      );
+
   /// A reply placeholder, shown as „Přemýšlím…" until [completeReply].
   Future<int> addPendingReply({
     required int meetingId,
@@ -131,11 +178,24 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
         await (delete(chatMessages)..where((t) => t.id.equals(id))).go();
       });
 
-  /// A reply left pending by a killed app would spin forever.
-  Future<int> failInterruptedReplies() =>
-      (update(chatMessages)..where((t) => t.status.equalsValue(ChatStatus.pending)))
-          .write(const ChatMessagesCompanion(
-        status: Value(ChatStatus.failed),
-        body: Value('Aplikace se zavřela dřív, než odpověď přišla.'),
-      ));
+  /// A reply or a photo left pending by a killed app would spin forever. A
+  /// photo's reason goes to `detail`, never to the text the AI reads.
+  Future<int> failInterruptedReplies() => transaction(() async {
+        final replies = await (update(chatMessages)
+              ..where((t) =>
+                  t.status.equalsValue(ChatStatus.pending) &
+                  t.role.equalsValue(ChatRole.assistant)))
+            .write(const ChatMessagesCompanion(
+          status: Value(ChatStatus.failed),
+          body: Value('Aplikace se zavřela dřív, než odpověď přišla.'),
+        ));
+        final photos = await (update(chatMessages)
+              ..where((t) => t.status.equalsValue(ChatStatus.pending)))
+            .write(const ChatMessagesCompanion(
+          status: Value(ChatStatus.failed),
+          body: Value(''),
+          detail: Value('Aplikace se zavřela dřív, než se fotka přečetla.'),
+        ));
+        return replies + photos;
+      });
 }

@@ -69,6 +69,7 @@ dependencies:
   # Opening a web answer's sources in the system browser. A search result is
   # untrusted content and has no business rendering inside this app.
   url_launcher: ^6.3.1
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:
