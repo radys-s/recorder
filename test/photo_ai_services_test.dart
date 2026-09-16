@@ -11,6 +11,8 @@ import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/ai/photo_text_service.dart';
 import 'package:recorder/ai/web_answer_service.dart';
 import 'package:recorder/core/constants.dart';
+import 'package:recorder/core/photo_picker.dart';
+import 'package:recorder/features/meeting_detail/lesson_photos.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/daos/subjects_dao.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
@@ -122,6 +124,47 @@ void main() {
       expect(r.text, 'Máj');
       expect(gemini.calls.single.jsonMode, isTrue);
       expect(_all(gemini.calls.single.messages), contains('Čeština'));
+      // Slides keep their structure.
+      expect(_all(gemini.calls.single.messages), contains('presentation slide'));
+      expect(_all(gemini.calls.single.messages), contains(' | '));
+    });
+  });
+
+  group('addLessonPhotos', () {
+    late AppDatabase db;
+    setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));
+    tearDown(() => db.close());
+
+    PickedPhoto photo(int n) => PickedPhoto(
+          bytes: Uint8List.fromList([n]),
+          mimeType: 'image/jpeg',
+          extension: '.jpg',
+        );
+
+    test('each photo is its own pending message, in picking order', () async {
+      final meetingId = await db.into(db.meetings).insert(
+          MeetingsCompanion.insert(title: 'Hodina', createdAt: DateTime(2026)));
+      final added = await addLessonPhotos(
+        photos: [photo(1), photo(2), photo(3)],
+        meetingId: meetingId,
+        atMs: 5000,
+        chat: db.chatMessagesDao,
+        store: (p) async {
+          if (p.bytes.first == 2) throw const FileSystemException('disk');
+          return 'photos/meeting_$meetingId/p${p.bytes.first}.jpg';
+        },
+      );
+
+      expect(added.ids, hasLength(2));
+      expect(added.failed, 1);
+      final rows = await db.chatMessagesDao.messages(meetingId);
+      expect(rows.map((m) => m.imagePath), [
+        'photos/meeting_$meetingId/p1.jpg',
+        'photos/meeting_$meetingId/p3.jpg',
+      ]);
+      expect(rows.every((m) => m.status == ChatStatus.pending), isTrue);
+      expect(rows.every((m) => m.intent == ChatIntent.photo), isTrue);
+      expect(rows.every((m) => m.atMs == 5000), isTrue);
     });
   });
 

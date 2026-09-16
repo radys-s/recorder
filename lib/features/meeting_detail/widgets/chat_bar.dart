@@ -7,13 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../ai/chat_intent.dart';
 import '../../../ai/live_answer_service.dart';
 import '../../../audio/recording_controller.dart';
-import '../../../core/logging.dart';
 import '../../../core/paths.dart';
 import '../../../core/photo_files.dart';
 import '../../../core/photo_picker.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../data/db/tables/chat_messages_table.dart';
+import '../lesson_photos.dart';
 import '../meeting_detail_providers.dart';
 
 /// The input pinned under the transcript: context, rules and questions typed
@@ -68,9 +68,10 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     }
   }
 
-  /// A photo of the board: stored and shown at once, read by Gemini in the
-  /// background. It becomes lesson context, so no answer is generated.
-  Future<void> _takeBoardPhoto() async {
+  /// Photos of the board or the slides: stored and shown at once, read by
+  /// Gemini in the background. They become lesson context, so no answer is
+  /// generated. Also after the lesson, for slides that arrive later.
+  Future<void> _addPhotos() async {
     final messenger = ScaffoldMessenger.of(context);
     void say(String text) => messenger
       ..hideCurrentSnackBar()
@@ -80,34 +81,68 @@ class _ChatBarState extends ConsumerState<ChatBar> {
       say('Fotky čte Gemini. Přidej Gemini klíč v Nastavení.');
       return;
     }
-    // The moment of the tap, not of the shutter: that is when it was on the board.
+    // The moment of the tap, not of the shutter: that is when it was shown.
     final atMs = _atMs();
-    final PickedPhoto? photo;
+    if (!mounted) return;
+    final source = await showModalBottomSheet<_PhotoSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Vyfotit'),
+              subtitle: const Text('Tabule, slide nebo papír'),
+              onTap: () => Navigator.pop(context, _PhotoSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Vybrat z galerie'),
+              subtitle: const Text('Třeba snímky prezentace, víc najednou'),
+              onTap: () => Navigator.pop(context, _PhotoSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final picker = ref.read(photoPickerProvider);
+    final List<PickedPhoto> photos;
     try {
-      photo = await ref.read(photoPickerProvider).takePhoto();
+      photos = switch (source) {
+        _PhotoSource.camera => [?await picker.takePhoto()],
+        _PhotoSource.gallery => await picker.pickPages(),
+      };
     } on PlatformException {
-      say('Fotoaparát se nepodařilo otevřít. Povol ho v Nastavení iPhonu.');
+      say('Fotoaparát nebo fotky nejsou dostupné. Povol je v Nastavení iPhonu.');
       return;
     }
-    if (photo == null) return;
+    if (photos.isEmpty) return;
 
-    try {
-      final docs = await documentsPath();
-      final stored = await savePhoto(
+    final docs = await documentsPath();
+    final added = await addLessonPhotos(
+      photos: photos,
+      meetingId: widget.meetingId,
+      atMs: atMs,
+      chat: ref.read(chatMessagesDaoProvider),
+      store: (photo) => savePhoto(
         docsPath: docs,
         dir: meetingPhotosDir(docs, widget.meetingId),
         bytes: photo.bytes,
         extension: photo.extension,
-      );
-      final id = await ref.read(chatMessagesDaoProvider).addPhotoMessage(
-            meetingId: widget.meetingId,
-            imagePath: stored,
-            atMs: atMs,
-          );
-      unawaited(ref.read(boardPhotoServiceProvider).read(id));
-    } catch (e, st) {
-      AppLog.e('chat.photo', 'board photo not stored', e, st);
-      say('Fotku se nepodařilo uložit.');
+      ),
+    );
+    final reader = ref.read(boardPhotoServiceProvider);
+    for (final id in added.ids) {
+      unawaited(reader.read(id));
+    }
+    if (added.failed > 0) {
+      say(added.ids.isEmpty
+          ? 'Fotku se nepodařilo uložit.'
+          : 'Některé fotky se nepodařilo uložit (${added.failed}).');
     }
   }
 
@@ -173,12 +208,11 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                 ),
               Row(
                 children: [
-                  if (widget.recording)
-                    IconButton(
-                      onPressed: _takeBoardPhoto,
-                      tooltip: 'Vyfotit tabuli',
-                      icon: const Icon(Icons.photo_camera_outlined),
-                    ),
+                  IconButton(
+                    onPressed: _addPhotos,
+                    tooltip: 'Fotka tabule nebo prezentace',
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _controller,
@@ -220,3 +254,5 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     );
   }
 }
+
+enum _PhotoSource { camera, gallery }

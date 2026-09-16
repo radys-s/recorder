@@ -92,6 +92,13 @@ class ContextBudget {
   static const gemini =
       ContextBudget(rules: 1000, cards: 20000, chat: 3000, tail: 8000);
 
+  /// The automatic answer call in a lesson, on Gemini: whole pinned cards,
+  /// every photo the student took, and about the last five minutes. Smaller
+  /// than [gemini] because it runs for every candidate question and has to
+  /// come back while the room is still on it.
+  static const geminiLive =
+      ContextBudget(rules: 800, cards: 10000, chat: 4000, tail: 2500);
+
   final int rules;
   final int cards;
   final int chat;

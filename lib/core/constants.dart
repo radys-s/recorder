@@ -235,6 +235,10 @@ const String kGeminiThinkingLevel = 'LOW';
 /// A Gemini chat answer carries far more context than a Groq one.
 const Duration kGeminiChatTimeout = Duration(seconds: 40);
 
+/// An automatic answer in a lesson on Gemini. Shorter than a typed question:
+/// a late card is worth less, and Groq still gets its turn after a timeout.
+const Duration kGeminiLiveAnswerTimeout = Duration(seconds: 25);
+
 /// How much of a card one digest call reads. Groq's share stays well under
 /// its 8 000-token minute; Gemini reads practically any card whole.
 const int kDigestGroqChars = 6000;

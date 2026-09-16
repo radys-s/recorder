@@ -127,6 +127,8 @@ final liveAnswerServiceProvider = Provider<LiveAnswerService>((ref) {
     db.preferencesDao,
     ref.watch(webAnswerServiceProvider),
     lessonContext: ref.watch(lessonContextSourceProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
   );
 });
 

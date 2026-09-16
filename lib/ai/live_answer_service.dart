@@ -36,6 +36,8 @@ class LiveAnswerService {
     this._prefsDao,
     this._webAnswers, {
     LessonContextSource? lessonContext,
+    this._gemini,
+    this._hasGeminiKey,
     this.pollInterval = const Duration(milliseconds: 500),
   })
       // ignore: prefer_initializing_formals
@@ -49,6 +51,11 @@ class LiveAnswerService {
   final PreferencesDao _prefsDao;
   final WebAnswerService _webAnswers;
   final LessonContextSource? _lessonContext;
+
+  /// Answers in a lesson when the student has a Gemini key; Groq otherwise,
+  /// and after any Gemini failure.
+  final LlmProvider? _gemini;
+  final Future<bool> Function()? _hasGeminiKey;
 
   /// How often [answerNow] checks whether the last chunk has come back.
   final Duration pollInterval;
@@ -77,14 +84,12 @@ class LiveAnswerService {
         segment.meetingId,
         segment.sequence,
       );
-      final request = await _request(
+      final (:request, :decision) = await _decide(
         segment,
         text,
         previous: previous,
         note: endedOnPause ? _pauseNote : '',
       );
-
-      final decision = await _ask(request);
       if (decision == null) {
         AppLog.e(_tag, 'segment ${segment.id}: unparseable response');
         return;
@@ -192,13 +197,12 @@ class LiveAnswerService {
       final text = window.map((s) => s.content!.trim()).join(' ');
       final earliest = window.first;
 
-      final request = await _request(
+      final (:request, :decision) = await _decide(
         earliest,
         text,
         previous: null,
         note: _answerNowNote,
       );
-      final decision = await _ask(request);
       if (decision == null) {
         AppLog.e(_tag, 'answer now in meeting $meetingId: unparseable');
         return AnswerNowOutcome.failed;
@@ -234,9 +238,20 @@ class LiveAnswerService {
       'judge whether it is on topic, and set "is_question" to false only if '
       'there is truly no question in it.';
 
-  /// The request for [segment]'s passage [text]: the meeting path exactly as it
-  /// always was, or the lesson path when the student gave the AI anything.
-  Future<_Request> _request(
+  Future<bool> _geminiAvailable() async {
+    if (_gemini == null || _hasGeminiKey == null) return false;
+    try {
+      return await _hasGeminiKey();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Builds the request and asks. A lesson goes to Gemini with a far wider look
+  /// when the key is there; anything Gemini throws (a 429 on the free tier
+  /// included) sends the same passage to Groq with the usual budget, so the
+  /// second key can only add answers.
+  Future<({_Request request, AnswerDecision? decision})> _decide(
     TranscriptSegment segment,
     String text, {
     required String? previous,
@@ -245,6 +260,41 @@ class LiveAnswerService {
     final material = await _material(segment.meetingId);
     final earlier = await _earlierTranscript(segment);
 
+    if (material != null && material.isLesson && await _geminiAvailable()) {
+      final wide = _request(material, earlier, text,
+          previous: previous, note: note, budget: ContextBudget.geminiLive);
+      try {
+        final raw = await _gemini!.complete(
+          model: kGeminiModel,
+          messages: [
+            LlmMessage.system(wide.system),
+            LlmMessage.user(wide.user),
+          ],
+          maxTokens: 3000,
+          jsonMode: true,
+          timeout: kGeminiLiveAnswerTimeout,
+        );
+        return (request: wide, decision: parseAnswerDecision(raw));
+      } on AiException catch (e) {
+        AppLog.e(_tag, 'segment ${segment.id}: Gemini failed, using Groq', e);
+      }
+    }
+
+    final request = _request(material, earlier, text,
+        previous: previous, note: note, budget: ContextBudget.automatic);
+    return (request: request, decision: await _ask(request));
+  }
+
+  /// The request for the passage [text]: the meeting path exactly as it always
+  /// was, or the lesson path when the student gave the AI anything.
+  _Request _request(
+    LessonMaterial? material,
+    String earlier,
+    String text, {
+    required String? previous,
+    required String note,
+    required ContextBudget budget,
+  }) {
     if (material == null || material.isEmpty) {
       final context = earlier.length <= kAnswerContextChars
           ? earlier
@@ -261,6 +311,7 @@ class LiveAnswerService {
       material: material,
       transcript: earlier,
       focus: '${previous ?? ''} $text',
+      budget: budget,
     );
     final heading = material.isLesson ? 'Lesson so far' : 'Meeting so far';
     return _Request(

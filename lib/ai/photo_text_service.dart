@@ -90,9 +90,14 @@ Reply with one JSON object and nothing else:
 
 "text": everything written on it, faithfully, in its own language, one line per
 line on the board; formulas in plain text. Empty if nothing is written.
-"description": one short sentence in Czech saying what the board shows,
-including any diagram, table or drawing that text alone would lose. No
-commentary about the photo itself.''';
+For a presentation slide keep its structure: the slide title on the first line,
+then each bullet on its own line starting with "- ", indented sub-bullets with
+"  - ". A table goes one row per line, cells separated by " | ", header row
+first. Leave out slide numbers, logos, footers and the presenter's name
+repeated on every slide.
+"description": one short sentence in Czech saying what it shows, including any
+diagram, chart, table or picture that text alone would lose — for a chart, what
+it compares and its trend. No commentary about the photo itself.''';
 }
 
 /// The reading in a reply, or null when it holds neither text nor description.

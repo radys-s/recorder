@@ -188,7 +188,10 @@ class _World {
     bool web = false,
     WebAnswer? webResult,
     this.lesson,
+    Object? geminiReply,
+    bool geminiKey = false,
   })  : llm = _Llm(reply),
+        gemini = geminiReply == null ? null : _Llm(geminiReply),
         segments = segments ??
             [_seg(0, _budget), _seg(1, _spent), _seg(2, _question)],
         webService = _Web(webResult) {
@@ -199,9 +202,13 @@ class _World {
       _Prefs(live: live, web: web),
       webService,
       lessonContext: lesson,
+      gemini: gemini,
+      hasGeminiKey: () async => geminiKey,
       pollInterval: const Duration(milliseconds: 1),
     );
   }
+
+  final _Llm? gemini;
 
   final _Lesson? lesson;
 
@@ -221,6 +228,72 @@ class _World {
 }
 
 void main() {
+  group('Gemini routing', () {
+    TranscriptSegment long(int sequence, String content) =>
+        _seg(sequence, content);
+
+    test('a lesson with a key is answered by Gemini with a wider look',
+        () async {
+      // Earlier lesson far longer than Groq's tail share (≈2 100 chars).
+      final early = 'ZAČÁTEK hodiny. ${'Mluvíme o realismu a venkově. ' * 150}';
+      final world = _World(
+        reply: _verdict(),
+        geminiReply: _verdict(set: {'short': 'Asi 1,2 milionu.'}),
+        geminiKey: true,
+        lesson: _Lesson(_czechLesson),
+        segments: [long(0, early), _seg(1, _spent), _seg(2, _question)],
+      );
+      await world.handle(2);
+
+      expect(world.llm.calls, isEmpty);
+      expect(world.gemini!.models.single, kGeminiModel);
+      expect(world.gemini!.jsonModes.single, isTrue);
+      expect(world.gemini!.calls.single.last.content, contains('ZAČÁTEK'));
+      expect(world.cards.inserted.single.answer.value, 'Asi 1,2 milionu.');
+    });
+
+    test('Gemini failing (429) falls back to Groq', () async {
+      final world = _World(
+        reply: _verdict(),
+        geminiReply: const AiTransientException('limit', statusCode: 429),
+        geminiKey: true,
+        lesson: _Lesson(_czechLesson),
+      );
+      await world.handle(2);
+
+      expect(world.gemini!.calls, hasLength(1));
+      expect(world.llm.models.single, kGroqAnswerModel);
+      expect(world.cards.inserted, hasLength(1));
+    });
+
+    test('without a key the lesson stays on Groq', () async {
+      final world = _World(
+        reply: _verdict(),
+        geminiReply: _verdict(),
+        lesson: _Lesson(_czechLesson),
+      );
+      await world.handle(2);
+      expect(world.gemini!.calls, isEmpty);
+      expect(world.llm.calls, hasLength(1));
+    });
+
+    test('a meeting without a subject stays on Groq even with a key', () async {
+      final world = _World(
+        reply: _verdict(),
+        geminiReply: _verdict(),
+        geminiKey: true,
+      );
+      await world.handle(2);
+      expect(world.gemini!.calls, isEmpty);
+      expect(world.llm.calls, hasLength(1));
+    });
+
+    test('the Gemini budget is wider than the automatic one', () {
+      expect(ContextBudget.geminiLive.total,
+          greaterThan(ContextBudget.automatic.total * 3));
+    });
+  });
+
   group('in a lesson', () {
     test('an answer from a card names the card and skips the web', () async {
       final world = _World(
