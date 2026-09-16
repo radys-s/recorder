@@ -45,8 +45,9 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     if (widget.recording && startedAt != null) {
       return DateTime.now().difference(startedAt).inMilliseconds;
     }
-    final segments =
-        ref.read(meetingSegmentsProvider(widget.meetingId)).valueOrNull;
+    final segments = ref
+        .read(meetingSegmentsProvider(widget.meetingId))
+        .valueOrNull;
     return segments == null || segments.isEmpty ? 0 : segments.last.endMs + 1;
   }
 
@@ -56,7 +57,9 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     _controller.clear();
 
     final intent = detectChatIntent(text);
-    final id = await ref.read(chatMessagesDaoProvider).addUserMessage(
+    final id = await ref
+        .read(chatMessagesDaoProvider)
+        .addUserMessage(
           meetingId: widget.meetingId,
           text: text,
           intent: intent,
@@ -117,7 +120,9 @@ class _ChatBarState extends ConsumerState<ChatBar> {
         _PhotoSource.gallery => await picker.pickPages(),
       };
     } on PlatformException {
-      say('Fotoaparát nebo fotky nejsou dostupné. Povol je v Nastavení iPhonu.');
+      say(
+        'Fotoaparát nebo fotky nejsou dostupné. Povol je v Nastavení iPhonu.',
+      );
       return;
     }
     if (photos.isEmpty) return;
@@ -140,9 +145,11 @@ class _ChatBarState extends ConsumerState<ChatBar> {
       unawaited(reader.read(id));
     }
     if (added.failed > 0) {
-      say(added.ids.isEmpty
-          ? 'Fotku se nepodařilo uložit.'
-          : 'Některé fotky se nepodařilo uložit (${added.failed}).');
+      say(
+        added.ids.isEmpty
+            ? 'Fotku se nepodařilo uložit.'
+            : 'Některé fotky se nepodařilo uložit (${added.failed}).',
+      );
     }
   }
 
@@ -179,75 +186,95 @@ class _ChatBarState extends ConsumerState<ChatBar> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Material(
-      color: scheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Gap.md, Gap.sm, Gap.sm, Gap.sm),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (widget.recording)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Gap.sm),
-                  child: FilledButton.tonalIcon(
-                    onPressed: _answering ? null : _answerNow,
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
+    final pill = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(24),
+      borderSide: BorderSide.none,
+    );
+
+    // A floating capsule rather than a band across the bottom edge.
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.only(bottom: Gap.sm),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Gap.md, Gap.xs, Gap.md, 0),
+        child: Material(
+          color: scheme.surfaceContainerHigh,
+          elevation: 3,
+          shadowColor: scheme.shadow.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(Gap.sheetRadius),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.all(Gap.xs),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.recording)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      Gap.sm,
+                      Gap.xs,
+                      Gap.sm,
+                      Gap.xs,
                     ),
-                    icon: _answering
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.bolt, size: 18),
-                    label: Text(_answering ? 'Hledám otázku…' : 'Odpověz teď'),
-                  ),
-                ),
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _addPhotos,
-                    tooltip: 'Fotka tabule nebo prezentace',
-                    icon: const Icon(Icons.add_photo_alternate_outlined),
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _send(),
-                      decoration: InputDecoration(
-                        hintText: widget.recording
-                            ? 'Kontext, otázka nebo pravidlo…'
-                            : 'Zeptej se na přepis…',
-                        isDense: true,
-                        filled: true,
-                        fillColor: scheme.surfaceContainerHighest,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: Gap.lg,
-                          vertical: Gap.md,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                          borderSide: BorderSide.none,
-                        ),
+                    child: FilledButton.tonalIcon(
+                      onPressed: _answering ? null : _answerNow,
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: _answering
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.bolt, size: 18),
+                      label: Text(
+                        _answering ? 'Hledám otázku…' : 'Odpověz teď',
                       ),
                     ),
                   ),
-                  const SizedBox(width: Gap.xs),
-                  IconButton.filled(
-                    onPressed: _send,
-                    tooltip: 'Odeslat',
-                    icon: const Icon(Icons.arrow_upward),
-                  ),
-                ],
-              ),
-            ],
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: _addPhotos,
+                      tooltip: 'Fotka tabule nebo prezentace',
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        minLines: 1,
+                        maxLines: 4,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: InputDecoration(
+                          hintText: widget.recording
+                              ? 'Kontext, otázka nebo pravidlo…'
+                              : 'Zeptej se na přepis…',
+                          isDense: true,
+                          filled: true,
+                          fillColor: scheme.surfaceContainerHighest,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: Gap.lg,
+                            vertical: Gap.md,
+                          ),
+                          border: pill,
+                          enabledBorder: pill,
+                          focusedBorder: pill,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: Gap.xs),
+                    IconButton.filled(
+                      onPressed: _send,
+                      tooltip: 'Odeslat',
+                      icon: const Icon(Icons.arrow_upward),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

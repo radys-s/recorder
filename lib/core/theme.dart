@@ -37,10 +37,13 @@ ThemeData _build(Brightness brightness) {
 
   return base.copyWith(
     textTheme: text,
-    scaffoldBackgroundColor: scheme.surface,
+    // Three steps of depth on one hue: the page is the lowest surface, cards
+    // sit one step up, sheets and dialogs one more. Hierarchy from tone, not
+    // from shadows.
+    scaffoldBackgroundColor: scheme.surfaceContainerLowest,
 
     appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
+      backgroundColor: scheme.surfaceContainerLowest,
       surfaceTintColor: scheme.surfaceTint,
       foregroundColor: scheme.onSurface,
       elevation: 0,
@@ -65,6 +68,10 @@ ThemeData _build(Brightness brightness) {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Gap.radius),
+        // A hairline in dark, where tone steps alone are too close to see.
+        side: brightness == Brightness.dark
+            ? BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4))
+            : BorderSide.none,
       ),
     ),
 
@@ -143,17 +150,17 @@ ThemeData _build(Brightness brightness) {
 
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      fillColor: scheme.surfaceContainerHigh.withValues(alpha: 0.7),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(Gap.md),
+        borderRadius: BorderRadius.circular(Gap.lg),
         borderSide: BorderSide(color: scheme.outlineVariant),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(Gap.md),
-        borderSide: BorderSide(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(Gap.lg),
+        borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(Gap.md),
+        borderRadius: BorderRadius.circular(Gap.lg),
         borderSide: BorderSide(color: scheme.primary, width: 2),
       ),
     ),
@@ -172,7 +179,7 @@ ThemeData _build(Brightness brightness) {
     // A quiet bar: the tint of the surface one step up rather than a coloured
     // band, with the pill behind the selected tab doing the pointing.
     navigationBarTheme: NavigationBarThemeData(
-      height: 68,
+      height: 64,
       elevation: 0,
       backgroundColor: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
@@ -193,7 +200,7 @@ ThemeData _build(Brightness brightness) {
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Gap.xl),
+        borderRadius: BorderRadius.circular(Gap.sheetRadius),
       ),
       titleTextStyle: text.titleLarge?.copyWith(color: scheme.onSurface),
       contentTextStyle: text.bodyMedium?.copyWith(
@@ -202,12 +209,13 @@ ThemeData _build(Brightness brightness) {
     ),
 
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: scheme.surfaceContainerLow,
+      backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(Gap.xl)),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(Gap.sheetRadius)),
       ),
     ),
 
@@ -275,6 +283,12 @@ ThemeData _build(Brightness brightness) {
 /// and titles at w600 rather than w400, so hierarchy comes from weight instead
 /// of from more size steps.
 TextTheme _tuneText(TextTheme t) => t.copyWith(
+      // Large collapsing titles on the root tabs: heavy and tight, the way a
+      // native large title reads.
+      headlineMedium: t.headlineMedium?.copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.8,
+      ),
       headlineSmall: t.headlineSmall?.copyWith(
         fontWeight: FontWeight.w600,
         letterSpacing: -0.3,

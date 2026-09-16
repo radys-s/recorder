@@ -73,6 +73,42 @@ void main() {
     expect(formatSlot(_slot(1, 1, 3, '8:00', '8:45')), 'St 8:00–8:45');
   });
 
+  group('todaySlotHint', () {
+    test('a running slot is reported as running', () {
+      final hint = todaySlotHint([_slot(1, 10, 1, '8:00', '8:45')], _mon(8, 10));
+      expect(hint?.slot.id, 1);
+      expect(hint?.running, isTrue);
+    });
+
+    test('otherwise the next slot today, earliest first', () {
+      final slots = [
+        _slot(1, 10, 1, '11:00', '11:45'),
+        _slot(2, 11, 1, '9:00', '9:45'),
+      ];
+      final hint = todaySlotHint(slots, _mon(8, 50));
+      expect(hint?.slot.id, 2);
+      expect(hint?.running, isFalse);
+    });
+
+    test('other weekdays and finished slots give nothing', () {
+      final slots = [
+        _slot(1, 10, 2, '9:00', '9:45'),
+        _slot(2, 11, 1, '7:00', '7:45'),
+      ];
+      expect(todaySlotHint(slots, _mon(8, 0)), isNull);
+      expect(todaySlotHint(const [], _mon(8, 0)), isNull);
+    });
+
+    test('ties go to the lower id, the end minute is exclusive', () {
+      final slots = [
+        _slot(5, 10, 1, '8:00', '8:45'),
+        _slot(3, 11, 1, '8:00', '8:45'),
+      ];
+      expect(todaySlotHint(slots, _mon(8, 0))?.slot.id, 3);
+      expect(todaySlotHint(slots, _mon(8, 45)), isNull);
+    });
+  });
+
   group('slots in the database', () {
     late AppDatabase db;
     setUp(() => db = AppDatabase.forTesting(NativeDatabase.memory()));

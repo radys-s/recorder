@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../motion.dart';
 import '../spacing.dart';
 
 /// Renders an [AsyncValue]'s loading and error states so screens only have to
@@ -44,16 +45,131 @@ class AsyncView<T> extends StatelessWidget {
         onRetry: onRetry,
       );
     }
-    return const Center(child: CircularProgressIndicator());
+    return const LoadingSkeleton();
+  }
+}
+
+/// [AsyncView] for a [CustomScrollView]: [builder] returns a sliver, and the
+/// loading and error states fill whatever is left of the viewport.
+class AsyncSliver<T> extends StatelessWidget {
+  const AsyncSliver({
+    super.key,
+    required this.value,
+    required this.message,
+    required this.builder,
+    this.onRetry,
+  });
+
+  final AsyncValue<T> value;
+  final String message;
+  final Widget Function(T data) builder;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value.hasValue) return builder(value.requireValue);
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: AsyncView<T>(
+        value: value,
+        message: message,
+        onRetry: onRetry,
+        builder: (_) => const SizedBox.shrink(),
+      ),
+    );
+  }
+}
+
+/// Grey card shapes where the list is about to be, with a slow sheen across
+/// them — the layout arrives before the data, so nothing jumps when it does.
+/// Static under reduced motion.
+class LoadingSkeleton extends StatefulWidget {
+  const LoadingSkeleton({super.key, this.rows = 4});
+
+  final int rows;
+
+  @override
+  State<LoadingSkeleton> createState() => _LoadingSkeletonState();
+}
+
+class _LoadingSkeletonState extends State<LoadingSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _sheen = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      _sheen.stop();
+    } else if (!_sheen.isAnimating) {
+      _sheen.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _sheen.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final base = scheme.surfaceContainerHigh;
+    final shine = scheme.surfaceContainerLow;
+
+    final blocks = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < widget.rows; i++)
+          Container(
+            height: 76,
+            margin: const EdgeInsets.only(bottom: Gap.sm),
+            decoration: BoxDecoration(
+              color: base,
+              borderRadius: BorderRadius.circular(Gap.radius),
+            ),
+          ),
+      ],
+    );
+
+    return Semantics(
+      label: 'Načítám',
+      child: ClipRect(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, 0),
+            child: reducedMotion(context)
+                ? blocks
+                : AnimatedBuilder(
+                    animation: _sheen,
+                    child: blocks,
+                    builder: (context, child) {
+                      final t = _sheen.value * 3 - 1;
+                      return ShaderMask(
+                        blendMode: BlendMode.srcATop,
+                        shaderCallback: (rect) => LinearGradient(
+                          begin: Alignment(t - 1, -0.3),
+                          end: Alignment(t + 1, 0.3),
+                          colors: [base, shine, base],
+                        ).createShader(rect),
+                        child: child,
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
 class _AsyncError extends StatelessWidget {
-  const _AsyncError({
-    required this.message,
-    required this.error,
-    this.onRetry,
-  });
+  const _AsyncError({required this.message, required this.error, this.onRetry});
 
   final String message;
   final Object error;

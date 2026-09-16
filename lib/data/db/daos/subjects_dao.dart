@@ -316,6 +316,10 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
             ]))
           .watch();
 
+  /// Every slot of every subject, live — what the home screen reads.
+  Stream<List<TimetableSlot>> watchAllSlots() =>
+      select(timetableSlots).watch();
+
   /// Every slot of every subject — what the start sheet picks from.
   Future<List<TimetableSlot>> allSlots() => select(timetableSlots).get();
 

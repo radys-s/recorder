@@ -21,5 +21,8 @@ abstract final class Gap {
   /// Corner radius for cards and other raised surfaces. Kept here rather than
   /// in the theme because a few widgets need the number itself (clipping an
   /// ink splash, matching a container to the card behind it).
-  static const double radius = 14;
+  static const double radius = 20;
+
+  /// Corner radius for bottom sheets and hero surfaces.
+  static const double sheetRadius = 28;
 }

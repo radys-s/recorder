@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../audio/recording_controller.dart';
@@ -9,6 +10,7 @@ import '../../../core/motion.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../core/theme.dart';
+import '../../../core/widgets/level_waveform.dart';
 import '../meeting_detail_screen.dart';
 
 /// The "recording in progress" strip, mounted from `MaterialApp.builder` so it
@@ -164,10 +166,12 @@ class _BannerState extends ConsumerState<_Banner> {
   @override
   Widget build(BuildContext context) {
     // Only the two fields this strip shows; the clock has its own ticker.
-    final meetingId =
-        ref.watch(recordingControllerProvider.select((s) => s.meetingId));
-    final startedAt =
-        ref.watch(recordingControllerProvider.select((s) => s.startedAt));
+    final meetingId = ref.watch(
+      recordingControllerProvider.select((s) => s.meetingId),
+    );
+    final startedAt = ref.watch(
+      recordingControllerProvider.select((s) => s.startedAt),
+    );
     final elapsed = startedAt == null
         ? Duration.zero
         : DateTime.now().difference(startedAt);
@@ -197,9 +201,16 @@ class _BannerState extends ConsumerState<_Banner> {
                     ),
                   ),
                 ),
+                LevelWaveform(
+                  level: ref.read(recordingControllerProvider.notifier).level,
+                  color: scheme.onErrorContainer,
+                ),
+                const SizedBox(width: Gap.xs),
                 TextButton.icon(
-                  onPressed: () =>
-                      ref.read(recordingControllerProvider.notifier).stop(),
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    ref.read(recordingControllerProvider.notifier).stop();
+                  },
                   icon: const Icon(Icons.stop, size: 18),
                   label: const Text('Zastavit'),
                   style: TextButton.styleFrom(

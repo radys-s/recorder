@@ -32,12 +32,16 @@ class SectionHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!first) ...[
-          const SizedBox(height: Gap.xl),
-          const Divider(),
-          const SizedBox(height: Gap.lg),
-        ],
-        Text(title, style: theme.textTheme.titleMedium),
+        // Air instead of a rule: grouped sections read as separate by spacing
+        // and weight alone, the way iOS settings do.
+        if (!first) const SizedBox(height: Gap.xxl),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+        ),
         if (description != null) ...[
           const SizedBox(height: Gap.xs),
           Text(

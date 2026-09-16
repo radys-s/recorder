@@ -61,3 +61,33 @@ int? pickSubjectForNow(List<TimetableSlot> slots, DateTime now) {
   }
   return best?.subjectId;
 }
+
+/// What the home screen says about today: the lesson running now, else the
+/// next one still to come today. Ties go to the earlier start, then the lower
+/// id. Unlike [pickSubjectForNow] this never looks past midnight — "next" on a
+/// Friday evening is not Monday's first lesson.
+({TimetableSlot slot, bool running})? todaySlotHint(
+  List<TimetableSlot> slots,
+  DateTime now,
+) {
+  final minute = now.hour * 60 + now.minute;
+  bool before(TimetableSlot a, TimetableSlot? b) =>
+      b == null ||
+      a.startMinute < b.startMinute ||
+      (a.startMinute == b.startMinute && a.id < b.id);
+
+  TimetableSlot? running;
+  TimetableSlot? next;
+  for (final slot in slots) {
+    if (slot.weekday != now.weekday) continue;
+    if (slot.endMinute <= slot.startMinute) continue;
+    if (slot.startMinute <= minute && minute < slot.endMinute) {
+      if (before(slot, running)) running = slot;
+    } else if (slot.startMinute > minute) {
+      if (before(slot, next)) next = slot;
+    }
+  }
+  if (running != null) return (slot: running, running: true);
+  if (next != null) return (slot: next, running: false);
+  return null;
+}

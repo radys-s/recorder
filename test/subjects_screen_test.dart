@@ -44,6 +44,17 @@ void main() {
     expect(find.text('Nový předmět'), findsOneWidget);
   });
 
+  subjectsTest('the tab has a collapsing large title and a tile grid',
+      (tester) async {
+    await db.savedNotesDao.createFolder('Čeština');
+    await pumpSubjects(tester);
+
+    expect(find.byType(SliverAppBar), findsOneWidget);
+    // The large variant renders the title twice: expanded and collapsed.
+    expect(find.text('Předměty'), findsNWidgets(2));
+    expect(find.byType(SliverGrid), findsOneWidget);
+  });
+
   subjectsTest('a subject lists its cards and opens them', (tester) async {
     final cz = await db.savedNotesDao.createFolder('Čeština');
     await db.subjectsDao.createCard(

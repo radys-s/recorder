@@ -8,6 +8,7 @@ import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/menu_row.dart';
+import '../../core/widgets/pressable.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
 import '../settings/settings_screen.dart';
@@ -79,80 +80,92 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
         ? FolderFilter.all
         : _filter;
 
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Poznámky'),
-        actions: [
-          if (selected != null)
-            PopupMenuButton<_FolderAction>(
-              icon: const Icon(Icons.more_vert),
-              tooltip: 'Předmět',
-              onSelected: (action) => _folderAction(action, selected!),
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: _FolderAction.rename,
-                  child: MenuRow(
-                    icon: Icons.drive_file_rename_outline,
-                    label: 'Přejmenovat předmět',
-                  ),
-                ),
-                PopupMenuItem(
-                  value: _FolderAction.delete,
-                  child: MenuRow(
-                    icon: Icons.delete_outline,
-                    label: 'Smazat předmět',
-                    destructive: true,
-                  ),
-                ),
-              ],
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Nastavení',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, Gap.sm),
-            child: TextField(
-              controller: _search,
-              textInputAction: TextInputAction.search,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Hledat v poznámkách',
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Vymazat hledání',
-                        onPressed: () => setState(_search.clear),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(
+            title: const Text('Poznámky'),
+            actions: [
+              if (selected != null)
+                PopupMenuButton<_FolderAction>(
+                  icon: const Icon(Icons.more_vert),
+                  tooltip: 'Předmět',
+                  onSelected: (action) => _folderAction(action, selected!),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: _FolderAction.rename,
+                      child: MenuRow(
+                        icon: Icons.drive_file_rename_outline,
+                        label: 'Přejmenovat předmět',
                       ),
+                    ),
+                    PopupMenuItem(
+                      value: _FolderAction.delete,
+                      child: MenuRow(
+                        icon: Icons.delete_outline,
+                        label: 'Smazat předmět',
+                        destructive: true,
+                      ),
+                    ),
+                  ],
+                ),
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                tooltip: 'Nastavení',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Gap.lg,
+                Gap.xs,
+                Gap.lg,
+                Gap.sm,
+              ),
+              child: TextField(
+                controller: _search,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Hledat v poznámkách',
+                  prefixIcon: const Icon(Icons.search),
+                  isDense: true,
+                  suffixIcon: _search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Vymazat hledání',
+                          onPressed: () => setState(_search.clear),
+                        ),
+                ),
               ),
             ),
           ),
-          _FolderBar(
-            filter: filter,
-            folders: folders,
-            notes: notes.valueOrNull ?? const [],
-            onSelected: (value) => setState(() => _filter = value),
-            onLongPress: (summary) => _showFolderMenu(summary),
-            onCreate: _newFolder,
-          ),
-          Expanded(
-            child: AsyncView(
-              value: notes,
-              message: 'Poznámky se nepodařilo načíst.',
-              onRetry: () => ref.invalidate(savedNotesProvider),
-              builder: (all) => _buildList(all, filter, folders),
+          SliverToBoxAdapter(
+            child: _FolderBar(
+              filter: filter,
+              folders: folders,
+              notes: notes.valueOrNull ?? const [],
+              onSelected: (value) => setState(() => _filter = value),
+              onLongPress: (summary) => _showFolderMenu(summary),
+              onCreate: _newFolder,
             ),
           ),
+          AsyncSliver(
+            value: notes,
+            message: 'Poznámky se nepodařilo načíst.',
+            onRetry: () => ref.invalidate(savedNotesProvider),
+            builder: (all) => _buildList(all, filter, folders),
+          ),
+          SliverPadding(padding: EdgeInsets.only(bottom: Gap.xl + bottomInset)),
         ],
       ),
     );
@@ -201,29 +214,38 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
     FolderFilter filter,
     List<FolderSummary> folders,
   ) {
+    Widget empty(Widget state) =>
+        SliverFillRemaining(hasScrollBody: false, child: state);
+
     if (all.isEmpty) {
-      return const EmptyState(
-        icon: Icons.bookmarks_outlined,
-        title: 'Knihovna je zatím prázdná',
-        message: 'Otevři schůzku, v záložce Poznámky je vytvoř a klepni na '
-            'Uložit. Tady je pak najdeš roztříděné podle předmětů.',
+      return empty(
+        const EmptyState(
+          icon: Icons.bookmarks_outlined,
+          title: 'Knihovna je zatím prázdná',
+          message:
+              'Otevři schůzku, v záložce Poznámky je vytvoř a klepni na '
+              'Uložit. Tady je pak najdeš roztříděné podle předmětů.',
+        ),
       );
     }
 
     final visible = filterSavedNotes(all, filter: filter, query: _search.text);
     if (visible.isEmpty) {
-      return _search.text.trim().isNotEmpty
-          ? const EmptyState(
-              icon: Icons.search_off,
-              title: 'Nic nenalezeno',
-              message: 'Zkus jiné slovo nebo jiný předmět.',
-            )
-          : const EmptyState(
-              icon: Icons.folder_open_outlined,
-              title: 'Tady zatím nic není',
-              message: 'Poznámku sem přesuneš v jejím detailu přes '
-                  'Přesunout do předmětu.',
-            );
+      return empty(
+        _search.text.trim().isNotEmpty
+            ? const EmptyState(
+                icon: Icons.search_off,
+                title: 'Nic nenalezeno',
+                message: 'Zkus jiné slovo nebo jiný předmět.',
+              )
+            : const EmptyState(
+                icon: Icons.folder_open_outlined,
+                title: 'Tady zatím nic není',
+                message:
+                    'Poznámku sem přesuneš v jejím detailu přes '
+                    'Přesunout do předmětu.',
+              ),
+      );
     }
 
     final names = {for (final f in folders) f.folder.id: f.folder.name};
@@ -234,29 +256,33 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
       if (_seen.add(note.id)) entering[note.id] = entering.length;
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, Gap.xl),
-      itemCount: visible.length,
-      itemBuilder: (_, i) {
-        final note = visible[i];
-        final order = entering[note.id];
-        return Entrance(
-          enabled: order != null,
-          delay: firstPaint && order != null
-              ? AppMotion.staggerDelay(order)
-              : Duration.zero,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: Gap.sm),
-            child: _SavedNoteCard(
-              note: note,
-              // In a folder's own view its name on every card is noise.
-              folderName: filter.kind == FolderFilterKind.folder
-                  ? null
-                  : names[note.folderId],
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, 0),
+      sliver: SliverList.builder(
+        itemCount: visible.length,
+        itemBuilder: (_, i) {
+          final note = visible[i];
+          final order = entering[note.id];
+          return Entrance(
+            enabled: order != null,
+            delay: firstPaint && order != null
+                ? AppMotion.staggerDelay(order)
+                : Duration.zero,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: Gap.sm),
+              child: Pressable(
+                child: _SavedNoteCard(
+                  note: note,
+                  // In a folder's own view its name on every card is noise.
+                  folderName: filter.kind == FolderFilterKind.folder
+                      ? null
+                      : names[note.folderId],
+                ),
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -299,7 +325,8 @@ class _FolderBar extends StatelessWidget {
             label: summary.folder.name,
             count: summary.noteCount,
             selected: filter.folderId == summary.folder.id,
-            onSelected: () => onSelected(FolderFilter.folder(summary.folder.id)),
+            onSelected: () =>
+                onSelected(FolderFilter.folder(summary.folder.id)),
           ),
         ),
       // Only once there are subjects: before that every note is unfiled and the
@@ -434,8 +461,11 @@ class _SavedNoteCard extends StatelessWidget {
                     Row(
                       children: [
                         if (folderName != null) ...[
-                          Icon(Icons.folder_outlined,
-                              size: 14, color: scheme.primary),
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 14,
+                            color: scheme.primary,
+                          ),
                           const SizedBox(width: Gap.xs),
                           Flexible(
                             child: Text(
