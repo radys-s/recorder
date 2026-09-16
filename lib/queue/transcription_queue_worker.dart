@@ -212,6 +212,13 @@ class TranscriptionQueueWorker {
         );
       }
       var text = sanitizeTranscript(result.text);
+      if (segment != null) {
+        text = limitToSpeakingRate(
+          collapseRepeats(text),
+          voicedMs: segment.voicedMs,
+          durationMs: segment.endMs - segment.startMs,
+        );
+      }
       if (text != result.text.trim()) {
         AppLog.d(
           _tag,

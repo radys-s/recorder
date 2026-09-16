@@ -15,4 +15,9 @@ class TranscriptSegments extends Table {
   IntColumn get status => intEnum<SegmentStatus>()();
   TextColumn get localAudioPath => text()();
   DateTimeColumn get createdAt => dateTime()();
+
+  /// How much of the chunk sounded like speech when it was recorded. Lets the
+  /// worker reject a transcript far longer than the speech it came from;
+  /// null for rows written before v12, which skip that check.
+  IntColumn get voicedMs => integer().nullable()();
 }

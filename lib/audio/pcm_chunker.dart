@@ -12,6 +12,7 @@ class PcmChunk {
     required this.frames,
     required this.byteLength,
     required this.voicedMs,
+    this.voicedFrames = const [],
   });
 
   /// 0-based position of this chunk within its meeting.
@@ -32,6 +33,10 @@ class PcmChunk {
   /// be somebody talking. A chunk with next to none of it is room tone, and
   /// uploading room tone is how Whisper ends up inventing sentences.
   final int voicedMs;
+
+  /// Per frame, index for index with [frames]: whether it counted as voiced.
+  /// What the loudness gain averages over, so pauses do not drag it down.
+  final List<bool> voicedFrames;
 
   Duration get duration => Duration(milliseconds: endMs - startMs);
 
@@ -294,7 +299,8 @@ class PcmChunker {
   void _emit(int count) {
     final head = _frames.sublist(0, count);
     final headBytes = head.fold<int>(0, (sum, f) => sum + f.length);
-    final voicedFrames = _voiced.take(count).where((v) => v).length;
+    final voicedFlags = List<bool>.unmodifiable(_voiced.take(count));
+    final voicedFrames = voicedFlags.where((v) => v).length;
 
     final chunk = PcmChunk(
       sequence: _sequence,
@@ -303,6 +309,7 @@ class PcmChunker {
       frames: List<Uint8List>.unmodifiable(head),
       byteLength: headBytes,
       voicedMs: voicedFrames * frameDuration.inMilliseconds,
+      voicedFrames: voicedFlags,
     );
 
     _sequence++;

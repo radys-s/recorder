@@ -33,8 +33,15 @@ class GroqWhisperSttProvider implements SttProvider {
   static const _tag = 'stt.groq';
 
   /// How much of the previous transcript to hand Whisper as context. Long
-  /// prompts start steering the output rather than just continuing it.
-  static const _maxPromptChars = 200;
+  /// prompts start steering the output rather than just continuing it, but
+  /// 200 chars was too little for a short chunk to know what sentence it is
+  /// in the middle of.
+  static const _maxPromptChars = 350;
+
+  /// Whisper reads at most 224 prompt tokens; ~600 chars of Czech stays under
+  /// it. The glossary is trimmed first, since the tail is what continuity
+  /// depends on.
+  static const _maxTotalPromptChars = 600;
 
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
@@ -97,7 +104,17 @@ class GroqWhisperSttProvider implements SttProvider {
     final tail = trimmed.length <= _maxPromptChars
         ? trimmed
         : trimmed.substring(trimmed.length - _maxPromptChars);
-    final terms = glossary?.trim() ?? '';
+    var terms = glossary?.trim() ?? '';
+    final room = _maxTotalPromptChars - tail.length - 2;
+    if (terms.length > room) {
+      if (room < 20) {
+        terms = '';
+      } else {
+        final cut = terms.substring(0, room);
+        final lastComma = cut.lastIndexOf(',');
+        terms = (lastComma > 0 ? cut.substring(0, lastComma) : cut).trim();
+      }
+    }
     final prompt = [
       if (terms.isNotEmpty) terms.endsWith('.') ? terms : '$terms.',
       if (tail.isNotEmpty) tail,

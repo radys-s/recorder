@@ -420,10 +420,16 @@ class RecordingController extends Notifier<RecordingState> {
       final noSpeech = chunk.voicedMs < profile.minVoicedDuration.inMilliseconds;
       final skip = tooShort || noSpeech;
 
-      // Only audio that is going to Whisper is worth raising, and only on the
-      // high setting — see [SensitivityProfile.maxGain].
-      final gain =
-          skip ? 1.0 : normalizingGain(chunk.frames, maxGain: profile.maxGain);
+      // Only audio that is going to Whisper is worth raising. The skipped
+      // chunks keep their original level; the refined pass after the lesson
+      // applies its own gain when it reads them.
+      final gain = skip
+          ? 1.0
+          : speechGain(
+              chunk.frames,
+              chunk.voicedFrames,
+              maxGain: profile.maxGain,
+            );
       final file = await writeWavFile(
         path: path,
         pcmFrames: applyGain(chunk.frames, gain),
@@ -442,6 +448,7 @@ class RecordingController extends Notifier<RecordingState> {
           status: skip ? SegmentStatus.transcribed : SegmentStatus.pending,
           localAudioPath: storedPath,
           createdAt: DateTime.now(),
+          voicedMs: Value(chunk.voicedMs),
         ),
       );
 

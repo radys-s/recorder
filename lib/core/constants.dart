@@ -21,9 +21,14 @@ const Duration kChunkMinDuration = Duration(seconds: 15);
 ///
 /// `kConfidentSilenceDuration` deliberately stays where it is, so cuts still
 /// land on real pauses between sentences rather than mid-question.
-const Duration kFastChunkMinDuration = Duration(seconds: 6);
-const Duration kFastChunkTargetDuration = Duration(seconds: 10);
+const Duration kFastChunkMinDuration = Duration(seconds: 8);
+const Duration kFastChunkTargetDuration = Duration(seconds: 13);
 const Duration kFastChunkHardCapDuration = Duration(seconds: 20);
+
+/// Ceiling on the loudness gain for automatic sensitivity: +24 dB, enough for a
+/// teacher across a classroom. The gain itself is measured per chunk on the
+/// voiced frames and a soft limiter keeps peaks from clipping.
+const double kAutoMaxGain = 16;
 
 /// Groq Whisper STT.
 const String kGroqTranscriptionUrl =

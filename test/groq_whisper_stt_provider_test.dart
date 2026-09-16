@@ -95,7 +95,7 @@ void main() {
   test('sends the key, greedy decoding, the language and a trimmed prompt',
       () async {
     final (stt, adapter) = provider(200, {'text': ' Ahoj. '});
-    final longPrompt = '${'x' * 300}KONEC';
+    final longPrompt = '${'x' * 500}KONEC';
     final result = await stt.transcribe(
       audioFile: audio,
       languageCode: 'cs',
@@ -110,7 +110,7 @@ void main() {
     final prompt = RegExp(r'name="prompt"\r\n\r\n(.*?)\r\n')
         .firstMatch(adapter.lastBody)!
         .group(1)!;
-    expect(prompt, hasLength(200));
+    expect(prompt, hasLength(350));
     expect(prompt, endsWith('KONEC'));
   });
 

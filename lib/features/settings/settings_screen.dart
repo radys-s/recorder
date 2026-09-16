@@ -407,8 +407,8 @@ class _LanguageSection extends ConsumerWidget {
 }
 
 /// How readily quiet audio counts as speech. See `SensitivityProfile` for
-/// what each step changes; the same setting is on the meeting screen's app
-/// bar, since a meeting that is too quiet is noticed while it is running.
+/// what each step changes. Automatic is the default and almost always right,
+/// so the manual choice sits collapsed under „Pokročilé".
 class _SensitivitySection extends ConsumerWidget {
   const _SensitivitySection();
 
@@ -417,6 +417,29 @@ class _SensitivitySection extends ConsumerWidget {
     final prefs = ref.watch(preferencesProvider);
     final selected = prefs.valueOrNull?.micSensitivity;
 
+    return Theme(
+      // ExpansionTile draws dividers above and below when open; the other
+      // sections have none.
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        title: const Text('Pokročilé'),
+        subtitle: Text(
+          'Citlivost poslechu: ${(selected ?? MicSensitivity.auto).label}',
+        ),
+        children: [
+          _manualSensitivity(ref, ready: prefs.hasValue, selected: selected),
+        ],
+      ),
+    );
+  }
+
+  Widget _manualSensitivity(
+    WidgetRef ref, {
+    required bool ready,
+    required MicSensitivity? selected,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -435,7 +458,7 @@ class _SensitivitySection extends ConsumerWidget {
               ChoiceChip(
                 label: Text(value.label),
                 selected: value == (selected ?? MicSensitivity.auto),
-                onSelected: prefs.hasValue
+                onSelected: ready
                     ? (_) => ref
                         .read(preferencesDaoProvider)
                         .setMicSensitivity(value)

@@ -12,7 +12,6 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/menu_row.dart';
 import '../../data/db/app_database.dart';
-import '../../data/db/tables/preferences_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
 import '../meetings_list/meeting_actions.dart';
 import '../subjects/widgets/lesson_context_strip.dart';
@@ -120,16 +119,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
       );
   }
 
-  Future<void> _setSensitivity(MicSensitivity value) async {
-    await ref.read(preferencesDaoProvider).setMicSensitivity(value);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text('Citlivost poslechu: ${value.label}')),
-      );
-  }
-
   @override
   Widget build(BuildContext context) {
     final meeting = ref.watch(meetingProvider(widget.meetingId));
@@ -140,8 +129,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     );
     final prefs = ref.watch(preferencesProvider);
     final liveAnswers = prefs.valueOrNull?.liveAnswersEnabled ?? false;
-    final sensitivity =
-        prefs.valueOrNull?.micSensitivity ?? MicSensitivity.auto;
 
     return DefaultTabController(
       length: 2,
@@ -149,23 +136,6 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         appBar: AppBar(
           title: Text(meeting.valueOrNull?.title ?? 'Schůzka'),
           actions: [
-            // Here as well as in Settings: a meeting that is too quiet is
-            // noticed while it is running, and the change applies at once.
-            PopupMenuButton<MicSensitivity>(
-              icon: const Icon(Icons.hearing),
-              tooltip: 'Citlivost poslechu: ${sensitivity.label}',
-              enabled: prefs.hasValue,
-              initialValue: sensitivity,
-              onSelected: _setSensitivity,
-              itemBuilder: (_) => [
-                for (final value in MicSensitivity.ordered)
-                  CheckedPopupMenuItem(
-                    value: value,
-                    checked: value == sensitivity,
-                    child: Text(value.label),
-                  ),
-              ],
-            ),
             IconButton(
               // The two icons differ only in fill, so a hard swap reads as a
               // glitch rather than as a state change. Scaling through the

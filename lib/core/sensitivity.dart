@@ -90,7 +90,7 @@ class SensitivityProfile {
     silenceRmsThreshold: 0.007,
     noSpeechProbThreshold: 0.7,
     lowAvgLogprobThreshold: -1.1,
-    maxGain: 4,
+    maxGain: kAutoMaxGain,
   );
 
   static SensitivityProfile of(MicSensitivity sensitivity) =>
@@ -154,7 +154,6 @@ class AutoCalibrator {
     double percentile(double q) =>
         sorted[((sorted.length - 1) * q).round()];
     final floor = percentile(0.2);
-    final speech = percentile(0.9);
 
     final voiced = (floor * 2).clamp(0.002, 0.008);
     final silence =
@@ -169,9 +168,9 @@ class AutoCalibrator {
       silenceRmsThreshold: silence,
       noSpeechProbThreshold: 0.8 - 0.3 * noise,
       lowAvgLogprobThreshold: -1.2 + 0.4 * noise,
-      // A speaker already at -20 dBFS needs nothing; a distant one gets up to
-      // the same +18 dB as the manual high setting.
-      maxGain: speech <= 0 ? 8 : (0.1 / speech).clamp(1.0, 8.0),
+      // The gain itself is measured per chunk on its voiced frames (see
+      // `speechGain`), so the room only has to set the ceiling.
+      maxGain: kAutoMaxGain,
     );
   }
 }

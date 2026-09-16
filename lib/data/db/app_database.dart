@@ -63,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -125,6 +125,9 @@ class AppDatabase extends _$AppDatabase {
             // Automatic sensitivity arrived in v11; existing installs switch
             // to it once, and a manual choice made afterwards sticks.
             await customStatement('UPDATE preferences SET mic_sensitivity = 3');
+          }
+          if (from < 12) {
+            await m.addColumn(transcriptSegments, transcriptSegments.voicedMs);
           }
         },
       );

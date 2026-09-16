@@ -127,6 +127,92 @@ bool isPromptEcho(String text, String? prompt) {
   return ' ${normalizeForArtifactMatch(prompt)} '.contains(' $t ');
 }
 
+/// Trims a transcript that is implausibly long for the speech it came from.
+///
+/// Whisper over a chunk with a second of speech and nine of room tone can
+/// return three fluent sentences; nobody said two of them. Czech speech runs
+/// at ~12–15 chars/s, so the allowance here is loose on purpose — 20 chars per
+/// voiced second, 10 per unvoiced second (the voiced gate under-counts a quiet
+/// or distant speaker) plus a fixed 30 — and only a clear outlier is cut.
+///
+/// Whole sentences are removed from the end until the text fits; a first
+/// sentence that alone is too long is cut at a word boundary. Null
+/// [voicedMs] (rows older than the measurement) disables the check.
+String limitToSpeakingRate(
+  String text, {
+  required int? voicedMs,
+  required int durationMs,
+}) {
+  if (voicedMs == null || text.isEmpty) return text;
+  final voicedSec = voicedMs.clamp(0, durationMs) / 1000;
+  final unvoicedSec = (durationMs - voicedMs).clamp(0, durationMs) / 1000;
+  final allowed = (30 + 20 * voicedSec + 10 * unvoicedSec).round();
+  if (text.length <= allowed) return text;
+
+  final sentences = _splitSentences(text);
+  var kept = '';
+  for (final sentence in sentences) {
+    final next = kept + sentence;
+    if (next.trim().length > allowed) break;
+    kept = next;
+  }
+  if (kept.trim().isNotEmpty) return kept.trim();
+
+  final cut = text.substring(0, allowed);
+  final space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.substring(0, space) : cut).trim();
+}
+
+/// Collapses a phrase Whisper got stuck repeating.
+///
+/// A decoding loop ("a pak jsme a pak jsme a pak jsme…") is the other shape
+/// invented text takes. A run of 2–6 words repeated three or more times in a
+/// row, compared on normalised words, keeps one occurrence. Two repeats are
+/// left alone: "ano ano" and "velmi velmi" are real speech.
+String collapseRepeats(String text) {
+  final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.length < 6) return text;
+  final keys = [for (final w in words) normalizeForArtifactMatch(w)];
+
+  final out = <String>[];
+  final outKeys = <String>[];
+  var i = 0;
+  var changed = false;
+  while (i < words.length) {
+    var skipped = false;
+    // Shortest period first, so "a b a b a b a b" keeps "a b", not "a b a b".
+    for (var n = 2; n <= 6; n++) {
+      if (i + n * 3 > words.length) break;
+      var repeats = 1;
+      while (i + n * (repeats + 1) <= words.length &&
+          _sameRun(keys, i, i + n * repeats, n)) {
+        repeats++;
+      }
+      if (repeats >= 3) {
+        out.addAll(words.sublist(i, i + n));
+        outKeys.addAll(keys.sublist(i, i + n));
+        i += n * repeats;
+        skipped = true;
+        changed = true;
+        break;
+      }
+    }
+    if (!skipped) {
+      out.add(words[i]);
+      outKeys.add(keys[i]);
+      i++;
+    }
+  }
+  return changed ? out.join(' ') : text;
+}
+
+bool _sameRun(List<String> keys, int a, int b, int n) {
+  for (var k = 0; k < n; k++) {
+    if (keys[a + k].isEmpty || keys[a + k] != keys[b + k]) return false;
+  }
+  return true;
+}
+
 /// Sound tags Whisper writes in parentheses rather than brackets.
 final RegExp _kParenthesizedTag = RegExp(
   r'\(\s*(?:hudba|potlesk|smích|smich|ticho|hluk|kašel|kasel|'

@@ -568,6 +568,17 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _voicedMsMeta = const VerificationMeta(
+    'voicedMs',
+  );
+  @override
+  late final GeneratedColumn<int> voicedMs = GeneratedColumn<int>(
+    'voiced_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -579,6 +590,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     status,
     localAudioPath,
     createdAt,
+    voicedMs,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -652,6 +664,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('voiced_ms')) {
+      context.handle(
+        _voicedMsMeta,
+        voicedMs.isAcceptableOrUnknown(data['voiced_ms']!, _voicedMsMeta),
+      );
+    }
     return context;
   }
 
@@ -699,6 +717,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      voicedMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}voiced_ms'],
+      ),
     );
   }
 
@@ -722,6 +744,11 @@ class TranscriptSegment extends DataClass
   final SegmentStatus status;
   final String localAudioPath;
   final DateTime createdAt;
+
+  /// How much of the chunk sounded like speech when it was recorded. Lets the
+  /// worker reject a transcript far longer than the speech it came from;
+  /// null for rows written before v12, which skip that check.
+  final int? voicedMs;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -732,6 +759,7 @@ class TranscriptSegment extends DataClass
     required this.status,
     required this.localAudioPath,
     required this.createdAt,
+    this.voicedMs,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -751,6 +779,9 @@ class TranscriptSegment extends DataClass
     }
     map['local_audio_path'] = Variable<String>(localAudioPath);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || voicedMs != null) {
+      map['voiced_ms'] = Variable<int>(voicedMs);
+    }
     return map;
   }
 
@@ -767,6 +798,9 @@ class TranscriptSegment extends DataClass
       status: Value(status),
       localAudioPath: Value(localAudioPath),
       createdAt: Value(createdAt),
+      voicedMs: voicedMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(voicedMs),
     );
   }
 
@@ -787,6 +821,7 @@ class TranscriptSegment extends DataClass
       ),
       localAudioPath: serializer.fromJson<String>(json['localAudioPath']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      voicedMs: serializer.fromJson<int?>(json['voicedMs']),
     );
   }
   @override
@@ -804,6 +839,7 @@ class TranscriptSegment extends DataClass
       ),
       'localAudioPath': serializer.toJson<String>(localAudioPath),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'voicedMs': serializer.toJson<int?>(voicedMs),
     };
   }
 
@@ -817,6 +853,7 @@ class TranscriptSegment extends DataClass
     SegmentStatus? status,
     String? localAudioPath,
     DateTime? createdAt,
+    Value<int?> voicedMs = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -827,6 +864,7 @@ class TranscriptSegment extends DataClass
     status: status ?? this.status,
     localAudioPath: localAudioPath ?? this.localAudioPath,
     createdAt: createdAt ?? this.createdAt,
+    voicedMs: voicedMs.present ? voicedMs.value : this.voicedMs,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -841,6 +879,7 @@ class TranscriptSegment extends DataClass
           ? data.localAudioPath.value
           : this.localAudioPath,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      voicedMs: data.voicedMs.present ? data.voicedMs.value : this.voicedMs,
     );
   }
 
@@ -855,7 +894,8 @@ class TranscriptSegment extends DataClass
           ..write('content: $content, ')
           ..write('status: $status, ')
           ..write('localAudioPath: $localAudioPath, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('voicedMs: $voicedMs')
           ..write(')'))
         .toString();
   }
@@ -871,6 +911,7 @@ class TranscriptSegment extends DataClass
     status,
     localAudioPath,
     createdAt,
+    voicedMs,
   );
   @override
   bool operator ==(Object other) =>
@@ -884,7 +925,8 @@ class TranscriptSegment extends DataClass
           other.content == this.content &&
           other.status == this.status &&
           other.localAudioPath == this.localAudioPath &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.voicedMs == this.voicedMs);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -897,6 +939,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<SegmentStatus> status;
   final Value<String> localAudioPath;
   final Value<DateTime> createdAt;
+  final Value<int?> voicedMs;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -907,6 +950,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.status = const Value.absent(),
     this.localAudioPath = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.voicedMs = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -918,6 +962,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required SegmentStatus status,
     required String localAudioPath,
     required DateTime createdAt,
+    this.voicedMs = const Value.absent(),
   }) : meetingId = Value(meetingId),
        sequence = Value(sequence),
        startMs = Value(startMs),
@@ -935,6 +980,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<int>? status,
     Expression<String>? localAudioPath,
     Expression<DateTime>? createdAt,
+    Expression<int>? voicedMs,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -946,6 +992,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (status != null) 'status': status,
       if (localAudioPath != null) 'local_audio_path': localAudioPath,
       if (createdAt != null) 'created_at': createdAt,
+      if (voicedMs != null) 'voiced_ms': voicedMs,
     });
   }
 
@@ -959,6 +1006,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<SegmentStatus>? status,
     Value<String>? localAudioPath,
     Value<DateTime>? createdAt,
+    Value<int?>? voicedMs,
   }) {
     return TranscriptSegmentsCompanion(
       id: id ?? this.id,
@@ -970,6 +1018,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       status: status ?? this.status,
       localAudioPath: localAudioPath ?? this.localAudioPath,
       createdAt: createdAt ?? this.createdAt,
+      voicedMs: voicedMs ?? this.voicedMs,
     );
   }
 
@@ -1005,6 +1054,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (voicedMs.present) {
+      map['voiced_ms'] = Variable<int>(voicedMs.value);
+    }
     return map;
   }
 
@@ -1019,7 +1071,8 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('content: $content, ')
           ..write('status: $status, ')
           ..write('localAudioPath: $localAudioPath, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('voicedMs: $voicedMs')
           ..write(')'))
         .toString();
   }
@@ -6919,6 +6972,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required SegmentStatus status,
       required String localAudioPath,
       required DateTime createdAt,
+      Value<int?> voicedMs,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -6931,6 +6985,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<SegmentStatus> status,
       Value<String> localAudioPath,
       Value<DateTime> createdAt,
+      Value<int?> voicedMs,
     });
 
 class $$TranscriptSegmentsTableFilterComposer
@@ -6985,6 +7040,11 @@ class $$TranscriptSegmentsTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get voicedMs => $composableBuilder(
+    column: $table.voicedMs,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7042,6 +7102,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get voicedMs => $composableBuilder(
+    column: $table.voicedMs,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TranscriptSegmentsTableAnnotationComposer
@@ -7081,6 +7146,9 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get voicedMs =>
+      $composableBuilder(column: $table.voicedMs, builder: (column) => column);
 }
 
 class $$TranscriptSegmentsTableTableManager
@@ -7132,6 +7200,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<SegmentStatus> status = const Value.absent(),
                 Value<String> localAudioPath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> voicedMs = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -7142,6 +7211,7 @@ class $$TranscriptSegmentsTableTableManager
                 status: status,
                 localAudioPath: localAudioPath,
                 createdAt: createdAt,
+                voicedMs: voicedMs,
               ),
           createCompanionCallback:
               ({
@@ -7154,6 +7224,7 @@ class $$TranscriptSegmentsTableTableManager
                 required SegmentStatus status,
                 required String localAudioPath,
                 required DateTime createdAt,
+                Value<int?> voicedMs = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -7164,6 +7235,7 @@ class $$TranscriptSegmentsTableTableManager
                 status: status,
                 localAudioPath: localAudioPath,
                 createdAt: createdAt,
+                voicedMs: voicedMs,
               ),
           withReferenceMapper: (p0) => p0
               .map(

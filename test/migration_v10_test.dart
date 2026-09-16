@@ -34,6 +34,8 @@ void main() {
               "INSERT INTO meetings (id, title, created_at, ended_at) VALUES (9, 'Hodina', 1000, 2000)");
           raw.execute(
               "INSERT INTO answer_cards (meeting_id, segment_id, question, answer, created_at) VALUES (9, 1, 'Kdo?', 'Mácha', 1000)");
+          raw.execute(
+              "INSERT INTO transcript_segments (meeting_id, sequence, start_ms, end_ms, content, status, local_audio_path, created_at) VALUES (9, 0, 0, 8000, 'Máj', 2, 'a.wav', 1000)");
           raw.execute('INSERT INTO preferences (id) VALUES (0)');
           raw.execute('PRAGMA user_version = 9');
         }),
@@ -59,6 +61,11 @@ void main() {
     final card = await db.select(db.answerCards).getSingle();
     expect(card.answer, 'Mácha');
     expect(card.detail, isNull);
+
+    // v12 adds voiced_ms; old segments have none and skip the rate guard.
+    final segment = await db.select(db.transcriptSegments).getSingle();
+    expect(segment.content, 'Máj');
+    expect(segment.voicedMs, isNull);
 
     final prefs = await db.preferencesDao.current();
     expect(prefs.globalRules, isNull);

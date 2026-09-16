@@ -120,18 +120,19 @@ void main() {
       final p = AutoCalibrator.profileFor(levels);
       expect(p.voicedRmsThreshold, SensitivityProfile.high.voicedRmsThreshold);
       expect(p.silenceRmsThreshold, 0.004);
-      expect(p.maxGain, 8);
+      expect(p.maxGain, kAutoMaxGain);
       expect(p.noSpeechProbThreshold, closeTo(0.8, 1e-9));
     });
 
-    test('a noisy classroom gets low-like thresholds and no gain', () {
+    test('a noisy classroom gets low-like thresholds', () {
       final levels = [
         for (var i = 0; i < 30; i++) i % 3 == 0 ? 0.2 : 0.012,
       ];
       final p = AutoCalibrator.profileFor(levels);
       expect(p.voicedRmsThreshold, SensitivityProfile.low.voicedRmsThreshold);
       expect(p.silenceRmsThreshold, SensitivityProfile.low.silenceRmsThreshold);
-      expect(p.maxGain, 1);
+      // The ceiling is fixed; loud speech simply measures as needing no gain.
+      expect(p.maxGain, kAutoMaxGain);
       expect(p.minVoicedDuration, const Duration(milliseconds: 600));
     });
 
@@ -196,45 +197,75 @@ void main() {
     });
   });
 
-  group('normalizingGain / applyGain', () {
-    test('no gain allowed, or silence, leaves the audio alone', () {
+  group('speechGain / applyGain', () {
+    List<bool> all(int n, [bool v = true]) => List.filled(n, v);
+
+    test('no gain allowed, silence or no voiced frame leaves the audio alone',
+        () {
       final quiet = [_pcm(ms: 100, amplitude: 500)];
-      expect(normalizingGain(quiet, maxGain: 1), 1);
-      expect(normalizingGain([Uint8List(3200)], maxGain: 8), 1);
+      expect(speechGain(quiet, all(1), maxGain: 1), 1);
+      expect(speechGain([Uint8List(3200)], all(1), maxGain: 16), 1);
+      expect(speechGain(quiet, all(1, false), maxGain: 16), 1);
+      expect(speechGain(quiet, const [], maxGain: 16), 1);
       expect(identical(applyGain(quiet, 1), quiet), isTrue);
     });
 
-    test('quiet audio is raised by at most maxGain', () {
+    test('quiet voiced speech is raised to the loudness target', () {
+      // RMS 1000/32768 ≈ 0.0305 → gain ≈ 3.28 to reach 0.1.
       final frames = [_pcm(ms: 100, amplitude: 1000)];
-      final gain = normalizingGain(frames, maxGain: 8);
-      expect(gain, 8);
-      expect(_peak(applyGain(frames, gain)), 8000);
+      final gain = speechGain(frames, all(1), maxGain: 16);
+      expect(gain, closeTo(kSpeechRmsTarget * 32768 / 1000, 1e-6));
+      expect(_peak(applyGain(frames, gain)), closeTo(3277, 2));
     });
 
-    test('never lifts the peak past the target, so it cannot clip', () {
-      final frames = [_pcm(ms: 100, amplitude: 4000)];
-      final gain = normalizingGain(frames, maxGain: 8);
-      expect(gain, lessThan(8));
-      final peak = _peak(applyGain(frames, gain));
-      expect(peak, lessThanOrEqualTo((kNormalizePeakTarget * 32767).round()));
-      expect(peak, greaterThan(28000));
+    test('a very distant voice is capped at maxGain', () {
+      final frames = [_pcm(ms: 100, amplitude: 50)];
+      expect(speechGain(frames, all(1), maxGain: 16), 16);
     });
 
-    test('audio already near full scale is not worth touching', () {
-      expect(normalizingGain([_pcm(ms: 100, amplitude: 30000)], maxGain: 8), 1);
+    test('one loud spike no longer vetoes the gain', () {
+      final frames = [
+        for (var i = 0; i < 20; i++) _pcm(ms: 100, amplitude: 800),
+        _pcm(ms: 100, amplitude: 30000),
+      ];
+      final gain = speechGain(frames, all(frames.length), maxGain: 16);
+      // Peak-based gain would have been ~1; the median level ignores the spike.
+      expect(gain, closeTo(kSpeechRmsTarget * 32768 / 800, 1e-6));
+      final out = applyGain(frames, gain);
+      expect(_peak(out), lessThanOrEqualTo(32767));
+    });
+
+    test('pauses do not drag the level down and over-amplify', () {
+      final frames = [
+        _pcm(ms: 100, amplitude: 2000),
+        _pcm(ms: 100, amplitude: 30),
+        _pcm(ms: 100, amplitude: 30),
+      ];
+      final voicedOnly = speechGain(frames, [true, false, false], maxGain: 16);
+      expect(voicedOnly, closeTo(kSpeechRmsTarget * 32768 / 2000, 1e-6));
+    });
+
+    test('loud speech needs no gain', () {
+      expect(speechGain([_pcm(ms: 100, amplitude: 8000)], all(1), maxGain: 16),
+          1);
+    });
+
+    test('the soft limiter never exceeds Int16 and leaves quiet samples alone',
+        () {
       final extreme = ByteData(4)
         ..setInt16(0, -32768, Endian.little)
         ..setInt16(2, 32767, Endian.little);
-      expect(normalizingGain([extreme.buffer.asUint8List()], maxGain: 8), 1);
-    });
+      final out = ByteData.sublistView(
+          applyGain([extreme.buffer.asUint8List()], 16).single);
+      expect(out.getInt16(0, Endian.little), greaterThanOrEqualTo(-32768));
+      expect(out.getInt16(2, Endian.little), lessThanOrEqualTo(32767));
+      expect(out.getInt16(2, Endian.little), greaterThan(30000));
 
-    test('the one loud sample decides, across frames', () {
-      final frames = [
-        _pcm(ms: 100, amplitude: 500),
-        _pcm(ms: 100, amplitude: 16000),
-      ];
-      final gain = normalizingGain(frames, maxGain: 8);
-      expect(gain, closeTo(kNormalizePeakTarget * 32767 / 16000, 1e-9));
+      expect(softLimit(0.5), 0.5);
+      expect(softLimit(-0.5), -0.5);
+      expect(softLimit(3), lessThan(1));
+      expect(softLimit(0.71), greaterThan(0.7));
+      expect(softLimit(-3), greaterThan(-1));
     });
 
     test('input is not modified and a dangling odd byte is kept', () {
