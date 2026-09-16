@@ -306,8 +306,44 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
     return pinnedCardIds(last.id);
   }
 
+  /// The subject's timetable, in week order.
+  Stream<List<TimetableSlot>> watchSlots(int subjectId) =>
+      (select(timetableSlots)
+            ..where((t) => t.subjectId.equals(subjectId))
+            ..orderBy([
+              (t) => OrderingTerm.asc(t.weekday),
+              (t) => OrderingTerm.asc(t.startMinute),
+            ]))
+          .watch();
+
+  /// Every slot of every subject — what the start sheet picks from.
+  Future<List<TimetableSlot>> allSlots() => select(timetableSlots).get();
+
+  Future<int> addSlot({
+    required int subjectId,
+    required int weekday,
+    required int startMinute,
+    required int endMinute,
+  }) {
+    if (weekday < 1 || weekday > 7) {
+      throw ArgumentError.value(weekday, 'weekday');
+    }
+    if (startMinute < 0 || endMinute > 24 * 60 || endMinute <= startMinute) {
+      throw ArgumentError('slot must end after it starts, within one day');
+    }
+    return into(timetableSlots).insert(TimetableSlotsCompanion.insert(
+      subjectId: subjectId,
+      weekday: weekday,
+      startMinute: startMinute,
+      endMinute: endMinute,
+    ));
+  }
+
+  Future<void> deleteSlot(int id) =>
+      (delete(timetableSlots)..where((t) => t.id.equals(id))).go();
+
   /// The subject of the most recent recording, or null — the start sheet's
-  /// preselection until the timetable exists.
+  /// preselection when the timetable has nothing on.
   Future<int?> lastUsedSubjectId() async {
     final last = await (select(meetings)
           ..orderBy([

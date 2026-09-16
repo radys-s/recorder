@@ -22,6 +22,11 @@ final subjectCardsProvider =
   return ref.watch(subjectsDaoProvider).watchCards(subjectId);
 });
 
+final subjectSlotsProvider =
+    StreamProvider.family<List<TimetableSlot>, int>((ref, subjectId) {
+  return ref.watch(subjectsDaoProvider).watchSlots(subjectId);
+});
+
 final contextCardProvider =
     StreamProvider.family<ContextCard?, int>((ref, id) {
   return ref.watch(subjectsDaoProvider).watchCard(id);

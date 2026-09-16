@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
+import '../ai/card_suggestions.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
 import '../ai/chat_answer_service.dart';
@@ -97,11 +98,26 @@ final llmProvider = Provider<LlmProvider>((ref) {
 
 final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
   final db = ref.watch(appDatabaseProvider);
+  final suggestions = ref.watch(cardSuggestionServiceProvider);
   return NotesGenerator(
     ref.watch(llmProvider),
     db.transcriptSegmentsDao,
     db.meetingNotesDao,
     refinedFor: db.refinedSegmentsDao.windows,
+    lessonFor: ref.watch(lessonContextSourceProvider).notesInput,
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    onLessonNotes: suggestions.suggest,
+  );
+});
+
+/// Topics from a lesson's výpisky proposed as new cards.
+final cardSuggestionServiceProvider = Provider<CardSuggestionService>((ref) {
+  return CardSuggestionService(
+    ref.watch(appDatabaseProvider),
+    groq: ref.watch(llmProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
   );
 });
 

@@ -53,6 +53,15 @@ enum NotesDepth {
           'Každé téma zvlášť s hlavními argumenty a čísly.',
         NotesDepth.full => 'Téměř vše, co zaznělo, včetně námitek a příkladů.',
       };
+
+  /// The same depth described for výpisky from a lesson.
+  String get lessonDescription => switch (this) {
+        NotesDepth.keywords => 'Pár hesel s krátkou definicí.',
+        NotesDepth.brief => 'Téma a nejdůležitější body.',
+        NotesDepth.standard => 'Pojmy, příklady a co může být v testu.',
+        NotesDepth.detailed => 'Každé podtéma zvlášť, s pojmy a souvislostmi.',
+        NotesDepth.full => 'Všechno z hodiny, nic nevynecháno.',
+      };
 }
 
 /// How eagerly quiet audio is taken for speech.

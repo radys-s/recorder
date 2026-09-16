@@ -1,0 +1,63 @@
+import '../../data/db/app_database.dart';
+
+/// How far ahead a lesson counts as "about to start" for the start sheet.
+const Duration kTimetableLookahead = Duration(minutes: 10);
+
+/// Czech short weekday names, `DateTime.weekday` order (1 = Monday).
+const List<String> kWeekdayShort = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
+
+/// Czech weekday names, `DateTime.weekday` order (1 = Monday).
+const List<String> kWeekdayLong = [
+  'Pondělí',
+  'Úterý',
+  'Středa',
+  'Čtvrtek',
+  'Pátek',
+  'Sobota',
+  'Neděle',
+];
+
+/// `8:05`.
+String formatMinuteOfDay(int minute) =>
+    '${minute ~/ 60}:${(minute % 60).toString().padLeft(2, '0')}';
+
+/// `Po 8:00–8:45`.
+String formatSlot(TimetableSlot slot) =>
+    '${kWeekdayShort[slot.weekday - 1]} '
+    '${formatMinuteOfDay(slot.startMinute)}–${formatMinuteOfDay(slot.endMinute)}';
+
+/// The subject the timetable says is on at [now]: a slot running now, else one
+/// starting within [kTimetableLookahead]. Ties go to the earlier start, then
+/// to the lower slot id, so the answer never depends on row order.
+///
+/// Minutes are counted across the whole week, so a lesson at 0:05 on Monday is
+/// "within ten minutes" of Sunday 23:58.
+int? pickSubjectForNow(List<TimetableSlot> slots, DateTime now) {
+  const week = 7 * 24 * 60;
+  final nowMinute = (now.weekday - 1) * 24 * 60 + now.hour * 60 + now.minute;
+
+  TimetableSlot? best;
+  int? bestStart;
+  for (final slot in slots) {
+    if (slot.weekday < 1 || slot.weekday > 7) continue;
+    if (slot.endMinute <= slot.startMinute) continue;
+    final start = (slot.weekday - 1) * 24 * 60 + slot.startMinute;
+    final end = start + slot.endMinute - slot.startMinute;
+
+    // Distance from now to the start, going forward around the week.
+    final ahead = (start - nowMinute) % week;
+    final running = nowMinute >= start && nowMinute < end;
+    final soon = ahead > 0 && ahead <= kTimetableLookahead.inMinutes;
+    if (!running && !soon) continue;
+
+    // Running slots started in the past; give them a start before now.
+    final effective = running ? start - nowMinute : ahead;
+    if (best == null ||
+        effective < bestStart! ||
+        (effective == bestStart && slot.id < best.id)) {
+      best = slot;
+      bestStart = effective;
+    }
+  }
+  return best?.subjectId;
+}

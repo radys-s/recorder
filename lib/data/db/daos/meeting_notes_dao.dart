@@ -57,9 +57,15 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
           content: Value(content),
           status: const Value(NotesStatus.ready),
           error: const Value(null),
+          // Suggestions belong to the notes they came from.
+          cardSuggestions: const Value(null),
           createdAt: Value(DateTime.now()),
         ),
       );
+
+  Future<void> setCardSuggestions(int meetingId, String? json) =>
+      (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId)))
+          .write(MeetingNotesCompanion(cardSuggestions: Value(json)));
 
   Future<void> markFailed(int meetingId, String error) =>
       (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId))).write(

@@ -5,6 +5,7 @@ import '../../../core/spacing.dart';
 import '../../../data/db/app_database.dart';
 import '../subject_actions.dart';
 import '../subjects_providers.dart';
+import '../timetable.dart';
 import 'subject_badge.dart';
 
 /// What a lesson is about: its subject, the cards pinned for it, and rules for
@@ -20,17 +21,25 @@ const LessonSetup _noLesson = (subjectId: null, cardIds: [], rules: null);
 /// between the student and the record button for nothing.
 Future<LessonSetup?> showStartRecordingSheet(
   BuildContext context,
-  WidgetRef ref,
-) async {
+  WidgetRef ref, {
+  DateTime? now,
+}) async {
   final dao = ref.read(subjectsDaoProvider);
   final subjects = await dao.allSubjects();
   if (subjects.isEmpty || !context.mounted) return _noLesson;
 
-  // The subject of the last recording, and the cards it pinned — one tap to
-  // start when the student is in the same class as last time.
+  // The subject the timetable has on right now, else the subject of the last
+  // recording — and the cards that subject pinned last time, so starting is
+  // one tap when nothing changed.
+  bool known(int? id) => id != null && subjects.any((s) => s.subject.id == id);
+  final scheduled =
+      pickSubjectForNow(await dao.allSlots(), now ?? DateTime.now());
   final last = await dao.lastUsedSubjectId();
-  final subjectId =
-      subjects.any((s) => s.subject.id == last) ? last : null;
+  final subjectId = known(scheduled)
+      ? scheduled
+      : known(last)
+          ? last
+          : null;
   final cardIds = subjectId == null
       ? const <int>[]
       : await dao.lastPinnedCardIds(subjectId);

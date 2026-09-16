@@ -4,17 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../ai/card_suggestions.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/notes_text.dart';
 import '../../../data/db/app_database.dart';
+import '../../../data/db/tables/context_cards_table.dart';
 import '../../../data/db/tables/meeting_notes_table.dart';
 import '../../../data/db/tables/preferences_table.dart';
 import '../../notes_library/notes_library_providers.dart';
 import '../../notes_library/saved_note_screen.dart';
 import '../../notes_library/widgets/save_note_sheet.dart';
+import '../../subjects/subjects_providers.dart';
 import '../meeting_detail_providers.dart';
 
 /// The "Poznámky" tab: pick a depth, press the button, read the result.
@@ -89,6 +92,38 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
       );
   }
 
+  /// Turns a suggestion into a card of the lesson's subject.
+  Future<void> _addSuggestion(CardSuggestion suggestion, int subjectId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final digests = ref.read(cardDigestServiceProvider);
+    final id = await ref.read(subjectsDaoProvider).createCard(
+          subjectId: subjectId,
+          title: suggestion.title,
+          content: suggestion.content,
+          kind: CardKind.lesson,
+        );
+    unawaited(digests.digest(id));
+    await _dropSuggestion(suggestion);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+          SnackBar(content: Text('Karta „${suggestion.title}" přidána.')));
+  }
+
+  /// Removes one suggestion, read fresh so two quick taps cannot resurrect
+  /// the other.
+  Future<void> _dropSuggestion(CardSuggestion suggestion) async {
+    final dao = ref.read(appDatabaseProvider).meetingNotesDao;
+    final row = await dao.forMeeting(widget.meetingId);
+    if (row == null) return;
+    final rest = [
+      for (final s in decodeCardSuggestions(row.cardSuggestions))
+        if (s != suggestion) s,
+    ];
+    await dao.setCardSuggestions(
+        widget.meetingId, encodeCardSuggestions(rest));
+  }
+
   /// What the depth selector shows: the user's choice this session, else the
   /// depth the stored notes were made at, else the saved default from Settings.
   NotesDepth _effectiveDepth(MeetingNote? note) {
@@ -104,6 +139,12 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     final note = notes.valueOrNull;
     final depth = _effectiveDepth(note);
     final generating = note?.status == NotesStatus.generating;
+    final subjectId =
+        ref.watch(meetingProvider(widget.meetingId)).valueOrNull?.subjectId;
+    final lesson = subjectId != null;
+    final suggestions = lesson && !generating
+        ? decodeCardSuggestions(note?.cardSuggestions)
+        : const <CardSuggestion>[];
 
     // Matched on content rather than remembered from a tap: regenerating
     // produces different text, and the button must then offer to save again.
@@ -120,7 +161,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
       padding: const EdgeInsets.fromLTRB(
           Gap.lg, Gap.lg, Gap.lg, Gap.fabClearance),
       children: [
-        Text('Hloubka poznámek',
+        Text(lesson ? 'Hloubka výpisků' : 'Hloubka poznámek',
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: Gap.sm),
         Wrap(
@@ -139,7 +180,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
         ),
         const SizedBox(height: Gap.xs),
         Text(
-          depth.description,
+          lesson ? depth.lessonDescription : depth.description,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -148,7 +189,9 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
         FilledButton.icon(
           onPressed: generating ? null : () => _generate(depth),
           icon: const Icon(Icons.auto_awesome),
-          label: Text(note == null ? 'Vytvořit poznámky' : 'Vytvořit znovu'),
+          label: Text(note == null
+              ? (lesson ? 'Vytvořit výpisky' : 'Vytvořit poznámky')
+              : 'Vytvořit znovu'),
         ),
         const SizedBox(height: Gap.xl),
         if (generating) const _GeneratingIndicator(),
@@ -165,13 +208,89 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
                 : _save(note),
           )
         else if (note == null)
-          const EmptyState(
+          EmptyState(
             icon: Icons.auto_awesome_outlined,
-            title: 'Zatím žádné poznámky',
-            message: 'Vyber hloubku a nech je vytvořit. Kdykoliv je '
-                'můžeš přegenerovat jinak.',
+            title: lesson ? 'Zatím žádné výpisky' : 'Zatím žádné poznámky',
+            message: lesson
+                ? 'Výpisky do sešitu z přepisu, fotek tabule, kontextu a '
+                    'otázek z hodiny.'
+                : 'Vyber hloubku a nech je vytvořit. Kdykoliv je '
+                    'můžeš přegenerovat jinak.',
+          ),
+        if (suggestions.isNotEmpty && subjectId != null)
+          _CardSuggestions(
+            suggestions: suggestions,
+            onAdd: (s) => _addSuggestion(s, subjectId),
+            onDismiss: _dropSuggestion,
           ),
       ],
+    );
+  }
+}
+
+/// Topics from the výpisky that could become cards.
+class _CardSuggestions extends StatelessWidget {
+  const _CardSuggestions({
+    required this.suggestions,
+    required this.onAdd,
+    required this.onDismiss,
+  });
+
+  final List<CardSuggestion> suggestions;
+  final ValueChanged<CardSuggestion> onAdd;
+  final ValueChanged<CardSuggestion> onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: Gap.xl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Uložit jako kartu', style: theme.textTheme.titleSmall),
+          const SizedBox(height: Gap.sm),
+          for (final s in suggestions)
+            Card(
+              key: ValueKey(s.title),
+              margin: const EdgeInsets.only(bottom: Gap.sm),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    Gap.md, Gap.sm, Gap.xs, Gap.sm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.title, style: theme.textTheme.titleSmall),
+                          const SizedBox(height: Gap.xs),
+                          Text(
+                            s.content,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Nechci',
+                      onPressed: () => onDismiss(s),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () => onAdd(s),
+                      child: const Text('Přidat'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -14,6 +14,8 @@ import '../notes_library/notes_library_providers.dart';
 import 'card_editor_screen.dart';
 import 'subject_actions.dart';
 import 'subjects_providers.dart';
+import 'timetable.dart';
+import 'widgets/timetable_slot_dialog.dart';
 import 'widgets/subject_badge.dart';
 
 /// One subject: its cards, its recorded lessons, and its settings.
@@ -354,6 +356,17 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       ..showSnackBar(const SnackBar(content: Text('Pravidla uložena.')));
   }
 
+  Future<void> _addSlot() async {
+    final slot = await showTimetableSlotDialog(context);
+    if (slot == null) return;
+    await ref.read(subjectsDaoProvider).addSlot(
+          subjectId: widget.subject.id,
+          weekday: slot.weekday,
+          startMinute: slot.startMinute,
+          endMinute: slot.endMinute,
+        );
+  }
+
   Future<void> _delete() async {
     final navigator = Navigator.of(context);
     final deleted =
@@ -391,6 +404,36 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
           child: FilledButton.tonal(
             onPressed: _rulesChanged ? _saveRules : null,
             child: const Text('Uložit pravidla'),
+          ),
+        ),
+        const SizedBox(height: Gap.xl),
+        Text('Rozvrh', style: theme.textTheme.titleSmall),
+        const SizedBox(height: Gap.xs),
+        Text(
+          'Když nahrávání začne v čase hodiny, předmět se vybere sám.',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: Gap.sm),
+        for (final slot in ref.watch(subjectSlotsProvider(subject.id)).valueOrNull ??
+            const <TimetableSlot>[])
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.schedule),
+            title: Text(formatSlot(slot)),
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Odebrat hodinu',
+              onPressed: () =>
+                  ref.read(subjectsDaoProvider).deleteSlot(slot.id),
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _addSlot,
+            icon: const Icon(Icons.add),
+            label: const Text('Přidat hodinu'),
           ),
         ),
         const SizedBox(height: Gap.xl),

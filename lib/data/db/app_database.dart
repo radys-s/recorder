@@ -67,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -135,6 +135,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 13) {
             await m.createTable(refinedSegments);
+          }
+          if (from < 14 && from >= 4) {
+            await m.addColumn(meetingNotes, meetingNotes.cardSuggestions);
           }
         },
       );

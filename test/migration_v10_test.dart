@@ -91,6 +91,11 @@ void main() {
       (startMs: 0, endMs: 8000, engine: RefinedEngine.gemini),
     ]);
     expect(await db.refinedSegmentsDao.meetingsWithPending(), [9]);
+    // v14 adds card suggestions to the notes.
+    await db.meetingNotesDao.markGenerating(9, NotesDepth.standard, 'm');
+    await db.meetingNotesDao.markReady(9, 'Výpisky');
+    await db.meetingNotesDao.setCardSuggestions(9, '[]');
+    expect((await db.meetingNotesDao.forMeeting(9))!.cardSuggestions, '[]');
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

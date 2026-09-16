@@ -6,6 +6,7 @@ import '../data/db/daos/transcript_segments_dao.dart';
 import '../data/db/tables/preferences_table.dart';
 import '../data/db/app_database.dart';
 import '../stt/refined_transcript.dart';
+import 'lesson_notes_input.dart';
 import 'llm_provider.dart';
 
 /// Turns a meeting's transcript into notes at a chosen depth.
@@ -19,6 +20,10 @@ class NotesGenerator {
     this._segmentsDao,
     this._notesDao, {
     this.refinedFor,
+    this.lessonFor,
+    this.gemini,
+    this.hasGeminiKey,
+    this.onLessonNotes,
   });
 
   static const _tag = 'ai.notes';
@@ -31,6 +36,18 @@ class NotesGenerator {
   /// live text.
   final Future<List<RefinedSegment>> Function(int meetingId)? refinedFor;
 
+  /// The lesson material for a meeting with a subject, else null. A lesson gets
+  /// výpisky instead of meeting notes.
+  final Future<LessonNotesInput?> Function(int meetingId)? lessonFor;
+
+  /// With a key, a lesson's výpisky are one Gemini call over everything;
+  /// without one, or when it fails, Groq's windowed path does the work.
+  final LlmProvider? gemini;
+  final Future<bool> Function()? hasGeminiKey;
+
+  /// Called once a lesson's výpisky are stored, e.g. for card suggestions.
+  final Future<void> Function(int meetingId, String notes)? onLessonNotes;
+
   /// Generates and stores notes for [meetingId]. Never throws: every failure
   /// ends up on the row as [NotesStatus.failed] with a message, because the
   /// caller is a button press with nowhere to report an exception to.
@@ -41,8 +58,18 @@ class NotesGenerator {
     // Outside the main try on purpose, but still caught: if the row cannot even
     // be marked, there is no row to put the failure on either, and the
     // "never throws" promise above is what the button relies on.
+    LessonNotesInput? lesson;
     try {
-      await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
+      lesson = await lessonFor?.call(meetingId);
+    } catch (e, st) {
+      AppLog.e(_tag, 'meeting $meetingId: lesson material failed', e, st);
+    }
+    final onGemini =
+        lesson != null && gemini != null && await _geminiAvailable();
+
+    try {
+      await _notesDao.markGenerating(
+          meetingId, depth, onGemini ? kGeminiModel : kGroqNotesModel);
     } catch (e, st) {
       AppLog.e(_tag, 'meeting $meetingId: could not start generation', e, st);
       return;
@@ -64,9 +91,18 @@ class NotesGenerator {
       // Trimmed here rather than trusted to the provider: a reply of nothing but
       // whitespace would otherwise be stored as "ready" notes the user cannot
       // see, replacing the previous ones.
-      final notes = (transcript.length > kNotesWindowThreshold
-              ? await _generateWindowed(transcript, depth)
-              : await _generateSingle(transcript, depth))
+      String? notes;
+      if (onGemini) {
+        try {
+          notes = (await _generateGemini(transcript, depth, lesson)).trim();
+        } on AiException catch (e) {
+          AppLog.e(_tag, 'meeting $meetingId: Gemini failed, using Groq: $e');
+          await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
+        }
+      }
+      notes ??= (transcript.length > kNotesWindowThreshold
+              ? await _generateWindowed(transcript, depth, lesson)
+              : await _generateSingle(transcript, depth, lesson))
           .trim();
 
       if (notes.isEmpty) {
@@ -76,12 +112,28 @@ class NotesGenerator {
 
       await _notesDao.markReady(meetingId, notes);
       AppLog.d(_tag, 'meeting $meetingId: notes ready (${notes.length} chars)');
+
+      if (lesson != null && onLessonNotes != null) {
+        try {
+          await onLessonNotes!(meetingId, notes);
+        } catch (e, st) {
+          AppLog.e(_tag, 'meeting $meetingId: after-notes step failed', e, st);
+        }
+      }
     } on AiException catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
       await _fail(meetingId, e.message);
     } catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
       await _fail(meetingId, '$e');
+    }
+  }
+
+  Future<bool> _geminiAvailable() async {
+    try {
+      return await hasGeminiKey?.call() ?? false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -109,22 +161,56 @@ class NotesGenerator {
     return parts.join(' ');
   }
 
-  Future<String> _generateSingle(String transcript, NotesDepth depth) {
+  Future<String> _generateSingle(
+    String transcript,
+    NotesDepth depth,
+    LessonNotesInput? lesson,
+  ) {
     return _llm.complete(
       model: kGroqNotesModel,
-      messages: [
-        LlmMessage.system(_systemPrompt(depth)),
-        LlmMessage.user(transcript),
-      ],
+      messages: lesson == null
+          ? [
+              LlmMessage.system(_systemPrompt(depth)),
+              LlmMessage.user(transcript),
+            ]
+          : [
+              LlmMessage.system(lessonNotesPrompt(depth)),
+              LlmMessage.user(lessonUserMessage(transcript, lesson,
+                  maxExtraChars: kNotesExtrasGroqChars)),
+            ],
       temperature: 0.2,
       maxTokens: _maxTokens(depth),
+    );
+  }
+
+  /// The whole lesson in one call: Gemini's context holds a lesson with every
+  /// photo and answer, so nothing is summarised away before the notes.
+  Future<String> _generateGemini(
+    String transcript,
+    NotesDepth depth,
+    LessonNotesInput lesson,
+  ) {
+    return gemini!.complete(
+      model: kGeminiModel,
+      messages: [
+        LlmMessage.system(lessonNotesPrompt(depth)),
+        LlmMessage.user(lessonUserMessage(transcript, lesson)),
+      ],
+      temperature: 0.2,
+      // Thinking counts against the cap too.
+      maxTokens: _maxTokens(depth) + 4000,
+      timeout: kGeminiNotesTimeout,
     );
   }
 
   /// Two passes for transcripts too long to hand over whole: summarise each
   /// window faithfully, then merge the summaries into one set of notes. Bounded
   /// by construction, and it keeps a two-hour meeting from failing outright.
-  Future<String> _generateWindowed(String transcript, NotesDepth depth) async {
+  Future<String> _generateWindowed(
+    String transcript,
+    NotesDepth depth,
+    LessonNotesInput? lesson,
+  ) async {
     final windows = _split(transcript, kNotesWindowSize);
     AppLog.d(_tag, 'windowed pass: ${windows.length} windows');
 
@@ -144,16 +230,29 @@ class NotesGenerator {
 
     return _llm.complete(
       model: kGroqNotesModel,
-      messages: [
-        LlmMessage.system(
-          '${_systemPrompt(depth)}\n\n'
-          'The user message is not a transcript but a series of summaries of '
-          'consecutive parts of one meeting. Merge them into a single set of '
-          'notes, removing repetition and keeping the meeting in order. Do not '
-          'mention the parts or their numbering.',
-        ),
-        LlmMessage.user(summaries.join('\n\n')),
-      ],
+      messages: lesson == null
+          ? [
+              LlmMessage.system(
+                '${_systemPrompt(depth)}\n\n'
+                'The user message is not a transcript but a series of summaries '
+                'of consecutive parts of one meeting. Merge them into a single '
+                'set of notes, removing repetition and keeping the meeting in '
+                'order. Do not mention the parts or their numbering.',
+              ),
+              LlmMessage.user(summaries.join('\n\n')),
+            ]
+          : [
+              LlmMessage.system(
+                '${lessonNotesPrompt(depth)}\n\n'
+                'The "Přepis" block is not a transcript but a series of '
+                'summaries of consecutive parts of the lesson. Merge them, '
+                'removing repetition and keeping the lesson in order. Do not '
+                'mention the parts or their numbering.',
+              ),
+              LlmMessage.user(lessonUserMessage(
+                  summaries.join('\n\n'), lesson,
+                  maxExtraChars: kNotesExtrasGroqChars)),
+            ],
       temperature: 0.2,
       maxTokens: _maxTokens(depth),
     );
@@ -369,7 +468,7 @@ Leave out the last line if no next meeting was agreed.''',
       };
 
   static String _windowPrompt(int index, int total) => '''
-You are given part $index of $total of one long meeting transcript, produced by
+You are given part $index of $total of one long recording's transcript, produced by
 automatic speech recognition.
 
 Summarise only this part, faithfully and in the same language as the transcript.

@@ -2280,6 +2280,17 @@ class $MeetingNotesTable extends MeetingNotes
         type: DriftSqlType.int,
         requiredDuringInsert: true,
       ).withConverter<NotesStatus>($MeetingNotesTable.$converterstatus);
+  static const VerificationMeta _cardSuggestionsMeta = const VerificationMeta(
+    'cardSuggestions',
+  );
+  @override
+  late final GeneratedColumn<String> cardSuggestions = GeneratedColumn<String>(
+    'card_suggestions',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _errorMeta = const VerificationMeta('error');
   @override
   late final GeneratedColumn<String> error = GeneratedColumn<String>(
@@ -2308,6 +2319,7 @@ class $MeetingNotesTable extends MeetingNotes
     content,
     model,
     status,
+    cardSuggestions,
     error,
     createdAt,
   ];
@@ -2347,6 +2359,15 @@ class $MeetingNotesTable extends MeetingNotes
       );
     } else if (isInserting) {
       context.missing(_modelMeta);
+    }
+    if (data.containsKey('card_suggestions')) {
+      context.handle(
+        _cardSuggestionsMeta,
+        cardSuggestions.isAcceptableOrUnknown(
+          data['card_suggestions']!,
+          _cardSuggestionsMeta,
+        ),
+      );
     }
     if (data.containsKey('error')) {
       context.handle(
@@ -2403,6 +2424,10 @@ class $MeetingNotesTable extends MeetingNotes
           data['${effectivePrefix}status'],
         )!,
       ),
+      cardSuggestions: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}card_suggestions'],
+      ),
       error: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}error'],
@@ -2438,6 +2463,11 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
   /// outlive the model id that made them.
   final String model;
   final NotesStatus status;
+
+  /// Up to three topics from a lesson's notes worth keeping as cards, as JSON
+  /// (`encodeCardSuggestions`). Cleared whenever new notes land; entries are
+  /// removed as the student adds or dismisses them.
+  final String? cardSuggestions;
   final String? error;
   final DateTime createdAt;
   const MeetingNote({
@@ -2447,6 +2477,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
     this.content,
     required this.model,
     required this.status,
+    this.cardSuggestions,
     this.error,
     required this.createdAt,
   });
@@ -2469,6 +2500,9 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
         $MeetingNotesTable.$converterstatus.toSql(status),
       );
     }
+    if (!nullToAbsent || cardSuggestions != null) {
+      map['card_suggestions'] = Variable<String>(cardSuggestions);
+    }
     if (!nullToAbsent || error != null) {
       map['error'] = Variable<String>(error);
     }
@@ -2486,6 +2520,9 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
           : Value(content),
       model: Value(model),
       status: Value(status),
+      cardSuggestions: cardSuggestions == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cardSuggestions),
       error: error == null && nullToAbsent
           ? const Value.absent()
           : Value(error),
@@ -2509,6 +2546,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
       status: $MeetingNotesTable.$converterstatus.fromJson(
         serializer.fromJson<int>(json['status']),
       ),
+      cardSuggestions: serializer.fromJson<String?>(json['cardSuggestions']),
       error: serializer.fromJson<String?>(json['error']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -2527,6 +2565,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
       'status': serializer.toJson<int>(
         $MeetingNotesTable.$converterstatus.toJson(status),
       ),
+      'cardSuggestions': serializer.toJson<String?>(cardSuggestions),
       'error': serializer.toJson<String?>(error),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
@@ -2539,6 +2578,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
     Value<String?> content = const Value.absent(),
     String? model,
     NotesStatus? status,
+    Value<String?> cardSuggestions = const Value.absent(),
     Value<String?> error = const Value.absent(),
     DateTime? createdAt,
   }) => MeetingNote(
@@ -2548,6 +2588,9 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
     content: content.present ? content.value : this.content,
     model: model ?? this.model,
     status: status ?? this.status,
+    cardSuggestions: cardSuggestions.present
+        ? cardSuggestions.value
+        : this.cardSuggestions,
     error: error.present ? error.value : this.error,
     createdAt: createdAt ?? this.createdAt,
   );
@@ -2559,6 +2602,9 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
       content: data.content.present ? data.content.value : this.content,
       model: data.model.present ? data.model.value : this.model,
       status: data.status.present ? data.status.value : this.status,
+      cardSuggestions: data.cardSuggestions.present
+          ? data.cardSuggestions.value
+          : this.cardSuggestions,
       error: data.error.present ? data.error.value : this.error,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
@@ -2573,6 +2619,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
           ..write('content: $content, ')
           ..write('model: $model, ')
           ..write('status: $status, ')
+          ..write('cardSuggestions: $cardSuggestions, ')
           ..write('error: $error, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -2587,6 +2634,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
     content,
     model,
     status,
+    cardSuggestions,
     error,
     createdAt,
   );
@@ -2600,6 +2648,7 @@ class MeetingNote extends DataClass implements Insertable<MeetingNote> {
           other.content == this.content &&
           other.model == this.model &&
           other.status == this.status &&
+          other.cardSuggestions == this.cardSuggestions &&
           other.error == this.error &&
           other.createdAt == this.createdAt);
 }
@@ -2611,6 +2660,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
   final Value<String?> content;
   final Value<String> model;
   final Value<NotesStatus> status;
+  final Value<String?> cardSuggestions;
   final Value<String?> error;
   final Value<DateTime> createdAt;
   const MeetingNotesCompanion({
@@ -2620,6 +2670,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
     this.content = const Value.absent(),
     this.model = const Value.absent(),
     this.status = const Value.absent(),
+    this.cardSuggestions = const Value.absent(),
     this.error = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
@@ -2630,6 +2681,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
     this.content = const Value.absent(),
     required String model,
     required NotesStatus status,
+    this.cardSuggestions = const Value.absent(),
     this.error = const Value.absent(),
     required DateTime createdAt,
   }) : meetingId = Value(meetingId),
@@ -2644,6 +2696,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
     Expression<String>? content,
     Expression<String>? model,
     Expression<int>? status,
+    Expression<String>? cardSuggestions,
     Expression<String>? error,
     Expression<DateTime>? createdAt,
   }) {
@@ -2654,6 +2707,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
       if (content != null) 'content': content,
       if (model != null) 'model': model,
       if (status != null) 'status': status,
+      if (cardSuggestions != null) 'card_suggestions': cardSuggestions,
       if (error != null) 'error': error,
       if (createdAt != null) 'created_at': createdAt,
     });
@@ -2666,6 +2720,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
     Value<String?>? content,
     Value<String>? model,
     Value<NotesStatus>? status,
+    Value<String?>? cardSuggestions,
     Value<String?>? error,
     Value<DateTime>? createdAt,
   }) {
@@ -2676,6 +2731,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
       content: content ?? this.content,
       model: model ?? this.model,
       status: status ?? this.status,
+      cardSuggestions: cardSuggestions ?? this.cardSuggestions,
       error: error ?? this.error,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -2706,6 +2762,9 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
         $MeetingNotesTable.$converterstatus.toSql(status.value),
       );
     }
+    if (cardSuggestions.present) {
+      map['card_suggestions'] = Variable<String>(cardSuggestions.value);
+    }
     if (error.present) {
       map['error'] = Variable<String>(error.value);
     }
@@ -2724,6 +2783,7 @@ class MeetingNotesCompanion extends UpdateCompanion<MeetingNote> {
           ..write('content: $content, ')
           ..write('model: $model, ')
           ..write('status: $status, ')
+          ..write('cardSuggestions: $cardSuggestions, ')
           ..write('error: $error, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -8470,6 +8530,7 @@ typedef $$MeetingNotesTableCreateCompanionBuilder =
       Value<String?> content,
       required String model,
       required NotesStatus status,
+      Value<String?> cardSuggestions,
       Value<String?> error,
       required DateTime createdAt,
     });
@@ -8481,6 +8542,7 @@ typedef $$MeetingNotesTableUpdateCompanionBuilder =
       Value<String?> content,
       Value<String> model,
       Value<NotesStatus> status,
+      Value<String?> cardSuggestions,
       Value<String?> error,
       Value<DateTime> createdAt,
     });
@@ -8525,6 +8587,11 @@ class $$MeetingNotesTableFilterComposer
         column: $table.status,
         builder: (column) => ColumnWithTypeConverterFilters(column),
       );
+
+  ColumnFilters<String> get cardSuggestions => $composableBuilder(
+    column: $table.cardSuggestions,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<String> get error => $composableBuilder(
     column: $table.error,
@@ -8576,6 +8643,11 @@ class $$MeetingNotesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get cardSuggestions => $composableBuilder(
+    column: $table.cardSuggestions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get error => $composableBuilder(
     column: $table.error,
     builder: (column) => ColumnOrderings(column),
@@ -8613,6 +8685,11 @@ class $$MeetingNotesTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<NotesStatus, int> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get cardSuggestions => $composableBuilder(
+    column: $table.cardSuggestions,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get error =>
       $composableBuilder(column: $table.error, builder: (column) => column);
@@ -8658,6 +8735,7 @@ class $$MeetingNotesTableTableManager
                 Value<String?> content = const Value.absent(),
                 Value<String> model = const Value.absent(),
                 Value<NotesStatus> status = const Value.absent(),
+                Value<String?> cardSuggestions = const Value.absent(),
                 Value<String?> error = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => MeetingNotesCompanion(
@@ -8667,6 +8745,7 @@ class $$MeetingNotesTableTableManager
                 content: content,
                 model: model,
                 status: status,
+                cardSuggestions: cardSuggestions,
                 error: error,
                 createdAt: createdAt,
               ),
@@ -8678,6 +8757,7 @@ class $$MeetingNotesTableTableManager
                 Value<String?> content = const Value.absent(),
                 required String model,
                 required NotesStatus status,
+                Value<String?> cardSuggestions = const Value.absent(),
                 Value<String?> error = const Value.absent(),
                 required DateTime createdAt,
               }) => MeetingNotesCompanion.insert(
@@ -8687,6 +8767,7 @@ class $$MeetingNotesTableTableManager
                 content: content,
                 model: model,
                 status: status,
+                cardSuggestions: cardSuggestions,
                 error: error,
                 createdAt: createdAt,
               ),

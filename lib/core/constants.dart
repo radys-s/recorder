@@ -239,6 +239,17 @@ const Duration kGeminiChatTimeout = Duration(seconds: 40);
 /// a late card is worth less, and Groq still gets its turn after a timeout.
 const Duration kGeminiLiveAnswerTimeout = Duration(seconds: 25);
 
+/// Výpisky on Gemini: one call over the whole lesson, so a long one.
+const Duration kGeminiNotesTimeout = Duration(seconds: 150);
+
+/// Card suggestions after a lesson's notes.
+const Duration kCardSuggestionTimeout = Duration(seconds: 60);
+const int kCardSuggestionMaxChars = 4000;
+
+/// How much of the student's context, photo text and Q&A výpisky on Groq read,
+/// all blocks together — Groq's per-minute token cap is shared with the notes.
+const int kNotesExtrasGroqChars = 8000;
+
 /// How much of a card one digest call reads. Groq's share stays well under
 /// its 8 000-token minute; Gemini reads practically any card whole.
 const int kDigestGroqChars = 6000;

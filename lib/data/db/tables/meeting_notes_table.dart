@@ -27,6 +27,11 @@ class MeetingNotes extends Table {
   TextColumn get model => text()();
 
   IntColumn get status => intEnum<NotesStatus>()();
+
+  /// Up to three topics from a lesson's notes worth keeping as cards, as JSON
+  /// (`encodeCardSuggestions`). Cleared whenever new notes land; entries are
+  /// removed as the student adds or dismisses them.
+  TextColumn get cardSuggestions => text().nullable()();
   TextColumn get error => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
 
