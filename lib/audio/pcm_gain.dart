@@ -37,7 +37,7 @@ double speechGain(
 
   final levels = <double>[];
   for (var f = 0; f < frames.length && f < voiced.length; f++) {
-    if (voiced[f]) levels.add(_rms(frames[f]));
+    if (voiced[f]) levels.add(frameRms(frames[f]));
   }
   if (levels.isEmpty) return 1;
   levels.sort();
@@ -48,7 +48,8 @@ double speechGain(
   return gain < _kMinUsefulGain ? 1 : gain;
 }
 
-double _rms(Uint8List frame) {
+/// RMS of one PCM16 frame, normalised to 0.0–1.0.
+double frameRms(Uint8List frame) {
   final data = ByteData.sublistView(frame);
   final samples = frame.length ~/ 2;
   if (samples == 0) return 0;

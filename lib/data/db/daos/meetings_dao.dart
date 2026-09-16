@@ -6,6 +6,7 @@ import '../tables/chat_messages_table.dart';
 import '../tables/context_cards_table.dart';
 import '../tables/meeting_notes_table.dart';
 import '../tables/meetings_table.dart';
+import '../tables/refined_segments_table.dart';
 import '../tables/saved_notes_table.dart';
 import '../tables/subjects_table.dart';
 import '../tables/transcript_segments_table.dart';
@@ -55,6 +56,7 @@ class MeetingSummary {
     Subjects,
     MeetingCards,
     ChatMessages,
+    RefinedSegments,
   ],
 )
 class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin {
@@ -144,6 +146,8 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
             .go();
         await (delete(chatMessages)..where((t) => t.meetingId.equals(id)))
             .go();
+        await (delete(refinedSegments)..where((t) => t.meetingId.equals(id)))
+            .go();
         await (update(savedNotes)..where((t) => t.meetingId.equals(id)))
             .write(const SavedNotesCompanion(meetingId: Value(null)));
         await (delete(meetings)..where((t) => t.id.equals(id))).go();
@@ -171,6 +175,9 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
               ..where((t) => t.meetingId.isNotInQuery(existing)))
             .go();
         removed += await (delete(chatMessages)
+              ..where((t) => t.meetingId.isNotInQuery(existing)))
+            .go();
+        removed += await (delete(refinedSegments)
               ..where((t) => t.meetingId.isNotInQuery(existing)))
             .go();
         await (delete(meetingCards)

@@ -1,5 +1,7 @@
 import '../../data/db/app_database.dart';
 import '../../data/db/tables/chat_messages_table.dart';
+import '../../data/db/tables/refined_segments_table.dart';
+import '../../stt/refined_transcript.dart';
 
 /// Merges the transcript, automatic answers and the chat into one list.
 ///
@@ -64,4 +66,69 @@ List<Object> mergeTimeline(
     items.addAll(rest);
   }
   return items;
+}
+
+/// Swaps the live segments of [items] for the refined windows that cover
+/// them, keeping cards and chat messages where [mergeTimeline] put them.
+///
+/// - a ready window takes the place of the first live segment it covers and
+///   the rest of its live segments drop out; cards and messages in between
+///   stay, so they now follow the window;
+/// - a ready window that heard nothing while the live pass heard something is
+///   left out and the live text stays (see [refinedOrLivePieces]);
+/// - a failed window is shown before its live segments, which stay, so the
+///   student sees both the problem and the text there is;
+/// - a window with no visible live segment (the live pass skipped the whole
+///   stretch as silence) goes in by time.
+List<Object> withRefinedWindows(
+  List<Object> items,
+  List<TranscriptSegment> allSegments,
+  List<RefinedSegment> refined,
+) {
+  final replacing = <int, RefinedSegment>{};
+  final shown = <RefinedSegment>[];
+  final failedAt = <int, RefinedSegment>{};
+  for (final w in refined) {
+    final inside = chunksIn(allSegments, w.startMs, w.endMs);
+    if (w.status == RefinedStatus.failed) {
+      shown.add(w);
+      if (inside.isNotEmpty) failedAt[inside.first.id] = w;
+      continue;
+    }
+    if (w.status != RefinedStatus.ready) continue;
+    final text = w.content?.trim() ?? '';
+    if (text.isEmpty) continue;
+    shown.add(w);
+    for (final s in inside) {
+      replacing[s.id] = w;
+    }
+  }
+
+  final emitted = <int>{};
+  final out = <Object>[];
+  for (final item in items) {
+    if (item is TranscriptSegment) {
+      final failed = failedAt[item.id];
+      if (failed != null && emitted.add(failed.id)) out.add(failed);
+      final w = replacing[item.id];
+      if (w != null) {
+        if (emitted.add(w.id)) out.add(w);
+        continue;
+      }
+    }
+    out.add(item);
+  }
+
+  for (final w in shown) {
+    if (emitted.contains(w.id)) continue;
+    final at = out.indexWhere((o) =>
+        (o is TranscriptSegment && o.startMs >= w.startMs) ||
+        (o is RefinedSegment && o.startMs >= w.startMs));
+    if (at < 0) {
+      out.add(w);
+    } else {
+      out.insert(at, w);
+    }
+  }
+  return out;
 }

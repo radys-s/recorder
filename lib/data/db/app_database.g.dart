@@ -6668,6 +6668,618 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessage> {
   }
 }
 
+class $RefinedSegmentsTable extends RefinedSegments
+    with TableInfo<$RefinedSegmentsTable, RefinedSegment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RefinedSegmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _meetingIdMeta = const VerificationMeta(
+    'meetingId',
+  );
+  @override
+  late final GeneratedColumn<int> meetingId = GeneratedColumn<int>(
+    'meeting_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _windowIndexMeta = const VerificationMeta(
+    'windowIndex',
+  );
+  @override
+  late final GeneratedColumn<int> windowIndex = GeneratedColumn<int>(
+    'window_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _startMsMeta = const VerificationMeta(
+    'startMs',
+  );
+  @override
+  late final GeneratedColumn<int> startMs = GeneratedColumn<int>(
+    'start_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endMsMeta = const VerificationMeta('endMs');
+  @override
+  late final GeneratedColumn<int> endMs = GeneratedColumn<int>(
+    'end_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'text',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<RefinedEngine, String> engine =
+      GeneratedColumn<String>(
+        'engine',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<RefinedEngine>($RefinedSegmentsTable.$converterengine);
+  @override
+  late final GeneratedColumnWithTypeConverter<RefinedStatus, int> status =
+      GeneratedColumn<int>(
+        'status',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<RefinedStatus>($RefinedSegmentsTable.$converterstatus);
+  static const VerificationMeta _errorMeta = const VerificationMeta('error');
+  @override
+  late final GeneratedColumn<String> error = GeneratedColumn<String>(
+    'error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    meetingId,
+    windowIndex,
+    startMs,
+    endMs,
+    content,
+    engine,
+    status,
+    error,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'refined_segments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RefinedSegment> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('meeting_id')) {
+      context.handle(
+        _meetingIdMeta,
+        meetingId.isAcceptableOrUnknown(data['meeting_id']!, _meetingIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_meetingIdMeta);
+    }
+    if (data.containsKey('window_index')) {
+      context.handle(
+        _windowIndexMeta,
+        windowIndex.isAcceptableOrUnknown(
+          data['window_index']!,
+          _windowIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_windowIndexMeta);
+    }
+    if (data.containsKey('start_ms')) {
+      context.handle(
+        _startMsMeta,
+        startMs.isAcceptableOrUnknown(data['start_ms']!, _startMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startMsMeta);
+    }
+    if (data.containsKey('end_ms')) {
+      context.handle(
+        _endMsMeta,
+        endMs.isAcceptableOrUnknown(data['end_ms']!, _endMsMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endMsMeta);
+    }
+    if (data.containsKey('text')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['text']!, _contentMeta),
+      );
+    }
+    if (data.containsKey('error')) {
+      context.handle(
+        _errorMeta,
+        error.isAcceptableOrUnknown(data['error']!, _errorMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RefinedSegment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RefinedSegment(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      meetingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}meeting_id'],
+      )!,
+      windowIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}window_index'],
+      )!,
+      startMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_ms'],
+      )!,
+      endMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_ms'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}text'],
+      ),
+      engine: $RefinedSegmentsTable.$converterengine.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}engine'],
+        )!,
+      ),
+      status: $RefinedSegmentsTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+      error: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RefinedSegmentsTable createAlias(String alias) {
+    return $RefinedSegmentsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<RefinedEngine, String, String> $converterengine =
+      const EnumNameConverter<RefinedEngine>(RefinedEngine.values);
+  static JsonTypeConverter2<RefinedStatus, int, int> $converterstatus =
+      const EnumIndexConverter<RefinedStatus>(RefinedStatus.values);
+}
+
+class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
+  final int id;
+  final int meetingId;
+  final int windowIndex;
+  final int startMs;
+  final int endMs;
+
+  /// Null until the window is ready; empty when the window held no speech.
+  final String? content;
+  final RefinedEngine engine;
+  final RefinedStatus status;
+  final String? error;
+  final DateTime createdAt;
+  const RefinedSegment({
+    required this.id,
+    required this.meetingId,
+    required this.windowIndex,
+    required this.startMs,
+    required this.endMs,
+    this.content,
+    required this.engine,
+    required this.status,
+    this.error,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['meeting_id'] = Variable<int>(meetingId);
+    map['window_index'] = Variable<int>(windowIndex);
+    map['start_ms'] = Variable<int>(startMs);
+    map['end_ms'] = Variable<int>(endMs);
+    if (!nullToAbsent || content != null) {
+      map['text'] = Variable<String>(content);
+    }
+    {
+      map['engine'] = Variable<String>(
+        $RefinedSegmentsTable.$converterengine.toSql(engine),
+      );
+    }
+    {
+      map['status'] = Variable<int>(
+        $RefinedSegmentsTable.$converterstatus.toSql(status),
+      );
+    }
+    if (!nullToAbsent || error != null) {
+      map['error'] = Variable<String>(error);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  RefinedSegmentsCompanion toCompanion(bool nullToAbsent) {
+    return RefinedSegmentsCompanion(
+      id: Value(id),
+      meetingId: Value(meetingId),
+      windowIndex: Value(windowIndex),
+      startMs: Value(startMs),
+      endMs: Value(endMs),
+      content: content == null && nullToAbsent
+          ? const Value.absent()
+          : Value(content),
+      engine: Value(engine),
+      status: Value(status),
+      error: error == null && nullToAbsent
+          ? const Value.absent()
+          : Value(error),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory RefinedSegment.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RefinedSegment(
+      id: serializer.fromJson<int>(json['id']),
+      meetingId: serializer.fromJson<int>(json['meetingId']),
+      windowIndex: serializer.fromJson<int>(json['windowIndex']),
+      startMs: serializer.fromJson<int>(json['startMs']),
+      endMs: serializer.fromJson<int>(json['endMs']),
+      content: serializer.fromJson<String?>(json['content']),
+      engine: $RefinedSegmentsTable.$converterengine.fromJson(
+        serializer.fromJson<String>(json['engine']),
+      ),
+      status: $RefinedSegmentsTable.$converterstatus.fromJson(
+        serializer.fromJson<int>(json['status']),
+      ),
+      error: serializer.fromJson<String?>(json['error']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'meetingId': serializer.toJson<int>(meetingId),
+      'windowIndex': serializer.toJson<int>(windowIndex),
+      'startMs': serializer.toJson<int>(startMs),
+      'endMs': serializer.toJson<int>(endMs),
+      'content': serializer.toJson<String?>(content),
+      'engine': serializer.toJson<String>(
+        $RefinedSegmentsTable.$converterengine.toJson(engine),
+      ),
+      'status': serializer.toJson<int>(
+        $RefinedSegmentsTable.$converterstatus.toJson(status),
+      ),
+      'error': serializer.toJson<String?>(error),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  RefinedSegment copyWith({
+    int? id,
+    int? meetingId,
+    int? windowIndex,
+    int? startMs,
+    int? endMs,
+    Value<String?> content = const Value.absent(),
+    RefinedEngine? engine,
+    RefinedStatus? status,
+    Value<String?> error = const Value.absent(),
+    DateTime? createdAt,
+  }) => RefinedSegment(
+    id: id ?? this.id,
+    meetingId: meetingId ?? this.meetingId,
+    windowIndex: windowIndex ?? this.windowIndex,
+    startMs: startMs ?? this.startMs,
+    endMs: endMs ?? this.endMs,
+    content: content.present ? content.value : this.content,
+    engine: engine ?? this.engine,
+    status: status ?? this.status,
+    error: error.present ? error.value : this.error,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  RefinedSegment copyWithCompanion(RefinedSegmentsCompanion data) {
+    return RefinedSegment(
+      id: data.id.present ? data.id.value : this.id,
+      meetingId: data.meetingId.present ? data.meetingId.value : this.meetingId,
+      windowIndex: data.windowIndex.present
+          ? data.windowIndex.value
+          : this.windowIndex,
+      startMs: data.startMs.present ? data.startMs.value : this.startMs,
+      endMs: data.endMs.present ? data.endMs.value : this.endMs,
+      content: data.content.present ? data.content.value : this.content,
+      engine: data.engine.present ? data.engine.value : this.engine,
+      status: data.status.present ? data.status.value : this.status,
+      error: data.error.present ? data.error.value : this.error,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefinedSegment(')
+          ..write('id: $id, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('windowIndex: $windowIndex, ')
+          ..write('startMs: $startMs, ')
+          ..write('endMs: $endMs, ')
+          ..write('content: $content, ')
+          ..write('engine: $engine, ')
+          ..write('status: $status, ')
+          ..write('error: $error, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    meetingId,
+    windowIndex,
+    startMs,
+    endMs,
+    content,
+    engine,
+    status,
+    error,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RefinedSegment &&
+          other.id == this.id &&
+          other.meetingId == this.meetingId &&
+          other.windowIndex == this.windowIndex &&
+          other.startMs == this.startMs &&
+          other.endMs == this.endMs &&
+          other.content == this.content &&
+          other.engine == this.engine &&
+          other.status == this.status &&
+          other.error == this.error &&
+          other.createdAt == this.createdAt);
+}
+
+class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
+  final Value<int> id;
+  final Value<int> meetingId;
+  final Value<int> windowIndex;
+  final Value<int> startMs;
+  final Value<int> endMs;
+  final Value<String?> content;
+  final Value<RefinedEngine> engine;
+  final Value<RefinedStatus> status;
+  final Value<String?> error;
+  final Value<DateTime> createdAt;
+  const RefinedSegmentsCompanion({
+    this.id = const Value.absent(),
+    this.meetingId = const Value.absent(),
+    this.windowIndex = const Value.absent(),
+    this.startMs = const Value.absent(),
+    this.endMs = const Value.absent(),
+    this.content = const Value.absent(),
+    this.engine = const Value.absent(),
+    this.status = const Value.absent(),
+    this.error = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  RefinedSegmentsCompanion.insert({
+    this.id = const Value.absent(),
+    required int meetingId,
+    required int windowIndex,
+    required int startMs,
+    required int endMs,
+    this.content = const Value.absent(),
+    required RefinedEngine engine,
+    required RefinedStatus status,
+    this.error = const Value.absent(),
+    required DateTime createdAt,
+  }) : meetingId = Value(meetingId),
+       windowIndex = Value(windowIndex),
+       startMs = Value(startMs),
+       endMs = Value(endMs),
+       engine = Value(engine),
+       status = Value(status),
+       createdAt = Value(createdAt);
+  static Insertable<RefinedSegment> custom({
+    Expression<int>? id,
+    Expression<int>? meetingId,
+    Expression<int>? windowIndex,
+    Expression<int>? startMs,
+    Expression<int>? endMs,
+    Expression<String>? content,
+    Expression<String>? engine,
+    Expression<int>? status,
+    Expression<String>? error,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (meetingId != null) 'meeting_id': meetingId,
+      if (windowIndex != null) 'window_index': windowIndex,
+      if (startMs != null) 'start_ms': startMs,
+      if (endMs != null) 'end_ms': endMs,
+      if (content != null) 'text': content,
+      if (engine != null) 'engine': engine,
+      if (status != null) 'status': status,
+      if (error != null) 'error': error,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  RefinedSegmentsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? meetingId,
+    Value<int>? windowIndex,
+    Value<int>? startMs,
+    Value<int>? endMs,
+    Value<String?>? content,
+    Value<RefinedEngine>? engine,
+    Value<RefinedStatus>? status,
+    Value<String?>? error,
+    Value<DateTime>? createdAt,
+  }) {
+    return RefinedSegmentsCompanion(
+      id: id ?? this.id,
+      meetingId: meetingId ?? this.meetingId,
+      windowIndex: windowIndex ?? this.windowIndex,
+      startMs: startMs ?? this.startMs,
+      endMs: endMs ?? this.endMs,
+      content: content ?? this.content,
+      engine: engine ?? this.engine,
+      status: status ?? this.status,
+      error: error ?? this.error,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (meetingId.present) {
+      map['meeting_id'] = Variable<int>(meetingId.value);
+    }
+    if (windowIndex.present) {
+      map['window_index'] = Variable<int>(windowIndex.value);
+    }
+    if (startMs.present) {
+      map['start_ms'] = Variable<int>(startMs.value);
+    }
+    if (endMs.present) {
+      map['end_ms'] = Variable<int>(endMs.value);
+    }
+    if (content.present) {
+      map['text'] = Variable<String>(content.value);
+    }
+    if (engine.present) {
+      map['engine'] = Variable<String>(
+        $RefinedSegmentsTable.$converterengine.toSql(engine.value),
+      );
+    }
+    if (status.present) {
+      map['status'] = Variable<int>(
+        $RefinedSegmentsTable.$converterstatus.toSql(status.value),
+      );
+    }
+    if (error.present) {
+      map['error'] = Variable<String>(error.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RefinedSegmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('windowIndex: $windowIndex, ')
+          ..write('startMs: $startMs, ')
+          ..write('endMs: $endMs, ')
+          ..write('content: $content, ')
+          ..write('engine: $engine, ')
+          ..write('status: $status, ')
+          ..write('error: $error, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -6685,6 +7297,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MeetingCardsTable meetingCards = $MeetingCardsTable(this);
   late final $TimetableSlotsTable timetableSlots = $TimetableSlotsTable(this);
   late final $ChatMessagesTable chatMessages = $ChatMessagesTable(this);
+  late final $RefinedSegmentsTable refinedSegments = $RefinedSegmentsTable(
+    this,
+  );
   late final MeetingsDao meetingsDao = MeetingsDao(this as AppDatabase);
   late final TranscriptSegmentsDao transcriptSegmentsDao =
       TranscriptSegmentsDao(this as AppDatabase);
@@ -6705,6 +7320,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final ChatMessagesDao chatMessagesDao = ChatMessagesDao(
     this as AppDatabase,
   );
+  late final RefinedSegmentsDao refinedSegmentsDao = RefinedSegmentsDao(
+    this as AppDatabase,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6723,6 +7341,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     meetingCards,
     timetableSlots,
     chatMessages,
+    refinedSegments,
   ];
 }
 
@@ -10129,6 +10748,314 @@ typedef $$ChatMessagesTableProcessedTableManager =
       ChatMessage,
       PrefetchHooks Function()
     >;
+typedef $$RefinedSegmentsTableCreateCompanionBuilder =
+    RefinedSegmentsCompanion Function({
+      Value<int> id,
+      required int meetingId,
+      required int windowIndex,
+      required int startMs,
+      required int endMs,
+      Value<String?> content,
+      required RefinedEngine engine,
+      required RefinedStatus status,
+      Value<String?> error,
+      required DateTime createdAt,
+    });
+typedef $$RefinedSegmentsTableUpdateCompanionBuilder =
+    RefinedSegmentsCompanion Function({
+      Value<int> id,
+      Value<int> meetingId,
+      Value<int> windowIndex,
+      Value<int> startMs,
+      Value<int> endMs,
+      Value<String?> content,
+      Value<RefinedEngine> engine,
+      Value<RefinedStatus> status,
+      Value<String?> error,
+      Value<DateTime> createdAt,
+    });
+
+class $$RefinedSegmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $RefinedSegmentsTable> {
+  $$RefinedSegmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get meetingId => $composableBuilder(
+    column: $table.meetingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get windowIndex => $composableBuilder(
+    column: $table.windowIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startMs => $composableBuilder(
+    column: $table.startMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endMs => $composableBuilder(
+    column: $table.endMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<RefinedEngine, RefinedEngine, String>
+  get engine => $composableBuilder(
+    column: $table.engine,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<RefinedStatus, RefinedStatus, int>
+  get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RefinedSegmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $RefinedSegmentsTable> {
+  $$RefinedSegmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get meetingId => $composableBuilder(
+    column: $table.meetingId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get windowIndex => $composableBuilder(
+    column: $table.windowIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startMs => $composableBuilder(
+    column: $table.startMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endMs => $composableBuilder(
+    column: $table.endMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get engine => $composableBuilder(
+    column: $table.engine,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RefinedSegmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RefinedSegmentsTable> {
+  $$RefinedSegmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get meetingId =>
+      $composableBuilder(column: $table.meetingId, builder: (column) => column);
+
+  GeneratedColumn<int> get windowIndex => $composableBuilder(
+    column: $table.windowIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get startMs =>
+      $composableBuilder(column: $table.startMs, builder: (column) => column);
+
+  GeneratedColumn<int> get endMs =>
+      $composableBuilder(column: $table.endMs, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<RefinedEngine, String> get engine =>
+      $composableBuilder(column: $table.engine, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<RefinedStatus, int> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get error =>
+      $composableBuilder(column: $table.error, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$RefinedSegmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RefinedSegmentsTable,
+          RefinedSegment,
+          $$RefinedSegmentsTableFilterComposer,
+          $$RefinedSegmentsTableOrderingComposer,
+          $$RefinedSegmentsTableAnnotationComposer,
+          $$RefinedSegmentsTableCreateCompanionBuilder,
+          $$RefinedSegmentsTableUpdateCompanionBuilder,
+          (
+            RefinedSegment,
+            BaseReferences<
+              _$AppDatabase,
+              $RefinedSegmentsTable,
+              RefinedSegment
+            >,
+          ),
+          RefinedSegment,
+          PrefetchHooks Function()
+        > {
+  $$RefinedSegmentsTableTableManager(
+    _$AppDatabase db,
+    $RefinedSegmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RefinedSegmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RefinedSegmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RefinedSegmentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> meetingId = const Value.absent(),
+                Value<int> windowIndex = const Value.absent(),
+                Value<int> startMs = const Value.absent(),
+                Value<int> endMs = const Value.absent(),
+                Value<String?> content = const Value.absent(),
+                Value<RefinedEngine> engine = const Value.absent(),
+                Value<RefinedStatus> status = const Value.absent(),
+                Value<String?> error = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => RefinedSegmentsCompanion(
+                id: id,
+                meetingId: meetingId,
+                windowIndex: windowIndex,
+                startMs: startMs,
+                endMs: endMs,
+                content: content,
+                engine: engine,
+                status: status,
+                error: error,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int meetingId,
+                required int windowIndex,
+                required int startMs,
+                required int endMs,
+                Value<String?> content = const Value.absent(),
+                required RefinedEngine engine,
+                required RefinedStatus status,
+                Value<String?> error = const Value.absent(),
+                required DateTime createdAt,
+              }) => RefinedSegmentsCompanion.insert(
+                id: id,
+                meetingId: meetingId,
+                windowIndex: windowIndex,
+                startMs: startMs,
+                endMs: endMs,
+                content: content,
+                engine: engine,
+                status: status,
+                error: error,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RefinedSegmentsTable, RefinedSegment>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $RefinedSegmentsTable,
+                    RefinedSegment
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RefinedSegmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RefinedSegmentsTable,
+      RefinedSegment,
+      $$RefinedSegmentsTableFilterComposer,
+      $$RefinedSegmentsTableOrderingComposer,
+      $$RefinedSegmentsTableAnnotationComposer,
+      $$RefinedSegmentsTableCreateCompanionBuilder,
+      $$RefinedSegmentsTableUpdateCompanionBuilder,
+      (
+        RefinedSegment,
+        BaseReferences<_$AppDatabase, $RefinedSegmentsTable, RefinedSegment>,
+      ),
+      RefinedSegment,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -10159,4 +11086,6 @@ class $AppDatabaseManager {
       $$TimetableSlotsTableTableManager(_db, _db.timetableSlots);
   $$ChatMessagesTableTableManager get chatMessages =>
       $$ChatMessagesTableTableManager(_db, _db.chatMessages);
+  $$RefinedSegmentsTableTableManager get refinedSegments =>
+      $$RefinedSegmentsTableTableManager(_db, _db.refinedSegments);
 }

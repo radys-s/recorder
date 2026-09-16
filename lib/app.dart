@@ -88,6 +88,10 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
     // what picks up chunks a previous run left unsent, and that has to happen
     // even if the user never opens the screen those chunks belong to.
     await _step('start queue worker', () => ref.read(queueWorkerProvider).start());
+    // Not awaited: a pass can take minutes and must not hold up launch.
+    await _step('resume refined transcripts', () async {
+      unawaited(ref.read(refinedTranscriptServiceProvider).resume());
+    });
   }
 
   Future<void> _step(String name, Future<void> Function() body) async {

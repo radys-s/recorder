@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
+import 'package:recorder/data/db/tables/refined_segments_table.dart';
 
 /// The v9 schema exactly as a v9 build created it, so the upgrade runs against
 /// what is really on the user's phone rather than against today's tables.
@@ -85,6 +86,11 @@ void main() {
           status: ChatStatus.ready,
           createdAt: DateTime.now(),
         ));
+    // v13 adds the refined transcript.
+    await db.refinedSegmentsDao.replaceWindows(9, [
+      (startMs: 0, endMs: 8000, engine: RefinedEngine.gemini),
+    ]);
+    expect(await db.refinedSegmentsDao.meetingsWithPending(), [9]);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

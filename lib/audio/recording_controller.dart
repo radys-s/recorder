@@ -302,6 +302,7 @@ class RecordingController extends Notifier<RecordingState> {
       final meetingId = _meetingId;
       if (meetingId != null) {
         await _db.meetingsDao.markEnded(meetingId, DateTime.now());
+        unawaited(_refineWhenPersisted(meetingId));
       }
       _meetingId = null;
     } catch (e, st) {
@@ -321,6 +322,16 @@ class RecordingController extends Notifier<RecordingState> {
       'stopped after ${state.totalBytes} bytes; ${state.chunkCount} chunks '
       'persisted so far, tail still landing',
     );
+  }
+
+  /// Starts the second transcription pass once the tail chunk is on disk.
+  Future<void> _refineWhenPersisted(int meetingId) async {
+    try {
+      await Future.wait([..._persisting]);
+    } catch (_) {
+      // A failed write is logged where it happened; refine what did land.
+    }
+    await ref.read(refinedTranscriptServiceProvider).refine(meetingId);
   }
 
   DateTime? _lastCut;
@@ -385,14 +396,18 @@ class RecordingController extends Notifier<RecordingState> {
   /// Called synchronously by the chunker. The persistence work is async, but
   /// the chunk's frames are already detached from the chunker's buffer, so
   /// there is nothing for the next stream event to race with.
+  /// Chunk writes still in flight; the refined pass waits for the tail.
+  final Set<Future<void>> _persisting = {};
+
   void _onChunk(PcmChunk chunk) {
     AppLog.d(_tag, 'chunk closed: $chunk');
     state = state.copyWith(totalBytes: _totalBytes);
     // The profile is captured now: the thresholds that measured this chunk
     // are the ones that should judge it.
-    unawaited(
-      _persistChunk(chunk, _meetingId, _sessionDir, _docsPath, _profile),
-    );
+    final pending =
+        _persistChunk(chunk, _meetingId, _sessionDir, _docsPath, _profile);
+    _persisting.add(pending);
+    unawaited(pending.whenComplete(() => _persisting.remove(pending)));
   }
 
   Future<void> _persistChunk(

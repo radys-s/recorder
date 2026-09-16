@@ -4,6 +4,8 @@ import '../data/db/tables/meeting_notes_table.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/transcript_segments_dao.dart';
 import '../data/db/tables/preferences_table.dart';
+import '../data/db/app_database.dart';
+import '../stt/refined_transcript.dart';
 import 'llm_provider.dart';
 
 /// Turns a meeting's transcript into notes at a chosen depth.
@@ -12,13 +14,22 @@ import 'llm_provider.dart';
 /// the screen only ever watches [MeetingNotesDao] — which is also what makes a
 /// generation survive the user navigating away mid-call.
 class NotesGenerator {
-  NotesGenerator(this._llm, this._segmentsDao, this._notesDao);
+  NotesGenerator(
+    this._llm,
+    this._segmentsDao,
+    this._notesDao, {
+    this.refinedFor,
+  });
 
   static const _tag = 'ai.notes';
 
   final LlmProvider _llm;
   final TranscriptSegmentsDao _segmentsDao;
   final MeetingNotesDao _notesDao;
+
+  /// The refined windows of a meeting; where they are ready they replace the
+  /// live text.
+  final Future<List<RefinedSegment>> Function(int meetingId)? refinedFor;
 
   /// Generates and stores notes for [meetingId]. Never throws: every failure
   /// ends up on the row as [NotesStatus.failed] with a message, because the
@@ -88,6 +99,9 @@ class NotesGenerator {
   /// the material the model reasons over.
   Future<String> _transcript(int meetingId) async {
     final segments = await _segmentsDao.segmentsForMeeting(meetingId);
+    if (refinedFor != null) {
+      return refinedOrLiveTranscript(segments, await refinedFor!(meetingId));
+    }
     final parts = <String>[
       for (final s in segments)
         if (s.content != null && s.content!.trim().isNotEmpty) s.content!.trim(),

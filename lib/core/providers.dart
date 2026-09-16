@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
@@ -27,8 +29,11 @@ import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
 import '../data/card_deleter.dart';
 import '../data/secure/api_key_store.dart';
+import '../queue/refined_transcript_service.dart';
 import '../queue/transcription_queue_worker.dart';
+import '../data/db/daos/refined_segments_dao.dart';
 import '../stt/groq_whisper_stt_provider.dart';
+import '../stt/refined_transcriber.dart';
 import '../stt/stt_provider.dart';
 import 'constants.dart';
 import 'paths.dart';
@@ -96,6 +101,7 @@ final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
     ref.watch(llmProvider),
     db.transcriptSegmentsDao,
     db.meetingNotesDao,
+    refinedFor: db.refinedSegmentsDao.windows,
   );
 });
 
@@ -151,6 +157,7 @@ final chatAnswerServiceProvider = Provider<ChatAnswerService>((ref) {
     ref.watch(lessonContextSourceProvider),
     gemini: ref.watch(geminiProvider),
     hasGeminiKey: geminiKeys.hasKey,
+    refinedFor: db.refinedSegmentsDao.windows,
   );
 });
 
@@ -251,6 +258,59 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
   ref.onDispose(worker.stop);
   return worker;
 });
+
+final refinedSegmentsDaoProvider = Provider<RefinedSegmentsDao>((ref) {
+  return ref.watch(appDatabaseProvider).refinedSegmentsDao;
+});
+
+/// The refined windows of one meeting, in order.
+final refinedSegmentsProvider =
+    StreamProvider.family<List<RefinedSegment>, int>((ref, meetingId) {
+  return ref.watch(refinedSegmentsDaoProvider).watchForMeeting(meetingId);
+});
+
+/// The second transcription pass after a recording. Resumed at app launch.
+final refinedTranscriptServiceProvider =
+    Provider<RefinedTranscriptService>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final lessons = ref.watch(lessonContextSourceProvider);
+  return RefinedTranscriptService(
+    db,
+    RefinedTranscriber(
+      gemini: ref.watch(geminiProvider),
+      stt: ref.watch(sttProvider),
+    ),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    resolvePath: resolveStoredPath,
+    tempDir: getTemporaryDirectory,
+    lessonInfo: (meetingId) async {
+      final material = await lessons.load(meetingId);
+      return (
+        subjectName: material.subjectName,
+        cardTitles: [
+          for (final c in material.cards)
+            if (c.pinned) c.title,
+        ],
+        glossary: await lessons.glossary(meetingId),
+      );
+    },
+    waitForTurn: _waitUntilOnline,
+  );
+});
+
+/// Returns once any network is up; checks again every 15 s.
+Future<void> _waitUntilOnline() async {
+  final connectivity = Connectivity();
+  while (true) {
+    try {
+      final results = await connectivity.checkConnectivity();
+      if (results.any((r) => r != ConnectivityResult.none)) return;
+    } catch (_) {
+      return; // Cannot tell: let the request fail and be retried.
+    }
+    await Future<void>.delayed(const Duration(seconds: 15));
+  }
+}
 
 /// Whether a Groq key is stored. Screens watch this to show a "set your key"
 /// hint; invalidate it after saving or clearing the key in Settings.

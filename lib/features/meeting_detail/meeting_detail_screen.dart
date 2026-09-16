@@ -11,7 +11,9 @@ import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/menu_row.dart';
+import '../../core/widgets/status_chip.dart';
 import '../../data/db/app_database.dart';
+import '../../data/db/tables/refined_segments_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
 import '../meetings_list/meeting_actions.dart';
 import '../subjects/widgets/lesson_context_strip.dart';
@@ -23,6 +25,7 @@ import 'widgets/chat_bar.dart';
 import 'widgets/chat_message_tile.dart';
 import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
+import 'widgets/refined_window_tile.dart';
 import 'widgets/transcript_segment_tile.dart';
 
 enum _MeetingAction { lesson, rename, delete }
@@ -65,6 +68,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   /// How many rows the transcript had at the last build; the tail is followed
   /// only when that grows.
   int _itemCount = 0;
+
+  /// The student chose the live transcript over the refined one.
+  bool _showLive = false;
 
   /// Follows the transcript only while this meeting is the one being recorded,
   /// only when a row was added, and only for a reader already at the bottom.
@@ -279,6 +285,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   onDismiss: () => _dismissCard(latest.id),
                 ),
         ),
+        if (!isThisOneRecording) _refinedHeader(),
         Expanded(
           child: _transcriptList(isThisOneRecording, cards, messages),
         ),
@@ -294,6 +301,14 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     List<ChatMessage> messages,
   ) {
     final segments = ref.watch(meetingSegmentsProvider(widget.meetingId));
+    final refined = isThisOneRecording
+        ? const <RefinedSegment>[]
+        : ref.watch(refinedSegmentsProvider(widget.meetingId)).valueOrNull ??
+            const <RefinedSegment>[];
+    final useRefined = !_showLive &&
+        refined.any((w) =>
+            w.status == RefinedStatus.ready ||
+            w.status == RefinedStatus.failed);
 
     return AsyncView(
       value: segments,
@@ -309,7 +324,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 (s.content?.trim().isNotEmpty ?? false))
             .toList();
 
-        if (visible.isEmpty && messages.isEmpty) {
+        if (visible.isEmpty && messages.isEmpty && !useRefined) {
           return EmptyState(
             icon: isThisOneRecording
                 ? Icons.graphic_eq
@@ -326,7 +341,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
         // Answers sit right after the segment their question was heard in,
         // chat messages where they were typed.
-        final items = mergeTimeline(visible, cards, messages);
+        final merged = mergeTimeline(visible, cards, messages);
+        final items =
+            useRefined ? withRefinedWindows(merged, list, refined) : merged;
 
         // A reply to a typed question is followed on a finished lesson too.
         if (items.length > _itemCount &&
@@ -353,7 +370,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
           // A rule butting up against a card reads as a mistake; between two
           // segments it is what keeps the transcript legible.
           separatorBuilder: (_, i) =>
-              items[i] is TranscriptSegment && items[i + 1] is TranscriptSegment
+              _isText(items[i]) && _isText(items[i + 1])
                   ? const Divider(height: 1)
                   : const SizedBox.shrink(),
           itemBuilder: (_, i) {
@@ -368,6 +385,12 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               child: switch (item) {
                 AnswerCard() => AnswerCardTile(card: item),
                 ChatMessage() => ChatMessageTile(message: item),
+                RefinedSegment() => RefinedWindowTile(
+                    window: item,
+                    onRetry: () => ref
+                        .read(refinedTranscriptServiceProvider)
+                        .retryWindow(item.id),
+                  ),
                 TranscriptSegment() => TranscriptSegmentTile(
                     segment: item,
                     onRetry: () => _retry(item),
@@ -381,7 +404,95 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     );
   }
 
+  static bool _isText(Object item) =>
+      item is TranscriptSegment || item is RefinedSegment;
+
+  /// Refined-transcript controls on a finished meeting: which transcript to
+  /// read, how far the second pass is, and a way to run it again.
+  Widget _refinedHeader() {
+    final refined =
+        ref.watch(refinedSegmentsProvider(widget.meetingId)).valueOrNull;
+    final segments =
+        ref.watch(meetingSegmentsProvider(widget.meetingId)).valueOrNull;
+    if (refined == null || segments == null || segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final service = ref.read(refinedTranscriptServiceProvider);
+
+    if (refined.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, 0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => service.refine(widget.meetingId),
+            icon: const Icon(Icons.auto_fix_high, size: 18),
+            label: const Text('Vylepšit přepis'),
+          ),
+        ),
+      );
+    }
+
+    final ready = refined.where((w) => w.status == RefinedStatus.ready).length;
+    final failed =
+        refined.where((w) => w.status == RefinedStatus.failed).length;
+    final working = refined.length - ready - failed;
+    final canToggle = ready + failed > 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.sm, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: Gap.sm,
+              runSpacing: Gap.xs,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (canToggle)
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    segments: const [
+                      ButtonSegment(value: false, label: Text('Vylepšený')),
+                      ButtonSegment(value: true, label: Text('Živý')),
+                    ],
+                    selected: {_showLive},
+                    onSelectionChanged: (set) =>
+                        setState(() => _showLive = set.first),
+                  ),
+                if (working > 0)
+                  StatusChip(
+                    icon: Icons.auto_fix_high,
+                    label: 'Vylepšuji přepis ${ready + failed}/${refined.length}',
+                    tone: ChipTone.progress,
+                  )
+                else if (failed > 0)
+                  StatusChip(
+                    icon: Icons.error_outline,
+                    label: '$failed× nevylepšeno',
+                    tone: ChipTone.alert,
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Přepsat znovu',
+            onPressed: working > 0
+                ? null
+                : () => service.refine(widget.meetingId),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+    );
+  }
+
   static String _rowKey(Object item) => switch (item) {
+        RefinedSegment() => 'win:${item.id}',
         AnswerCard() => 'card:${item.id}',
         ChatMessage() => 'msg:${item.id}',
         TranscriptSegment() => 'seg:${item.id}',

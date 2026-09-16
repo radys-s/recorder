@@ -272,3 +272,36 @@ const int kMaxCardSources = 8;
 /// long normal-profile chunks a pause they really did end on, which is the
 /// cheap direction to be wrong in.
 const Duration kPauseCutMaxChunkDuration = Duration(milliseconds: 18500);
+
+/// The refined transcript after a recording: windows of consecutive chunks.
+///
+/// Gemini gets 4 minutes rather than 5: a window closes on the first chunk
+/// past the target and a short last window is merged into the one before, so
+/// a 4-minute target stays under ~5.5 minutes — ~10.5 MB of 16 kHz WAV and
+/// ~14 MB once base64-encoded, clear of the 20 MB inline request limit.
+const Duration kRefinedGeminiWindow = Duration(minutes: 4);
+const Duration kRefinedWhisperWindow = Duration(minutes: 2);
+
+/// A last window shorter than this joins the one before it.
+const Duration kRefinedMinLastWindow = Duration(minutes: 1);
+
+/// A window with less speech than this is ready and empty without a request.
+const int kRefinedMinVoicedMs = 1000;
+
+/// Frame level counted as speech when a window's chunks are re-levelled —
+/// the automatic profile's starting threshold.
+const double kRefinedVoicedRms = 0.003;
+
+/// Five minutes of audio in, a few thousand words out.
+const Duration kRefinedGeminiTimeout = Duration(seconds: 180);
+const Duration kRefinedWhisperTimeout = Duration(seconds: 120);
+
+/// How long a failed window waits before its next try. Long on purpose:
+/// the usual failure is a per-minute rate limit, and nobody is waiting.
+const List<Duration> kRefinedRetryDelays = [
+  Duration(seconds: 30),
+  Duration(minutes: 2),
+];
+
+/// The previous window's ending, handed to the next as context.
+const int kRefinedContextChars = 500;

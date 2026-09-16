@@ -1,0 +1,288 @@
+import 'dart:async';
+import 'dart:collection';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
+import '../ai/llm_provider.dart';
+import '../audio/wav_concat.dart';
+import '../core/constants.dart';
+import '../core/logging.dart';
+import '../data/db/app_database.dart';
+import '../data/db/tables/refined_segments_table.dart';
+import '../stt/refined_transcriber.dart';
+import '../stt/refined_transcript.dart';
+import '../stt/stt_provider.dart';
+
+/// Lesson facts a window's request is told.
+typedef RefinedLessonInfo = ({
+  String? subjectName,
+  List<String> cardTitles,
+  String? glossary,
+});
+
+/// The second transcription pass, run after a recording ends.
+///
+/// The live pass hears 8–20 s at a time with only the previous chunk's tail
+/// as context, which is where cut words, wrong words and invented endings come
+/// from. This pass hears the same audio again in windows of minutes — Gemini
+/// when its key is set, Whisper otherwise — and its text replaces the live
+/// text everywhere after the lesson.
+///
+/// One window at a time, oldest meeting first. Nothing here throws to the
+/// caller: a window that keeps failing is marked failed, and the live text
+/// stands in for it.
+class RefinedTranscriptService {
+  RefinedTranscriptService(
+    this._db,
+    this._transcriber, {
+    required this.hasGeminiKey,
+    required this.resolvePath,
+    required this.tempDir,
+    this.lessonInfo,
+    this.waitForTurn,
+    this.retryDelays = kRefinedRetryDelays,
+  });
+
+  static const _tag = 'stt.refined';
+
+  final AppDatabase _db;
+  final RefinedTranscriber _transcriber;
+  final Future<bool> Function() hasGeminiKey;
+  final Future<String> Function(String stored) resolvePath;
+  final Future<Directory> Function() tempDir;
+  final Future<RefinedLessonInfo> Function(int meetingId)? lessonInfo;
+
+  /// Awaited before every request, e.g. to wait out a missing connection.
+  final Future<void> Function()? waitForTurn;
+
+  /// Pause before each further try; one try more than there are delays.
+  final List<Duration> retryDelays;
+
+  final _queue = Queue<int>();
+  Future<void>? _running;
+
+  /// Picks up windows a previous run did not finish.
+  Future<void> resume() async {
+    try {
+      final reset = await _db.refinedSegmentsDao.resetRunning();
+      if (reset > 0) AppLog.d(_tag, 'requeued $reset interrupted window(s)');
+      final meetings = await _db.refinedSegmentsDao.meetingsWithPending();
+      if (meetings.isEmpty) return;
+      AppLog.d(_tag, 'resuming meetings $meetings');
+      meetings.forEach(_enqueue);
+      await _kick();
+    } catch (e, st) {
+      AppLog.e(_tag, 'resume failed', e, st);
+    }
+  }
+
+  /// Plans the meeting's windows afresh and transcribes them. Replaces any
+  /// earlier refined text, which is what „Přepsat znovu" means.
+  Future<void> refine(int meetingId) async {
+    try {
+      final meeting = await (_db.select(_db.meetings)
+            ..where((t) => t.id.equals(meetingId)))
+          .getSingleOrNull();
+      if (meeting == null || meeting.endedAt == null) return;
+
+      final segments =
+          await _db.transcriptSegmentsDao.segmentsForMeeting(meetingId);
+      final gemini = await hasGeminiKey();
+      final engine = gemini ? RefinedEngine.gemini : RefinedEngine.whisper;
+      final plans = planWindows(
+        segments,
+        target: gemini ? kRefinedGeminiWindow : kRefinedWhisperWindow,
+      );
+      await _db.refinedSegmentsDao.replaceWindows(meetingId, [
+        for (final w in plans)
+          (startMs: w.startMs, endMs: w.endMs, engine: engine),
+      ]);
+      AppLog.d(_tag,
+          'meeting $meetingId: ${plans.length} window(s) via ${engine.name}');
+      if (plans.isEmpty) return;
+      _enqueue(meetingId);
+      await _kick();
+    } catch (e, st) {
+      AppLog.e(_tag, 'meeting $meetingId: could not plan', e, st);
+    }
+  }
+
+  /// Tries one failed window again.
+  Future<void> retryWindow(int windowId) async {
+    try {
+      final window = await _db.refinedSegmentsDao.window(windowId);
+      if (window == null) return;
+      await _db.refinedSegmentsDao.markPending(windowId);
+      _enqueue(window.meetingId);
+      await _kick();
+    } catch (e, st) {
+      AppLog.e(_tag, 'window $windowId: retry failed', e, st);
+    }
+  }
+
+  void _enqueue(int meetingId) {
+    if (!_queue.contains(meetingId)) _queue.add(meetingId);
+  }
+
+  /// Starts the drain unless it runs already; either way completes once the
+  /// queue is empty.
+  Future<void> _kick() =>
+      _running ??= _drain().whenComplete(() => _running = null);
+
+  Future<void> _drain() async {
+    while (_queue.isNotEmpty) {
+      final meetingId = _queue.removeFirst();
+      try {
+        await _processMeeting(meetingId);
+      } catch (e, st) {
+        AppLog.e(_tag, 'meeting $meetingId: pass stopped', e, st);
+      }
+    }
+  }
+
+  Future<void> _processMeeting(int meetingId) async {
+    // Re-read after every window: a retry or a re-plan changes what is left.
+    while (true) {
+      final windows = await _db.refinedSegmentsDao.windows(meetingId);
+      final next =
+          windows.where((w) => w.status == RefinedStatus.pending).firstOrNull;
+      if (next == null) return;
+      await _processWindow(next, windows);
+    }
+  }
+
+  Future<void> _processWindow(
+    RefinedSegment window,
+    List<RefinedSegment> all,
+  ) async {
+    final dao = _db.refinedSegmentsDao;
+    await dao.markRunning(window.id);
+
+    File? wav;
+    try {
+      final segments =
+          await _db.transcriptSegmentsDao.segmentsForMeeting(window.meetingId);
+      final chunks = chunksIn(segments, window.startMs, window.endMs);
+      final voiced = chunks.any((s) => s.voicedMs == null)
+          ? null
+          : chunks.fold<int>(0, (sum, s) => sum + s.voicedMs!);
+      if (chunks.isEmpty || (voiced != null && voiced < kRefinedMinVoicedMs)) {
+        // Nothing to hear: no request, and nothing to invent.
+        await dao.markReady(window.id, '', window.engine);
+        return;
+      }
+
+      final dir = await tempDir();
+      wav = File(p.join(dir.path,
+          'refined_${window.meetingId}_${window.windowIndex}_${DateTime.now().microsecondsSinceEpoch}.wav'));
+      final joined = await concatWavFiles(
+        inputs: [for (final c in chunks) await resolvePath(c.localAudioPath)],
+        outputPath: wav.path,
+      );
+      if (joined.pcmBytes == 0) {
+        await dao.markFailed(window.id, 'Zvuk této části chybí.');
+        return;
+      }
+
+      final context = await _context(window, all);
+      final engines = window.engine == RefinedEngine.gemini
+          ? const [RefinedEngine.gemini, RefinedEngine.whisper]
+          : const [RefinedEngine.whisper];
+      final errors = <String>[];
+      for (final engine in engines) {
+        final outcome = await _tryEngine(
+          engine,
+          wav,
+          context,
+          voicedMs: voiced,
+          durationMs: window.endMs - window.startMs,
+        );
+        final text = outcome.text;
+        if (text != null) {
+          await dao.markReady(window.id, text, engine);
+          AppLog.d(_tag,
+              'window ${window.id}: ready via ${engine.name} (${text.length} chars)');
+          return;
+        }
+        errors.add(outcome.error ?? '');
+      }
+      final message = errors.where((e) => e.isNotEmpty).join(' · ');
+      await dao.markFailed(window.id, message);
+      AppLog.e(_tag, 'window ${window.id} failed: $message');
+    } catch (e, st) {
+      AppLog.e(_tag, 'window ${window.id} failed unexpectedly', e, st);
+      await dao.markFailed(window.id, '$e');
+    } finally {
+      try {
+        if (wav != null && await wav.exists()) await wav.delete();
+      } catch (_) {}
+    }
+  }
+
+  Future<({String? text, String? error})> _tryEngine(
+    RefinedEngine engine,
+    File wav,
+    RefinedContext context, {
+    required int? voicedMs,
+    required int durationMs,
+  }) async {
+    var error = '';
+    for (var attempt = 0; attempt <= retryDelays.length; attempt++) {
+      if (attempt > 0) await Future<void>.delayed(retryDelays[attempt - 1]);
+      await waitForTurn?.call();
+      try {
+        final text = switch (engine) {
+          RefinedEngine.gemini => await _transcriber.viaGemini(wav, context),
+          RefinedEngine.whisper => await _transcriber.viaWhisper(
+              wav,
+              context,
+              voicedMs: voicedMs,
+              durationMs: durationMs,
+            ),
+        };
+        return (text: text, error: null);
+      } on AiPermanentException catch (e) {
+        return (text: null, error: e.message);
+      } on SttPermanentException catch (e) {
+        return (text: null, error: e.message);
+      } on AiException catch (e) {
+        error = e.message;
+      } on SttException catch (e) {
+        error = e.message;
+      } catch (e) {
+        // Unclassified (a disk error, a parsing bug): transient, but bounded.
+        error = '$e';
+      }
+      AppLog.d(_tag, '${engine.name} try ${attempt + 1} failed: $error');
+    }
+    return (text: null, error: error);
+  }
+
+  Future<RefinedContext> _context(
+    RefinedSegment window,
+    List<RefinedSegment> all,
+  ) async {
+    final previous = all
+        .where((w) =>
+            w.windowIndex < window.windowIndex &&
+            w.status == RefinedStatus.ready &&
+            (w.content?.trim().isNotEmpty ?? false))
+        .lastOrNull;
+    final prefs = await _db.preferencesDao.current();
+    RefinedLessonInfo? info;
+    try {
+      info = await lessonInfo?.call(window.meetingId);
+    } catch (e, st) {
+      AppLog.e(_tag, 'lesson info failed', e, st);
+    }
+    return RefinedContext(
+      subjectName: info?.subjectName,
+      cardTitles: info?.cardTitles ?? const [],
+      glossary: info?.glossary,
+      previousText: previous?.content,
+      languageCode: prefs.transcriptLanguage.code,
+      sensitivity: prefs.micSensitivity,
+    );
+  }
+}

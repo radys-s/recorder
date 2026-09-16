@@ -2,9 +2,11 @@ import 'dart:async';
 
 import '../core/constants.dart';
 import '../core/logging.dart';
+import '../data/db/app_database.dart';
 import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/transcript_segments_dao.dart';
 import '../data/db/tables/chat_messages_table.dart';
+import '../stt/refined_transcript.dart';
 import 'context_builder.dart';
 import 'json_extract.dart';
 import 'lesson_context_source.dart';
@@ -28,6 +30,7 @@ class ChatAnswerService {
     this._lessonContext, {
     this._gemini,
     this._hasGeminiKey,
+    this.refinedFor,
   });
 
   static const _tag = 'ai.chat';
@@ -38,6 +41,9 @@ class ChatAnswerService {
   final LessonContextSource _lessonContext;
   final LlmProvider? _gemini;
   final Future<bool> Function()? _hasGeminiKey;
+
+  /// The refined windows of a meeting, preferred over live text once ready.
+  final Future<List<RefinedSegment>> Function(int meetingId)? refinedFor;
 
   Future<bool> _geminiAvailable() async {
     if (_gemini == null || _hasGeminiKey == null) return false;
@@ -73,11 +79,14 @@ class ChatAnswerService {
     try {
       final material = await _lessonContext.load(message.meetingId);
       final segments = await _segments.segmentsForMeeting(message.meetingId);
-      final transcript = [
-        for (final s in segments)
-          if (s.content != null && s.content!.trim().isNotEmpty)
-            s.content!.trim(),
-      ].join(' ');
+      final transcript = refinedFor == null
+          ? [
+              for (final s in segments)
+                if (s.content != null && s.content!.trim().isNotEmpty)
+                  s.content!.trim(),
+            ].join(' ')
+          : refinedOrLiveTranscript(
+              segments, await refinedFor!(message.meetingId));
 
       final heading = material.isLesson ? 'Lesson so far' : 'Recording so far';
       List<LlmMessage> prompt(LessonContext built) => [

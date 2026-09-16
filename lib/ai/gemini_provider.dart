@@ -11,6 +11,9 @@ import 'answer_source.dart';
 import 'llm_provider.dart';
 
 /// A picture sent along with the last user message.
+///
+/// Despite the name any inline file Gemini accepts fits here — [LlmMedia] is
+/// the same class under the name to use for audio.
 class LlmImage {
   const LlmImage(this.bytes, {this.mimeType = 'image/jpeg'});
 
@@ -21,6 +24,10 @@ class LlmImage {
         'inlineData': {'mimeType': mimeType, 'data': base64Encode(bytes)},
       };
 }
+
+/// Inline audio or any other file part, e.g. `LlmMedia(bytes, mimeType:
+/// 'audio/wav')`. Sent through `images`, which go before the prompt text.
+typedef LlmMedia = LlmImage;
 
 /// A Gemini reply, with the pages Google Search grounded it on.
 class GeminiCompletion {
