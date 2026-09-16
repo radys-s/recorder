@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,8 @@ import 'subjects_providers.dart';
 enum _CardAction { delete }
 
 enum _PhotoSource { camera, gallery }
+
+enum _Merge { replace, append }
 
 /// Creates a context card, or edits [card] when one is given.
 ///
@@ -99,6 +102,9 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
   /// What is running right now („Čtu fotky…"), or null.
   String? _busy;
 
+  /// Stops the running Gemini call when the student gives up waiting.
+  CancelToken? _cancel;
+
   bool get _isNew => widget.card == null;
 
   bool get _dirty =>
@@ -111,6 +117,11 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
   @override
   void initState() {
     super.initState();
+    // The key may have been saved in Settings while an older answer to "is
+    // there a key" was cached; the hint below must not claim there is none.
+    Future.microtask(() {
+      if (mounted) ref.invalidate(hasGeminiKeyProvider);
+    });
     final card = widget.card;
     if (card != null) {
       ref.read(subjectsDaoProvider).cardImagePaths(card.id).then((paths) {
@@ -121,6 +132,7 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
 
   @override
   void dispose() {
+    _cancel?.cancel();
     _title.dispose();
     _content.dispose();
     super.dispose();
@@ -137,10 +149,46 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     _content.text = current.isEmpty ? text : '$current\n\n$text';
   }
 
+  void _stop() {
+    _cancel?.cancel();
+    setState(() => _busy = null);
+  }
+
+  /// Whether a found text replaces what the card already holds.
+  Future<_Merge?> _askMerge() async {
+    if (_content.text.trim().isEmpty) return _Merge.append;
+    return showModalBottomSheet<_Merge>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.playlist_add),
+              title: const Text('Přidat na konec'),
+              subtitle: const Text('Co už v kartě je, zůstane.'),
+              onTap: () => Navigator.pop(context, _Merge.append),
+            ),
+            ListTile(
+              leading: const Icon(Icons.find_replace),
+              title: const Text('Nahradit obsah'),
+              subtitle: const Text('Dosavadní text karty se přepíše.'),
+              onTap: () => Navigator.pop(context, _Merge.replace),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _fromPhotos() async {
     if (_busy != null) return;
     if (!await ref.read(geminiKeyStoreProvider).hasKey()) {
-      if (mounted) _say('Text z fotek čte Gemini. Přidej Gemini klíč v Nastavení.');
+      if (mounted) {
+        ref.invalidate(hasGeminiKeyProvider);
+        _say('Text z fotek čte Gemini. Přidej Gemini klíč v Nastavení.');
+      }
       return;
     }
     if (!mounted) return;
@@ -183,22 +231,30 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     }
     if (pages.isEmpty || !mounted) return;
 
+    final cancel = _cancel = CancelToken();
     setState(() => _busy = pages.length == 1 ? 'Čtu fotku…' : 'Čtu ${pages.length} fotky…');
     try {
-      final text = await ref.read(photoTextServiceProvider).transcribePages([
-        for (final page in pages) LlmImage(page.bytes, mimeType: page.mimeType),
-      ]);
-      if (!mounted) return;
+      final text = await ref.read(photoTextServiceProvider).transcribePages(
+        [
+          for (final page in pages)
+            LlmImage(page.bytes, mimeType: page.mimeType),
+        ],
+        cancelToken: cancel,
+      );
+      if (!mounted || cancel.isCancelled) return;
       setState(() {
         _append(text);
         _newPages.addAll(pages);
         _usedPhotos = true;
       });
     } catch (e, st) {
+      if (cancel.isCancelled) return;
       AppLog.e(_tag, 'pages not read', e, st);
       if (mounted) _say(geminiFailureText(e));
     } finally {
-      if (mounted) setState(() => _busy = null);
+      if (mounted && identical(_cancel, cancel)) {
+        setState(() => _busy = null);
+      }
     }
   }
 
@@ -210,27 +266,45 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       return;
     }
     FocusScope.of(context).unfocus();
+    final merge = await _askMerge();
+    if (merge == null || !mounted) return;
+    final cancel = _cancel = CancelToken();
     setState(() => _busy = 'Dohledávám…');
     try {
       final subject =
           await ref.read(subjectsDaoProvider).subject(widget.subjectId);
       final found = await ref
           .read(cardLookupServiceProvider)
-          .lookUp(query, subjectName: subject?.name);
-      if (!mounted) return;
+          .lookUp(query, subjectName: subject?.name, cancelToken: cancel);
+      if (!mounted || cancel.isCancelled) return;
       setState(() {
-        _append(found.content);
-        _sources = mergeCardSources(_sources, found.sources);
+        if (merge == _Merge.replace) {
+          _content.text = found.content;
+          _sources = found.sources;
+        } else {
+          _append(found.content);
+          _sources = mergeCardSources(_sources, found.sources);
+        }
         _usedLookup = true;
       });
-      if (!found.viaGemini) {
+      final problem = found.geminiProblem;
+      if (problem != null) {
+        _say('Přes Gemini to nešlo, dohledáno stručně přes Groq. $problem');
+      } else if (!found.viaGemini) {
         _say('Dohledáno jen stručně. S Gemini klíčem v Nastavení to bude podrobnější.');
+      } else if (found.truncated) {
+        _say('Karta je dlouhá a konec se nevešel — zkontroluj poslední část.');
+      } else if (!found.grounded) {
+        _say('Gemini tentokrát nehledal na webu — ověř fakta.');
       }
     } catch (e, st) {
+      if (cancel.isCancelled) return;
       AppLog.e(_tag, 'lookup failed', e, st);
       if (mounted) _say(geminiFailureText(e));
     } finally {
-      if (mounted) setState(() => _busy = null);
+      if (mounted && identical(_cancel, cancel)) {
+        setState(() => _busy = null);
+      }
     }
   }
 
@@ -413,8 +487,15 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
             ),
             if (busy != null)
               Padding(
-                padding: const EdgeInsets.only(top: Gap.sm),
-                child: Text(busy, style: theme.textTheme.bodySmall),
+                padding: const EdgeInsets.only(top: Gap.xs),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(busy, style: theme.textTheme.bodySmall),
+                    ),
+                    TextButton(onPressed: _stop, child: const Text('Zrušit')),
+                  ],
+                ),
               )
             else if (!hasGemini)
               Padding(

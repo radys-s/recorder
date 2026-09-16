@@ -96,6 +96,10 @@ void main() {
     await db.meetingNotesDao.markReady(9, 'Výpisky');
     await db.meetingNotesDao.setCardSuggestions(9, '[]');
     expect((await db.meetingNotesDao.forMeeting(9))!.cardSuggestions, '[]');
+    // v15 adds the Gemini model override.
+    await db.preferencesDao.setGeminiModelOverride('gemini-3-flash');
+    expect((await db.preferencesDao.current()).geminiModelOverride,
+        'gemini-3-flash');
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

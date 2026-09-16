@@ -1,4 +1,7 @@
+import 'package:dio/dio.dart' show CancelToken;
+
 import '../core/constants.dart';
+import '../core/gemini_failure.dart';
 import '../core/logging.dart';
 import 'gemini_provider.dart';
 import 'json_extract.dart';
@@ -25,7 +28,10 @@ class PhotoTextService {
 
   /// The text of [pages], in order, paragraphs kept. Throws [AiException];
   /// an image with no text in it is a permanent one with a Czech message.
-  Future<String> transcribePages(List<LlmImage> pages) async {
+  Future<String> transcribePages(
+    List<LlmImage> pages, {
+    CancelToken? cancelToken,
+  }) async {
     if (pages.isEmpty) throw ArgumentError.value(pages, 'pages', 'empty');
     final result = await _gemini.generate(
       model: kGeminiModel,
@@ -38,6 +44,7 @@ class PhotoTextService {
       images: pages,
       maxTokens: 16000,
       timeout: kGeminiPhotoTimeout,
+      cancelToken: cancelToken,
     );
     final text = cleanModelText(result.content);
     if (text.isEmpty || text == _noText) {
@@ -45,6 +52,7 @@ class PhotoTextService {
     }
     if (result.truncated) {
       AppLog.d(_tag, '${pages.length} page(s): transcription hit the cap');
+      return '$text\n\n[Zbytek se nevešel — zkus méně stránek najednou.]';
     }
     return text;
   }
@@ -126,7 +134,31 @@ String cleanModelText(String raw) {
 }
 
 /// A Czech sentence for a failed Gemini call, for a snackbar or a bubble.
+///
+/// Says what actually went wrong — a missing model or a used-up limit is not
+/// a bad key — and adds Google's own reason when there is one.
 String geminiFailureText(Object error) {
+  if (error is AiException && error.kind is GeminiErrorKind) {
+    final google = error.reason == null
+        ? ''
+        : ' (Google: ${clipReason(error.reason!, max: 120)})';
+    final sentence = switch (error.kind as GeminiErrorKind) {
+      GeminiErrorKind.badKey =>
+        'Gemini klíč neprošel. Zkontroluj ho v Nastavení.',
+      GeminiErrorKind.modelMissing =>
+        'Model Gemini není pro tvůj klíč dostupný. V Nastavení → Ověřit klíč '
+            'vyber jiný.',
+      GeminiErrorKind.apiDisabled =>
+        'U klíče není zapnuté Gemini API. Zapni ho v Google AI Studiu.',
+      GeminiErrorKind.region => 'Google odsud Gemini API nepouští.',
+      GeminiErrorKind.quota =>
+        'Došel bezplatný limit Gemini. Zkus to za chvíli znovu.',
+      GeminiErrorKind.badRequest => 'Gemini tenhle požadavek nepřijal.',
+      GeminiErrorKind.network =>
+        'Gemini teď neodpovídá (síť nebo výpadek). Zkus to za chvíli znovu.',
+    };
+    return '$sentence$google';
+  }
   if (error is AiPermanentException) {
     if (error.message.startsWith('Chybí Gemini klíč') ||
         error.message.startsWith('Gemini klíč neprošel') ||
@@ -137,7 +169,7 @@ String geminiFailureText(Object error) {
     }
     return error.statusCode == null
         ? 'Gemini nevrátil použitelnou odpověď. Zkus to znovu.'
-        : 'Gemini požadavek odmítl (${error.statusCode}). Zkontroluj klíč v Nastavení.';
+        : 'Gemini požadavek odmítl (HTTP ${error.statusCode}).';
   }
   if (error is AiTransientException) {
     return error.message.startsWith('Dohledání')

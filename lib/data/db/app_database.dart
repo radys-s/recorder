@@ -67,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -138,6 +138,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 14 && from >= 4) {
             await m.addColumn(meetingNotes, meetingNotes.cardSuggestions);
+          }
+          if (from < 15 && from >= 3) {
+            await m.addColumn(preferences, preferences.geminiModelOverride);
           }
         },
       );

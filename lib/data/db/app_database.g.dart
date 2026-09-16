@@ -1785,6 +1785,17 @@ class $PreferencesTable extends Preferences
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _geminiModelOverrideMeta =
+      const VerificationMeta('geminiModelOverride');
+  @override
+  late final GeneratedColumn<String> geminiModelOverride =
+      GeneratedColumn<String>(
+        'gemini_model_override',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1794,6 +1805,7 @@ class $PreferencesTable extends Preferences
     webAnswersEnabled,
     micSensitivity,
     globalRules,
+    geminiModelOverride,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1834,6 +1846,15 @@ class $PreferencesTable extends Preferences
         globalRules.isAcceptableOrUnknown(
           data['global_rules']!,
           _globalRulesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('gemini_model_override')) {
+      context.handle(
+        _geminiModelOverrideMeta,
+        geminiModelOverride.isAcceptableOrUnknown(
+          data['gemini_model_override']!,
+          _geminiModelOverrideMeta,
         ),
       );
     }
@@ -1881,6 +1902,10 @@ class $PreferencesTable extends Preferences
         DriftSqlType.string,
         data['${effectivePrefix}global_rules'],
       ),
+      geminiModelOverride: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gemini_model_override'],
+      ),
     );
   }
 
@@ -1923,6 +1948,9 @@ class Preference extends DataClass implements Insertable<Preference> {
   /// How the AI should answer everywhere, unless a subject or lesson says
   /// otherwise.
   final String? globalRules;
+
+  /// A Gemini model id picked in Settings; null follows the app's default.
+  final String? geminiModelOverride;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -1931,6 +1959,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     required this.webAnswersEnabled,
     required this.micSensitivity,
     this.globalRules,
+    this.geminiModelOverride,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1958,6 +1987,9 @@ class Preference extends DataClass implements Insertable<Preference> {
     if (!nullToAbsent || globalRules != null) {
       map['global_rules'] = Variable<String>(globalRules);
     }
+    if (!nullToAbsent || geminiModelOverride != null) {
+      map['gemini_model_override'] = Variable<String>(geminiModelOverride);
+    }
     return map;
   }
 
@@ -1972,6 +2004,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       globalRules: globalRules == null && nullToAbsent
           ? const Value.absent()
           : Value(globalRules),
+      geminiModelOverride: geminiModelOverride == null && nullToAbsent
+          ? const Value.absent()
+          : Value(geminiModelOverride),
     );
   }
 
@@ -1993,6 +2028,9 @@ class Preference extends DataClass implements Insertable<Preference> {
         serializer.fromJson<int>(json['micSensitivity']),
       ),
       globalRules: serializer.fromJson<String?>(json['globalRules']),
+      geminiModelOverride: serializer.fromJson<String?>(
+        json['geminiModelOverride'],
+      ),
     );
   }
   @override
@@ -2014,6 +2052,7 @@ class Preference extends DataClass implements Insertable<Preference> {
         $PreferencesTable.$convertermicSensitivity.toJson(micSensitivity),
       ),
       'globalRules': serializer.toJson<String?>(globalRules),
+      'geminiModelOverride': serializer.toJson<String?>(geminiModelOverride),
     };
   }
 
@@ -2025,6 +2064,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     bool? webAnswersEnabled,
     MicSensitivity? micSensitivity,
     Value<String?> globalRules = const Value.absent(),
+    Value<String?> geminiModelOverride = const Value.absent(),
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2033,6 +2073,9 @@ class Preference extends DataClass implements Insertable<Preference> {
     webAnswersEnabled: webAnswersEnabled ?? this.webAnswersEnabled,
     micSensitivity: micSensitivity ?? this.micSensitivity,
     globalRules: globalRules.present ? globalRules.value : this.globalRules,
+    geminiModelOverride: geminiModelOverride.present
+        ? geminiModelOverride.value
+        : this.geminiModelOverride,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2055,6 +2098,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       globalRules: data.globalRules.present
           ? data.globalRules.value
           : this.globalRules,
+      geminiModelOverride: data.geminiModelOverride.present
+          ? data.geminiModelOverride.value
+          : this.geminiModelOverride,
     );
   }
 
@@ -2067,7 +2113,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('liveAnswersEnabled: $liveAnswersEnabled, ')
           ..write('webAnswersEnabled: $webAnswersEnabled, ')
           ..write('micSensitivity: $micSensitivity, ')
-          ..write('globalRules: $globalRules')
+          ..write('globalRules: $globalRules, ')
+          ..write('geminiModelOverride: $geminiModelOverride')
           ..write(')'))
         .toString();
   }
@@ -2081,6 +2128,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     webAnswersEnabled,
     micSensitivity,
     globalRules,
+    geminiModelOverride,
   );
   @override
   bool operator ==(Object other) =>
@@ -2092,7 +2140,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.liveAnswersEnabled == this.liveAnswersEnabled &&
           other.webAnswersEnabled == this.webAnswersEnabled &&
           other.micSensitivity == this.micSensitivity &&
-          other.globalRules == this.globalRules);
+          other.globalRules == this.globalRules &&
+          other.geminiModelOverride == this.geminiModelOverride);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2103,6 +2152,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<bool> webAnswersEnabled;
   final Value<MicSensitivity> micSensitivity;
   final Value<String?> globalRules;
+  final Value<String?> geminiModelOverride;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2111,6 +2161,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.webAnswersEnabled = const Value.absent(),
     this.micSensitivity = const Value.absent(),
     this.globalRules = const Value.absent(),
+    this.geminiModelOverride = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2120,6 +2171,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.webAnswersEnabled = const Value.absent(),
     this.micSensitivity = const Value.absent(),
     this.globalRules = const Value.absent(),
+    this.geminiModelOverride = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2129,6 +2181,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<bool>? webAnswersEnabled,
     Expression<int>? micSensitivity,
     Expression<String>? globalRules,
+    Expression<String>? geminiModelOverride,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2139,6 +2192,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (webAnswersEnabled != null) 'web_answers_enabled': webAnswersEnabled,
       if (micSensitivity != null) 'mic_sensitivity': micSensitivity,
       if (globalRules != null) 'global_rules': globalRules,
+      if (geminiModelOverride != null)
+        'gemini_model_override': geminiModelOverride,
     });
   }
 
@@ -2150,6 +2205,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<bool>? webAnswersEnabled,
     Value<MicSensitivity>? micSensitivity,
     Value<String?>? globalRules,
+    Value<String?>? geminiModelOverride,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2159,6 +2215,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       webAnswersEnabled: webAnswersEnabled ?? this.webAnswersEnabled,
       micSensitivity: micSensitivity ?? this.micSensitivity,
       globalRules: globalRules ?? this.globalRules,
+      geminiModelOverride: geminiModelOverride ?? this.geminiModelOverride,
     );
   }
 
@@ -2194,6 +2251,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (globalRules.present) {
       map['global_rules'] = Variable<String>(globalRules.value);
     }
+    if (geminiModelOverride.present) {
+      map['gemini_model_override'] = Variable<String>(
+        geminiModelOverride.value,
+      );
+    }
     return map;
   }
 
@@ -2206,7 +2268,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('liveAnswersEnabled: $liveAnswersEnabled, ')
           ..write('webAnswersEnabled: $webAnswersEnabled, ')
           ..write('micSensitivity: $micSensitivity, ')
-          ..write('globalRules: $globalRules')
+          ..write('globalRules: $globalRules, ')
+          ..write('geminiModelOverride: $geminiModelOverride')
           ..write(')'))
         .toString();
   }
@@ -8270,6 +8333,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<bool> webAnswersEnabled,
       Value<MicSensitivity> micSensitivity,
       Value<String?> globalRules,
+      Value<String?> geminiModelOverride,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -8280,6 +8344,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<bool> webAnswersEnabled,
       Value<MicSensitivity> micSensitivity,
       Value<String?> globalRules,
+      Value<String?> geminiModelOverride,
     });
 
 class $$PreferencesTableFilterComposer
@@ -8328,6 +8393,11 @@ class $$PreferencesTableFilterComposer
     column: $table.globalRules,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get geminiModelOverride => $composableBuilder(
+    column: $table.geminiModelOverride,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -8371,6 +8441,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<String> get globalRules => $composableBuilder(
     column: $table.globalRules,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get geminiModelOverride => $composableBuilder(
+    column: $table.geminiModelOverride,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -8419,6 +8494,11 @@ class $$PreferencesTableAnnotationComposer
     column: $table.globalRules,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get geminiModelOverride => $composableBuilder(
+    column: $table.geminiModelOverride,
+    builder: (column) => column,
+  );
 }
 
 class $$PreferencesTableTableManager
@@ -8460,6 +8540,7 @@ class $$PreferencesTableTableManager
                 Value<bool> webAnswersEnabled = const Value.absent(),
                 Value<MicSensitivity> micSensitivity = const Value.absent(),
                 Value<String?> globalRules = const Value.absent(),
+                Value<String?> geminiModelOverride = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -8468,6 +8549,7 @@ class $$PreferencesTableTableManager
                 webAnswersEnabled: webAnswersEnabled,
                 micSensitivity: micSensitivity,
                 globalRules: globalRules,
+                geminiModelOverride: geminiModelOverride,
               ),
           createCompanionCallback:
               ({
@@ -8479,6 +8561,7 @@ class $$PreferencesTableTableManager
                 Value<bool> webAnswersEnabled = const Value.absent(),
                 Value<MicSensitivity> micSensitivity = const Value.absent(),
                 Value<String?> globalRules = const Value.absent(),
+                Value<String?> geminiModelOverride = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -8487,6 +8570,7 @@ class $$PreferencesTableTableManager
                 webAnswersEnabled: webAnswersEnabled,
                 micSensitivity: micSensitivity,
                 globalRules: globalRules,
+                geminiModelOverride: geminiModelOverride,
               ),
           withReferenceMapper: (p0) => p0
               .map(

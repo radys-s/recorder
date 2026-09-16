@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai/gemini_key_check.dart';
 import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
-import '../../ai/llm_provider.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/constants.dart';
 import '../../core/providers.dart';
@@ -173,6 +173,9 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
   bool _obscured = true;
   bool _busy = false;
 
+  /// What the last „Ověřit klíč" found; shown on the key card.
+  GeminiKeyReport? _report;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -182,6 +185,8 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
   void _invalidate() {
     ref.invalidate(hasGeminiKeyProvider);
     ref.invalidate(maskedGeminiKeyProvider);
+    ref.read(geminiModelResolverProvider).reset();
+    _report = null;
   }
 
   void _notify(String message) {
@@ -226,62 +231,66 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
         }
       });
 
-  /// Asks Google which models the key may use. A bad key fails here with the
-  /// same message a real request would give.
+  /// A real test: models, the ones picked, one plain and one search call.
   Future<void> _verify() => _run(() async {
-        List<String> ids;
-        try {
-          ids = await listGeminiModels(ref.read(geminiKeyStoreProvider));
-        } on AiException catch (e) {
-          _notify(e.message);
-          return;
-        } catch (e) {
-          _notify('Ověření se nepovedlo: $e');
-          return;
-        }
-        if (!mounted) return;
-        final hasMain = ids.contains(kGeminiModel);
-        final hasLite = ids.contains(kGeminiLiteModel);
-        await showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(hasMain ? Icons.check_circle_outline : Icons.warning_amber),
-            title: Text(hasMain ? 'Klíč funguje' : 'Klíč funguje, ale…'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  Text(
-                    hasMain && hasLite
-                        ? 'Modely, které aplikace používá, jsou dostupné.'
-                        : 'Chybí ${[
-                            if (!hasMain) kGeminiModel,
-                            if (!hasLite) kGeminiLiteModel,
-                          ].join(' a ')}. Google model nejspíš přejmenoval — '
-                            'dej vědět, ať se v aplikaci vymění.',
-                  ),
-                  const SizedBox(height: Gap.md),
-                  for (final id in ids)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: SelectableText(
-                        id,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Zavřít'),
-              ),
-            ],
-          ),
+        final keys = ref.read(geminiKeyStoreProvider);
+        final prefs = ref.read(preferencesDaoProvider);
+        final resolver = ref.read(geminiModelResolverProvider)..reset();
+        final report = await checkGeminiKey(
+          listModels: () => listGeminiModels(keys),
+          gemini: ref.read(geminiProvider),
+          resolver: resolver,
+          override: (await prefs.current()).geminiModelOverride,
         );
+        if (!mounted) return;
+        setState(() => _report = report);
+        final pick = await showDialog<bool>(
+          context: context,
+          builder: (context) => _GeminiReportDialog(report: report),
+        );
+        if (pick == true && mounted) await _pickModel(report.selectable);
       });
+
+  Future<void> _pickModel(List<String> ids) async {
+    final prefs = ref.read(preferencesDaoProvider);
+    final current = (await prefs.current()).geminiModelOverride;
+    if (!mounted) return;
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              leading: Icon(current == null
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked),
+              title: const Text('Automaticky'),
+              subtitle: const Text('Aplikace vybere nejnovější Flash.'),
+              onTap: () => Navigator.pop(context, ''),
+            ),
+            for (final id in ids)
+              ListTile(
+                leading: Icon(id == current
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked),
+                title: Text(id),
+                onTap: () => Navigator.pop(context, id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null) return;
+    await prefs.setGeminiModelOverride(chosen);
+    ref.read(geminiModelResolverProvider).reset();
+    if (mounted) setState(() => _report = null);
+    _notify(chosen.isEmpty
+        ? 'Model se vybírá automaticky. Ověř klíč znovu.'
+        : 'Použije se $chosen. Ověř klíč znovu.');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -303,7 +312,13 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
             subtitle: Text(
               masked == null
                   ? 'Klíč zdarma dostaneš v Google AI Studiu.'
-                  : 'Uložením nového klíče tenhle přepíšeš.',
+                  : switch (_report) {
+                      final r? when r.works && r.models != null =>
+                        'Připojeno · ${r.models!.main}',
+                      final r? when !r.works => 'Ověření selhalo — klepni na '
+                          'Ověřit klíč pro detail.',
+                      _ => 'Uložením nového klíče tenhle přepíšeš.',
+                    },
             ),
           ),
         ),
@@ -358,6 +373,73 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
           onPressed: _busy || masked == null ? null : _verify,
           icon: const Icon(Icons.verified_outlined),
           label: const Text('Ověřit klíč'),
+        ),
+      ],
+    );
+  }
+}
+
+class _GeminiReportDialog extends StatelessWidget {
+  const _GeminiReportDialog({required this.report});
+
+  final GeminiKeyReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return AlertDialog(
+      icon: Icon(report.works ? Icons.check_circle_outline : Icons.error_outline),
+      title: Text(report.works ? 'Gemini funguje' : 'Gemini nefunguje'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final step in report.steps)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: Gap.xs),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      switch (step.state) {
+                        CheckState.ok => Icons.check_circle,
+                        CheckState.warn => Icons.warning_amber_rounded,
+                        CheckState.fail => Icons.cancel,
+                      },
+                      size: 20,
+                      color: switch (step.state) {
+                        CheckState.ok => scheme.primary,
+                        CheckState.warn => scheme.tertiary,
+                        CheckState.fail => scheme.error,
+                      },
+                    ),
+                    const SizedBox(width: Gap.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(step.label, style: text.titleSmall),
+                          SelectableText(step.detail, style: text.bodySmall),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        if (report.selectable.isNotEmpty)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Jiný model'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Zavřít'),
         ),
       ],
     );

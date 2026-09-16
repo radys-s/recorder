@@ -64,6 +64,14 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> setMicSensitivity(MicSensitivity value) =>
       _write(PreferencesCompanion(micSensitivity: Value(value)));
 
+  /// Gemini model picked in Settings; null or blank returns to the default.
+  Future<void> setGeminiModelOverride(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return _write(PreferencesCompanion(
+      geminiModelOverride: Value(trimmed.isEmpty ? null : trimmed),
+    ));
+  }
+
   /// Rules for every lesson; blank clears them.
   Future<void> setGlobalRules(String? value) {
     final trimmed = value?.trim() ?? '';

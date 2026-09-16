@@ -122,6 +122,9 @@ class Preferences extends Table {
   /// otherwise.
   TextColumn get globalRules => text().nullable()();
 
+  /// A Gemini model id picked in Settings; null follows the app's default.
+  TextColumn get geminiModelOverride => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

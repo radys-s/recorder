@@ -8,6 +8,7 @@ import '../core/gemini_failure.dart';
 import '../core/logging.dart';
 import '../data/secure/api_key_store.dart';
 import 'answer_source.dart';
+import 'gemini_model_resolver.dart';
 import 'llm_provider.dart';
 
 /// A picture sent along with the last user message.
@@ -35,6 +36,7 @@ class GeminiCompletion {
     required this.content,
     this.sources = const [],
     this.truncated = false,
+    this.grounded = true,
   });
 
   final String content;
@@ -42,6 +44,10 @@ class GeminiCompletion {
 
   /// The model hit `maxOutputTokens` but still produced some text.
   final bool truncated;
+
+  /// False when search was asked for but the model refused the tool, so the
+  /// answer comes from the model alone.
+  final bool grounded;
 }
 
 /// Google's Gemini API (`generateContent`), the optional second key.
@@ -51,7 +57,7 @@ class GeminiCompletion {
 /// fight an 8 000-token-per-minute ceiling. Like the Groq providers, the key
 /// is read per request, so a change in Settings applies to the next call.
 class GeminiProvider extends LlmProvider {
-  GeminiProvider(this._apiKeyStore, {Dio? dio})
+  GeminiProvider(this._apiKeyStore, {Dio? dio, this._models})
       : _dio = dio ??
             Dio(
               BaseOptions(
@@ -66,6 +72,10 @@ class GeminiProvider extends LlmProvider {
 
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
+  final GeminiModelResolver? _models;
+
+  /// Models that answered 400 to `thinkingConfig`; it is left out for them.
+  final Set<String> _noThinking = {};
 
   /// [temperature] is ignored on purpose: Google's guidance for Gemini 3 is to
   /// keep the default 1.0, and lower values are documented to cause looping.
@@ -96,6 +106,7 @@ class GeminiProvider extends LlmProvider {
     bool jsonMode = false,
     int? maxTokens,
     Duration? timeout,
+    CancelToken? cancelToken,
   }) async {
     final apiKey = await _apiKeyStore.read();
     if (apiKey == null) {
@@ -104,35 +115,89 @@ class GeminiProvider extends LlmProvider {
       );
     }
 
-    try {
-      final response = await _dio.post<Object?>(
-        '$kGeminiBaseUrl/models/$model:generateContent',
-        data: buildGeminiRequest(
-          messages: messages,
-          images: images,
-          search: search,
-          jsonMode: jsonMode,
-          maxTokens: maxTokens,
-        ),
-        options: Options(
-          headers: {'x-goog-api-key': apiKey},
-          sendTimeout: timeout,
-          receiveTimeout: timeout,
-        ),
-      );
-      return parseGeminiResponse(response.data);
-    } on DioException catch (e) {
-      final failure = classifyGeminiFailure(e);
-      if (failure.statusCode != null) {
-        AppLog.e(_tag, 'HTTP ${failure.statusCode}: ${failure.message}');
-        // Debug-only, like Groq's: the body can echo the prompt back.
-        if (kDebugMode) AppLog.d(_tag, 'raw body: ${e.response?.data}');
+    var id = await _models?.resolve(model) ?? model;
+    var withSearch = search;
+    var searchDropped = false;
+    var modelSwapped = false;
+
+    // At most one repair of each kind: a model Google does not offer, a
+    // thinking field the model does not take, a search tool it cannot use.
+    for (var attempt = 0;; attempt++) {
+      final thinking = !_noThinking.contains(id);
+      try {
+        final response = await _dio.post<Object?>(
+          '$kGeminiBaseUrl/models/$id:generateContent',
+          data: buildGeminiRequest(
+            messages: messages,
+            images: images,
+            search: withSearch,
+            jsonMode: jsonMode,
+            maxTokens: maxTokens,
+            thinking: thinking,
+          ),
+          options: Options(
+            headers: {'x-goog-api-key': apiKey},
+            sendTimeout: timeout,
+            receiveTimeout: timeout,
+          ),
+          cancelToken: cancelToken,
+        );
+        final result = parseGeminiResponse(response.data);
+        return searchDropped
+            ? GeminiCompletion(
+                content: result.content,
+                sources: result.sources,
+                truncated: result.truncated,
+                grounded: false,
+              )
+            : result;
+      } on DioException catch (e) {
+        final failure = classifyGeminiFailure(e);
+        if (failure.statusCode != null) {
+          AppLog.e(_tag, 'HTTP ${failure.statusCode} on $id: ${failure.message}');
+          // A short excerpt in release too: without it a refusal on the phone
+          // is undiagnosable. The key travels in a header, never in the body.
+          AppLog.d(_tag, 'body: ${clipReason('${e.response?.data}', max: 300)}');
+          if (kDebugMode) AppLog.d(_tag, 'raw body: ${e.response?.data}');
+        }
+        if (attempt < 3 && e.type != DioExceptionType.cancel) {
+          final reason = (failure.reason ?? '').toLowerCase();
+          if (failure.kind == GeminiErrorKind.modelMissing &&
+              !modelSwapped &&
+              _models != null) {
+            modelSwapped = true;
+            final next = await _models.reresolve(model, id);
+            if (next != null) {
+              id = next;
+              continue;
+            }
+          }
+          if (failure.kind == GeminiErrorKind.badRequest &&
+              failure.statusCode == 400) {
+            if (thinking && reason.contains('think')) {
+              _noThinking.add(id);
+              continue;
+            }
+            if (withSearch &&
+                (reason.contains('search') ||
+                    reason.contains('tool') ||
+                    reason.contains('grounding'))) {
+              withSearch = false;
+              searchDropped = true;
+              continue;
+            }
+          }
+        }
+        throw failure.transient
+            ? AiTransientException(failure.message,
+                statusCode: failure.statusCode,
+                kind: failure.kind,
+                reason: failure.reason)
+            : AiPermanentException(failure.message,
+                statusCode: failure.statusCode,
+                kind: failure.kind,
+                reason: failure.reason);
       }
-      throw failure.transient
-          ? AiTransientException(failure.message,
-              statusCode: failure.statusCode)
-          : AiPermanentException(failure.message,
-              statusCode: failure.statusCode);
     }
   }
 }
@@ -149,6 +214,7 @@ Map<String, Object?> buildGeminiRequest({
   bool search = false,
   bool jsonMode = false,
   int? maxTokens,
+  bool thinking = true,
 }) {
   final system = [
     for (final m in messages)
@@ -190,7 +256,7 @@ Map<String, Object?> buildGeminiRequest({
     'generationConfig': {
       'maxOutputTokens': ?maxTokens,
       if (jsonMode) 'responseMimeType': 'application/json',
-      'thinkingConfig': {'thinkingLevel': kGeminiThinkingLevel},
+      if (thinking) 'thinkingConfig': {'thinkingLevel': kGeminiThinkingLevel},
     },
   };
 }

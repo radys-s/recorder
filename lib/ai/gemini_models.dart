@@ -54,8 +54,14 @@ Future<List<String>> listGeminiModels(
   } on DioException catch (e) {
     final failure = classifyGeminiFailure(e);
     throw failure.transient
-        ? AiTransientException(failure.message, statusCode: failure.statusCode)
-        : AiPermanentException(failure.message, statusCode: failure.statusCode);
+        ? AiTransientException(failure.message,
+            statusCode: failure.statusCode,
+            kind: failure.kind,
+            reason: failure.reason)
+        : AiPermanentException(failure.message,
+            statusCode: failure.statusCode,
+            kind: failure.kind,
+            reason: failure.reason);
   }
 }
 

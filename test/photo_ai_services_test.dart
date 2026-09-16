@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart' hide isNull, isNotNull;
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/answer_source.dart';
@@ -49,6 +50,7 @@ class _FakeGemini extends GeminiProvider {
     bool jsonMode = false,
     int? maxTokens,
     Duration? timeout,
+    CancelToken? cancelToken,
   }) async {
     calls.add((
       messages: messages,

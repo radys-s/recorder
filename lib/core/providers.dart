@@ -13,6 +13,8 @@ import '../ai/card_suggestions.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
 import '../ai/chat_answer_service.dart';
+import '../ai/gemini_model_resolver.dart';
+import '../ai/gemini_models.dart';
 import '../ai/gemini_provider.dart';
 import '../ai/groq_chat_provider.dart';
 import '../ai/lesson_context_source.dart';
@@ -184,8 +186,21 @@ final geminiKeyStoreProvider = Provider<ApiKeyStore>(
   (ref) => ApiKeyStore(storageKey: kGeminiApiKeyStorageKey),
 );
 
+/// Maps the app's Gemini model names to ids this key really offers.
+final geminiModelResolverProvider = Provider<GeminiModelResolver>((ref) {
+  final keys = ref.watch(geminiKeyStoreProvider);
+  final prefs = ref.watch(preferencesDaoProvider);
+  return GeminiModelResolver(
+    listModels: () => listGeminiModels(keys),
+    override: () async => (await prefs.current()).geminiModelOverride,
+  );
+});
+
 final geminiProvider = Provider<GeminiProvider>((ref) {
-  return GeminiProvider(ref.watch(geminiKeyStoreProvider));
+  return GeminiProvider(
+    ref.watch(geminiKeyStoreProvider),
+    models: ref.watch(geminiModelResolverProvider),
+  );
 });
 
 final hasGeminiKeyProvider = FutureProvider<bool>((ref) {

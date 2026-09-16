@@ -1,4 +1,7 @@
+import 'package:dio/dio.dart' show CancelToken;
+
 import '../core/constants.dart';
+import '../core/gemini_failure.dart';
 import '../core/logging.dart';
 import 'answer_source.dart';
 import 'gemini_provider.dart';
@@ -12,6 +15,9 @@ class CardLookup {
     required this.content,
     required this.sources,
     this.viaGemini = true,
+    this.geminiProblem,
+    this.truncated = false,
+    this.grounded = true,
   });
 
   final String content;
@@ -19,6 +25,15 @@ class CardLookup {
 
   /// False for the short Groq fallback, which the editor says out loud.
   final bool viaGemini;
+
+  /// Why Gemini was not used although a key is set — shown with the result.
+  final String? geminiProblem;
+
+  /// Gemini ran out of output tokens; the card may end mid-section.
+  final bool truncated;
+
+  /// Gemini answered without Google Search (the model refused the tool).
+  final bool grounded;
 }
 
 /// Looks a topic up on the web and writes it as a study card.
@@ -43,36 +58,59 @@ class CardLookupService {
   final WebAnswerService _web;
 
   /// Throws [AiException] with a message [geminiFailureText] can show.
-  Future<CardLookup> lookUp(String query, {String? subjectName}) async {
+  Future<CardLookup> lookUp(
+    String query, {
+    String? subjectName,
+    CancelToken? cancelToken,
+  }) async {
     final topic = query.trim();
     if (topic.isEmpty) throw ArgumentError.value(query, 'query', 'blank');
 
-    if (await _geminiAvailable()) {
-      final result = await _gemini.generate(
-        model: kGeminiModel,
-        messages: [
-          const LlmMessage.system(_prompt),
-          LlmMessage.user(subjectName == null
-              ? 'Topic: $topic'
-              : 'School subject: $subjectName\nTopic: $topic'),
-        ],
-        search: true,
-        maxTokens: 8000,
-        timeout: kCardLookupTimeout,
-      );
-      final content = stripTrailingLinks(cleanModelText(result.content));
-      if (content.isEmpty) {
-        throw const AiPermanentException('Dohledání nic nevrátilo.');
+    final hasKey = await _geminiAvailable();
+    AiException? geminiError;
+    if (hasKey) {
+      try {
+        final result = await _gemini.generate(
+          model: kGeminiModel,
+          messages: [
+            const LlmMessage.system(_prompt),
+            LlmMessage.user(subjectName == null
+                ? 'Topic: $topic'
+                : 'School subject: $subjectName\nTopic: $topic'),
+          ],
+          search: true,
+          maxTokens: 12000,
+          timeout: kCardLookupTimeout,
+          cancelToken: cancelToken,
+        );
+        final content = stripTrailingLinks(cleanModelText(result.content));
+        if (content.isEmpty) {
+          throw const AiPermanentException('Dohledání nic nevrátilo.');
+        }
+        AppLog.d(_tag,
+            'looked up on Gemini: ${content.length} chars, ${result.sources.length} source(s)');
+        return CardLookup(
+          content: content,
+          sources: result.sources,
+          truncated: result.truncated,
+          grounded: result.grounded,
+        );
+      } on AiException catch (e) {
+        // A wrong key is the user's to fix, and a cancelled lookup was meant
+        // to stop; anything else is worth a second route.
+        if (e.kind == GeminiErrorKind.badKey || cancelToken?.isCancelled == true) {
+          rethrow;
+        }
+        AppLog.e(_tag, 'Gemini lookup failed, trying Groq', e);
+        geminiError = e;
       }
-      AppLog.d(_tag,
-          'looked up on Gemini: ${content.length} chars, ${result.sources.length} source(s)');
-      return CardLookup(content: content, sources: result.sources);
     }
 
     final web = await _web.lookUp(
       subjectName == null ? topic : '$topic ($subjectName)',
     );
     if (web == null) {
+      if (geminiError != null) throw geminiError;
       throw const AiTransientException(
         'Dohledání se nepovedlo. S Gemini klíčem v Nastavení to jde spolehlivěji.',
       );
@@ -81,6 +119,7 @@ class CardLookupService {
       content: web.answer,
       sources: web.sources,
       viaGemini: false,
+      geminiProblem: geminiError == null ? null : geminiFailureText(geminiError),
     );
   }
 

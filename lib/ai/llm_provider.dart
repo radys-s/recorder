@@ -21,10 +21,16 @@ class LlmMessage {
 /// same reason: the caller's only real decision is whether trying again could
 /// help.
 abstract class AiException implements Exception {
-  const AiException(this.message, {this.statusCode});
+  const AiException(this.message, {this.statusCode, this.kind, this.reason});
 
   final String message;
   final int? statusCode;
+
+  /// Provider-specific failure kind (Gemini sets a `GeminiErrorKind`).
+  final Enum? kind;
+
+  /// The provider's own short explanation, safe to show.
+  final String? reason;
 
   @override
   String toString() =>
@@ -33,12 +39,14 @@ abstract class AiException implements Exception {
 
 /// Rate limits, server errors, timeouts, no connectivity.
 class AiTransientException extends AiException {
-  const AiTransientException(super.message, {super.statusCode});
+  const AiTransientException(super.message,
+      {super.statusCode, super.kind, super.reason});
 }
 
 /// Bad or missing API key, a retired model id, a malformed request.
 class AiPermanentException extends AiException {
-  const AiPermanentException(super.message, {super.statusCode});
+  const AiPermanentException(super.message,
+      {super.statusCode, super.kind, super.reason});
 }
 
 /// One completed reply, with whatever the backend did on its own to produce
