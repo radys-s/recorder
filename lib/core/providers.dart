@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../ai/syllabus_import_service.dart';
 import '../ai/ai_router.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
@@ -355,6 +356,15 @@ final photoTextServiceProvider = Provider<PhotoTextService>((ref) {
 /// Timetable screenshots, read by Gemini.
 final timetableImportServiceProvider = Provider<TimetableImportService>((ref) {
   return TimetableImportService(ref.watch(geminiProvider));
+});
+
+/// Thematic plans: pasted, photographed or estimated from the course.
+final syllabusImportServiceProvider = Provider<SyllabusImportService>((ref) {
+  return SyllabusImportService(
+    gemini: ref.watch(geminiProvider),
+    llm: ref.watch(llmProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+  );
 });
 
 final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {

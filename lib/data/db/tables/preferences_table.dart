@@ -84,6 +84,29 @@ enum MicSensitivity {
   };
 }
 
+/// The kind of school, which sets the level the AI writes at.
+///
+/// Stored by index, so new kinds are appended.
+enum SchoolType {
+  primary,
+  gymnasium,
+  secondaryTechnical,
+  vocational,
+  higherVocational,
+  university,
+  other;
+
+  String get label => switch (this) {
+    SchoolType.primary => 'ZŠ',
+    SchoolType.gymnasium => 'Gymnázium',
+    SchoolType.secondaryTechnical => 'SOŠ',
+    SchoolType.vocational => 'SOU',
+    SchoolType.higherVocational => 'VOŠ',
+    SchoolType.university => 'VŠ',
+    SchoolType.other => 'Jiná',
+  };
+}
+
 /// App settings that have to survive a restart but are not secrets.
 ///
 /// A single row, always id 0. The API key lives in the platform keystore
@@ -130,6 +153,13 @@ class Preferences extends Table {
   /// Lesson transcripts get a second look that fixes misheard subject terms.
   BoolColumn get contextCorrection =>
       boolean().withDefault(const Constant(true))();
+
+  /// The student's course: school, kind of school, field and year. All
+  /// optional; filled in, they tell every prompt the level of the lessons.
+  TextColumn get schoolName => text().nullable()();
+  IntColumn get schoolType => intEnum<SchoolType>().nullable()();
+  TextColumn get studyField => text().nullable()();
+  IntColumn get studyYear => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

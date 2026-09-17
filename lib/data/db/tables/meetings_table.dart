@@ -22,4 +22,8 @@ class Meetings extends Table {
   /// Rules for this lesson only, set at the start sheet. Rules typed into the
   /// chat later are chat messages and come after these.
   TextColumn get rules => text().nullable()();
+
+  /// The plan topic the student picked for this lesson; null lets the app
+  /// work it out from the date and what is being said.
+  IntColumn get topicId => integer().nullable()();
 }

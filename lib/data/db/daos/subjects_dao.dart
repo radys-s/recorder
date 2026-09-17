@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../ai/syllabus.dart' show SyllabusTopicDraft;
 import '../app_database.dart';
 import '../tables/chat_messages_table.dart';
 import '../tables/context_cards_table.dart';
@@ -7,6 +8,7 @@ import '../tables/meetings_table.dart';
 import '../../../stt/transcript_sanitizer.dart';
 import '../tables/saved_notes_table.dart';
 import '../tables/subject_terms_table.dart';
+import '../tables/syllabus_topics_table.dart';
 import '../tables/subjects_table.dart';
 
 part 'subjects_dao.g.dart';
@@ -42,6 +44,7 @@ class SubjectSummary {
     SavedNotes,
     ChatMessages,
     SubjectTerms,
+    SyllabusTopics,
   ],
 )
 class SubjectsDao extends DatabaseAccessor<AppDatabase>
@@ -100,6 +103,20 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         SubjectsCompanion(rules: Value(_optional(rules))),
       );
 
+  /// The subject's official name and, when it differs from the student's
+  /// year, its own level („2. ročník", „maturitní seminář"). Blank clears.
+  Future<void> setSubjectProfile(
+    int id, {
+    String? fullName,
+    String? levelOverride,
+  }) =>
+      (update(subjects)..where((t) => t.id.equals(id))).write(
+        SubjectsCompanion(
+          fullName: Value(_optional(fullName)),
+          levelOverride: Value(_optional(levelOverride)),
+        ),
+      );
+
   Future<void> setSubjectColor(int id, int colorIndex) =>
       (update(subjects)..where((t) => t.id.equals(id))).write(
         SubjectsCompanion(colorIndex: Value(colorIndex % paletteSize)),
@@ -120,12 +137,100 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         await (delete(timetableSlots)..where((t) => t.subjectId.equals(id)))
             .go();
         await (delete(subjectTerms)..where((t) => t.subjectId.equals(id))).go();
+        await (delete(syllabusTopics)..where((t) => t.subjectId.equals(id)))
+            .go();
         await (update(savedNotes)..where((t) => t.folderId.equals(id)))
             .write(const SavedNotesCompanion(folderId: Value(null)));
         await (update(meetings)..where((t) => t.subjectId.equals(id)))
             .write(const MeetingsCompanion(subjectId: Value(null)));
         await (delete(subjects)..where((t) => t.id.equals(id))).go();
       });
+
+  // ------------------------------------------------------------- syllabus
+
+  SimpleSelectStatement<$SyllabusTopicsTable, SyllabusTopic> _topics(
+    int subjectId,
+  ) =>
+      select(syllabusTopics)
+        ..where((t) => t.subjectId.equals(subjectId))
+        ..orderBy([
+          (t) => OrderingTerm.asc(t.ord),
+          (t) => OrderingTerm.asc(t.id),
+        ]);
+
+  /// The thematic plan in plan order.
+  Stream<List<SyllabusTopic>> watchTopics(int subjectId) =>
+      _topics(subjectId).watch();
+
+  Future<List<SyllabusTopic>> topics(int subjectId) => _topics(subjectId).get();
+
+  Future<SyllabusTopic?> topic(int id) =>
+      (select(syllabusTopics)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// Replaces the whole plan. A lesson that pointed at an old topic goes back
+  /// to automatic detection, since its topic no longer exists.
+  Future<void> replaceTopics(
+    int subjectId,
+    List<SyllabusTopicDraft> drafts,
+    SyllabusSource source, {
+    DateTime? now,
+  }) =>
+      transaction(() async {
+        final old = selectOnly(syllabusTopics)
+          ..addColumns([syllabusTopics.id])
+          ..where(syllabusTopics.subjectId.equals(subjectId));
+        await (update(meetings)..where((t) => t.topicId.isInQuery(old)))
+            .write(const MeetingsCompanion(topicId: Value(null)));
+        await (delete(syllabusTopics)
+              ..where((t) => t.subjectId.equals(subjectId)))
+            .go();
+        final at = now ?? DateTime.now();
+        var ord = 0;
+        for (final d in drafts) {
+          final title = d.title.trim();
+          if (title.isEmpty) continue;
+          await into(syllabusTopics).insert(
+            SyllabusTopicsCompanion.insert(
+              subjectId: subjectId,
+              ord: ord++,
+              title: title,
+              description: Value(_optional(d.description)),
+              terms: Value(d.terms.isEmpty ? null : d.terms.join(', ')),
+              monthFrom: Value(d.monthFrom),
+              monthTo: Value(d.monthTo),
+              source: source,
+              createdAt: at,
+            ),
+          );
+        }
+      });
+
+  /// Edits one topic in place, so lessons that point at it keep pointing.
+  Future<void> updateTopic(int id, SyllabusTopicDraft draft) {
+    final title = draft.title.trim();
+    if (title.isEmpty) throw ArgumentError.value(draft.title, 'title', 'blank');
+    return (update(syllabusTopics)..where((t) => t.id.equals(id))).write(
+      SyllabusTopicsCompanion(
+        title: Value(title),
+        description: Value(_optional(draft.description)),
+        terms: Value(draft.terms.isEmpty ? null : draft.terms.join(', ')),
+        monthFrom: Value(draft.monthFrom),
+        monthTo: Value(draft.monthTo),
+      ),
+    );
+  }
+
+  Future<void> deleteTopic(int id) => transaction(() async {
+        await (update(meetings)..where((t) => t.topicId.equals(id)))
+            .write(const MeetingsCompanion(topicId: Value(null)));
+        await (delete(syllabusTopics)..where((t) => t.id.equals(id))).go();
+      });
+
+  /// The topic the student chose for a lesson; null returns it to detection.
+  Future<void> setMeetingTopic(int meetingId, int? topicId) =>
+      (update(meetings)..where((t) => t.id.equals(meetingId)))
+          .write(MeetingsCompanion(topicId: Value(topicId)));
 
   // ---------------------------------------------------------------- cards
 

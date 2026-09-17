@@ -22,6 +22,7 @@ import 'tables/preferences_table.dart';
 import 'tables/refined_segments_table.dart';
 import 'tables/saved_notes_table.dart';
 import 'tables/subject_terms_table.dart';
+import 'tables/syllabus_topics_table.dart';
 import 'tables/subjects_table.dart';
 import 'tables/transcript_segments_table.dart';
 import 'tables/upload_queue_table.dart';
@@ -45,6 +46,7 @@ part 'app_database.g.dart';
     ChatMessages,
     RefinedSegments,
     SubjectTerms,
+    SyllabusTopics,
   ],
   daos: [
     MeetingsDao,
@@ -66,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -155,6 +157,20 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(transcriptSegments, transcriptSegments.confidence);
         if (from >= 3) {
           await m.addColumn(preferences, preferences.contextCorrection);
+        }
+      }
+      if (from < 18) {
+        await m.createTable(syllabusTopics);
+        await m.addColumn(meetings, meetings.topicId);
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.schoolName);
+          await m.addColumn(preferences, preferences.schoolType);
+          await m.addColumn(preferences, preferences.studyField);
+          await m.addColumn(preferences, preferences.studyYear);
+        }
+        if (from >= 9) {
+          await m.addColumn(subjects, subjects.fullName);
+          await m.addColumn(subjects, subjects.levelOverride);
         }
       }
     },

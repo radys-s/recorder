@@ -1,8 +1,10 @@
 import 'package:drift/drift.dart';
 
+import '../ai/syllabus.dart';
 import '../data/db/app_database.dart';
 import '../data/db/tables/chat_messages_table.dart';
 import '../data/db/tables/preferences_table.dart';
+import '../data/db/tables/syllabus_topics_table.dart';
 import '../data/db/tables/transcript_segments_table.dart';
 
 /// Demo data for the web preview. Never used by the app itself.
@@ -44,6 +46,42 @@ Future<({int lesson, int? recording})> seedDemo(
   );
   await db.subjectsDao.addTerm(cestina, 'Proško', heard: 'prosko');
   await db.subjectsDao.addTerm(cestina, 'realismus');
+
+  await db.preferencesDao.setStudyProfile(
+    schoolName: 'Gymnázium Jana Nerudy',
+    schoolType: SchoolType.gymnasium,
+    studyYear: 3,
+  );
+  await db.subjectsDao.setSubjectProfile(
+    cestina,
+    fullName: 'Český jazyk a literatura',
+  );
+  // August counts as September in a school year, so skip it.
+  final previous = switch (now.month) {
+    9 => 6,
+    1 => 12,
+    final m => m - 1,
+  };
+  await db.subjectsDao.replaceTopics(cestina, [
+    SyllabusTopicDraft(
+      title: 'Romantismus v české literatuře',
+      terms: const ['Mácha', 'Máj', 'lyrickoepická báseň'],
+      monthFrom: previous,
+      monthTo: previous,
+    ),
+    SyllabusTopicDraft(
+      title: 'Národní obrození a realismus',
+      terms: const ['Němcová', 'Babička', 'realismus'],
+      monthFrom: now.month,
+      monthTo: now.month,
+    ),
+    SyllabusTopicDraft(
+      title: 'Májovci a ruchovci',
+      terms: const ['Neruda', 'Hálek'],
+      monthFrom: now.month % 12 + 1,
+      monthTo: now.month % 12 + 1,
+    ),
+  ], SyllabusSource.pasted);
 
   final lesson = await db.meetingsDao.insertMeeting(
     MeetingsCompanion.insert(

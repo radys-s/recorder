@@ -94,6 +94,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     switch (step) {
       case OnboardingStep.groqKey:
       case OnboardingStep.geminiKey:
+      case OnboardingStep.study:
         await _openSettings();
       case OnboardingStep.subject:
         await createSubjectFlow(context, ref);
@@ -114,10 +115,8 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
   /// The checklist, or null when it should not show.
   List<OnboardingItem>? _onboarding(bool? hasKey) {
-    final dismissed = ref
-        .watch(preferencesProvider)
-        .valueOrNull
-        ?.onboardingDismissed;
+    final prefs = ref.watch(preferencesProvider).valueOrNull;
+    final dismissed = prefs?.onboardingDismissed;
     final hasGemini = ref.watch(hasGeminiKeyProvider).valueOrNull;
     final subjects = ref.watch(subjectsProvider).valueOrNull;
     final slots = ref.watch(allSlotsProvider).valueOrNull;
@@ -132,6 +131,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
       hasGroqKey: hasKey,
       hasGeminiKey: hasGemini,
       hasSubject: subjects.isNotEmpty,
+      hasStudyProfile: prefs?.studyYear != null || prefs?.schoolName != null,
       hasTimetable: slots.isNotEmpty,
     );
     if (!onboardingRequiredDone(steps)) _onboardingActive = true;

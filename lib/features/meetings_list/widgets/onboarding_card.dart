@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/spacing.dart';
 
-enum OnboardingStep { groqKey, geminiKey, subject, timetable }
+enum OnboardingStep { groqKey, geminiKey, subject, study, timetable }
 
 typedef OnboardingItem = ({OnboardingStep step, bool done, bool optional});
 
@@ -13,13 +13,18 @@ List<OnboardingItem> onboardingSteps({
   required bool hasGroqKey,
   required bool hasGeminiKey,
   required bool hasSubject,
+  required bool hasStudyProfile,
   required bool hasTimetable,
 }) => [
   (step: OnboardingStep.groqKey, done: hasGroqKey, optional: false),
   (step: OnboardingStep.geminiKey, done: hasGeminiKey, optional: true),
   (step: OnboardingStep.subject, done: hasSubject, optional: false),
+  (step: OnboardingStep.study, done: hasStudyProfile, optional: true),
   (step: OnboardingStep.timetable, done: hasTimetable, optional: true),
 ];
+
+/// Czech voices the preposition before 4: 'ze 4' but 'z 5'.
+String _of(int n) => n == 4 ? 'ze $n' : 'z $n';
 
 bool onboardingRequiredDone(List<OnboardingItem> steps) =>
     steps.every((s) => s.optional || s.done);
@@ -40,6 +45,11 @@ bool onboardingRequiredDone(List<OnboardingItem> steps) =>
         title: 'Založ první předmět',
         subtitle: 'Třeba Čeština — AI pak ví, o čem hodina je.',
         icon: Icons.school_outlined,
+      ),
+      OnboardingStep.study => (
+        title: 'Škola a ročník',
+        subtitle: 'AI pak odpovídá na tvé úrovni a zná tematický plán.',
+        icon: Icons.menu_book_outlined,
       ),
       OnboardingStep.timetable => (
         title: 'Vyplň rozvrh',
@@ -90,7 +100,7 @@ class OnboardingCard extends StatelessWidget {
                           style: theme.textTheme.titleMedium,
                         ),
                         Text(
-                          '$done ze ${steps.length} kroků',
+                          '$done ${_of(steps.length)} kroků',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -110,7 +120,7 @@ class OnboardingCard extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: done / steps.length,
                   minHeight: 4,
-                  semanticsLabel: 'Průvodce, $done ze ${steps.length} kroků',
+                  semanticsLabel: 'Průvodce, $done ${_of(steps.length)} kroků',
                 ),
               ),
               const SizedBox(height: Gap.xs),

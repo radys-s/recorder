@@ -8,11 +8,13 @@ void main() {
       hasGroqKey: false,
       hasGeminiKey: false,
       hasSubject: false,
+      hasStudyProfile: false,
       hasTimetable: false,
     );
     expect(onboardingRequiredDone(none), isFalse);
     expect(none.where((s) => s.optional).map((s) => s.step), [
       OnboardingStep.geminiKey,
+      OnboardingStep.study,
       OnboardingStep.timetable,
     ]);
 
@@ -20,6 +22,7 @@ void main() {
       hasGroqKey: true,
       hasGeminiKey: false,
       hasSubject: true,
+      hasStudyProfile: false,
       hasTimetable: false,
     );
     expect(onboardingRequiredDone(required), isTrue);
@@ -28,6 +31,7 @@ void main() {
       hasGroqKey: true,
       hasGeminiKey: true,
       hasSubject: false,
+      hasStudyProfile: false,
       hasTimetable: true,
     );
     expect(onboardingRequiredDone(keyOnly), isFalse);
@@ -57,11 +61,12 @@ void main() {
         hasGroqKey: true,
         hasGeminiKey: false,
         hasSubject: false,
+        hasStudyProfile: false,
         hasTimetable: false,
       ),
     );
     expect(find.text('Začínáme'), findsOneWidget);
-    expect(find.text('1 ze 4 kroků'), findsOneWidget);
+    expect(find.text('1 z 5 kroků'), findsOneWidget);
 
     await tester.tap(find.text('Vlož Groq klíč'));
     await tester.tap(find.text('Založ první předmět'));
@@ -75,6 +80,7 @@ void main() {
         hasGroqKey: true,
         hasGeminiKey: false,
         hasSubject: true,
+        hasStudyProfile: false,
         hasTimetable: false,
       ),
     );

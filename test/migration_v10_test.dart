@@ -1,10 +1,12 @@
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:recorder/ai/syllabus.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/data/db/tables/refined_segments_table.dart';
+import 'package:recorder/data/db/tables/syllabus_topics_table.dart';
 import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 
 /// The v9 schema exactly as a v9 build created it, so the upgrade runs against
@@ -142,6 +144,17 @@ void main() {
       (await db.transcriptSegmentsDao.segmentById(v16Segment.id))!.confidence,
       -0.4,
     );
+    // v18 adds the course profile, the thematic plan and a lesson's topic.
+    await db.preferencesDao.setStudyProfile(studyField: 'IT', studyYear: 3);
+    expect((await db.preferencesDao.current()).studyYear, 3);
+    await db.subjectsDao.setSubjectProfile(3, fullName: 'Český jazyk');
+    expect((await db.subjectsDao.subject(3))!.fullName, 'Český jazyk');
+    await db.subjectsDao.replaceTopics(3, const [
+      SyllabusTopicDraft(title: 'Romantismus', monthFrom: 10),
+    ], SyllabusSource.pasted);
+    final topic = (await db.subjectsDao.topics(3)).single;
+    await db.subjectsDao.setMeetingTopic(9, topic.id);
+    expect((await db.select(db.meetings).getSingle()).topicId, topic.id);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

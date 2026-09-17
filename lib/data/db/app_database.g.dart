@@ -87,6 +87,17 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _topicIdMeta = const VerificationMeta(
+    'topicId',
+  );
+  @override
+  late final GeneratedColumn<int> topicId = GeneratedColumn<int>(
+    'topic_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -96,6 +107,7 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     interrupted,
     subjectId,
     rules,
+    topicId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -155,6 +167,12 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         rules.isAcceptableOrUnknown(data['rules']!, _rulesMeta),
       );
     }
+    if (data.containsKey('topic_id')) {
+      context.handle(
+        _topicIdMeta,
+        topicId.isAcceptableOrUnknown(data['topic_id']!, _topicIdMeta),
+      );
+    }
     return context;
   }
 
@@ -192,6 +210,10 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         DriftSqlType.string,
         data['${effectivePrefix}rules'],
       ),
+      topicId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}topic_id'],
+      ),
     );
   }
 
@@ -220,6 +242,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
   /// Rules for this lesson only, set at the start sheet. Rules typed into the
   /// chat later are chat messages and come after these.
   final String? rules;
+
+  /// The plan topic the student picked for this lesson; null lets the app
+  /// work it out from the date and what is being said.
+  final int? topicId;
   const Meeting({
     required this.id,
     required this.title,
@@ -228,6 +254,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     required this.interrupted,
     this.subjectId,
     this.rules,
+    this.topicId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -244,6 +271,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     }
     if (!nullToAbsent || rules != null) {
       map['rules'] = Variable<String>(rules);
+    }
+    if (!nullToAbsent || topicId != null) {
+      map['topic_id'] = Variable<int>(topicId);
     }
     return map;
   }
@@ -263,6 +293,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       rules: rules == null && nullToAbsent
           ? const Value.absent()
           : Value(rules),
+      topicId: topicId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(topicId),
     );
   }
 
@@ -279,6 +312,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       interrupted: serializer.fromJson<bool>(json['interrupted']),
       subjectId: serializer.fromJson<int?>(json['subjectId']),
       rules: serializer.fromJson<String?>(json['rules']),
+      topicId: serializer.fromJson<int?>(json['topicId']),
     );
   }
   @override
@@ -292,6 +326,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       'interrupted': serializer.toJson<bool>(interrupted),
       'subjectId': serializer.toJson<int?>(subjectId),
       'rules': serializer.toJson<String?>(rules),
+      'topicId': serializer.toJson<int?>(topicId),
     };
   }
 
@@ -303,6 +338,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     bool? interrupted,
     Value<int?> subjectId = const Value.absent(),
     Value<String?> rules = const Value.absent(),
+    Value<int?> topicId = const Value.absent(),
   }) => Meeting(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -311,6 +347,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     interrupted: interrupted ?? this.interrupted,
     subjectId: subjectId.present ? subjectId.value : this.subjectId,
     rules: rules.present ? rules.value : this.rules,
+    topicId: topicId.present ? topicId.value : this.topicId,
   );
   Meeting copyWithCompanion(MeetingsCompanion data) {
     return Meeting(
@@ -323,6 +360,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           : this.interrupted,
       subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
       rules: data.rules.present ? data.rules.value : this.rules,
+      topicId: data.topicId.present ? data.topicId.value : this.topicId,
     );
   }
 
@@ -335,14 +373,23 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           ..write('endedAt: $endedAt, ')
           ..write('interrupted: $interrupted, ')
           ..write('subjectId: $subjectId, ')
-          ..write('rules: $rules')
+          ..write('rules: $rules, ')
+          ..write('topicId: $topicId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, createdAt, endedAt, interrupted, subjectId, rules);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    createdAt,
+    endedAt,
+    interrupted,
+    subjectId,
+    rules,
+    topicId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -353,7 +400,8 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           other.endedAt == this.endedAt &&
           other.interrupted == this.interrupted &&
           other.subjectId == this.subjectId &&
-          other.rules == this.rules);
+          other.rules == this.rules &&
+          other.topicId == this.topicId);
 }
 
 class MeetingsCompanion extends UpdateCompanion<Meeting> {
@@ -364,6 +412,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
   final Value<bool> interrupted;
   final Value<int?> subjectId;
   final Value<String?> rules;
+  final Value<int?> topicId;
   const MeetingsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -372,6 +421,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.interrupted = const Value.absent(),
     this.subjectId = const Value.absent(),
     this.rules = const Value.absent(),
+    this.topicId = const Value.absent(),
   });
   MeetingsCompanion.insert({
     this.id = const Value.absent(),
@@ -381,6 +431,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.interrupted = const Value.absent(),
     this.subjectId = const Value.absent(),
     this.rules = const Value.absent(),
+    this.topicId = const Value.absent(),
   }) : title = Value(title),
        createdAt = Value(createdAt);
   static Insertable<Meeting> custom({
@@ -391,6 +442,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Expression<bool>? interrupted,
     Expression<int>? subjectId,
     Expression<String>? rules,
+    Expression<int>? topicId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -400,6 +452,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       if (interrupted != null) 'interrupted': interrupted,
       if (subjectId != null) 'subject_id': subjectId,
       if (rules != null) 'rules': rules,
+      if (topicId != null) 'topic_id': topicId,
     });
   }
 
@@ -411,6 +464,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Value<bool>? interrupted,
     Value<int?>? subjectId,
     Value<String?>? rules,
+    Value<int?>? topicId,
   }) {
     return MeetingsCompanion(
       id: id ?? this.id,
@@ -420,6 +474,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       interrupted: interrupted ?? this.interrupted,
       subjectId: subjectId ?? this.subjectId,
       rules: rules ?? this.rules,
+      topicId: topicId ?? this.topicId,
     );
   }
 
@@ -447,6 +502,9 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     if (rules.present) {
       map['rules'] = Variable<String>(rules.value);
     }
+    if (topicId.present) {
+      map['topic_id'] = Variable<int>(topicId.value);
+    }
     return map;
   }
 
@@ -459,7 +517,8 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
           ..write('endedAt: $endedAt, ')
           ..write('interrupted: $interrupted, ')
           ..write('subjectId: $subjectId, ')
-          ..write('rules: $rules')
+          ..write('rules: $rules, ')
+          ..write('topicId: $topicId')
           ..write(')'))
         .toString();
   }
@@ -1933,6 +1992,48 @@ class $PreferencesTable extends Preferences
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _schoolNameMeta = const VerificationMeta(
+    'schoolName',
+  );
+  @override
+  late final GeneratedColumn<String> schoolName = GeneratedColumn<String>(
+    'school_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<SchoolType?, int> schoolType =
+      GeneratedColumn<int>(
+        'school_type',
+        aliasedName,
+        true,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+      ).withConverter<SchoolType?>($PreferencesTable.$converterschoolTypen);
+  static const VerificationMeta _studyFieldMeta = const VerificationMeta(
+    'studyField',
+  );
+  @override
+  late final GeneratedColumn<String> studyField = GeneratedColumn<String>(
+    'study_field',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _studyYearMeta = const VerificationMeta(
+    'studyYear',
+  );
+  @override
+  late final GeneratedColumn<int> studyYear = GeneratedColumn<int>(
+    'study_year',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1945,6 +2046,10 @@ class $PreferencesTable extends Preferences
     geminiModelOverride,
     onboardingDismissed,
     contextCorrection,
+    schoolName,
+    schoolType,
+    studyField,
+    studyYear,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2015,6 +2120,24 @@ class $PreferencesTable extends Preferences
         ),
       );
     }
+    if (data.containsKey('school_name')) {
+      context.handle(
+        _schoolNameMeta,
+        schoolName.isAcceptableOrUnknown(data['school_name']!, _schoolNameMeta),
+      );
+    }
+    if (data.containsKey('study_field')) {
+      context.handle(
+        _studyFieldMeta,
+        studyField.isAcceptableOrUnknown(data['study_field']!, _studyFieldMeta),
+      );
+    }
+    if (data.containsKey('study_year')) {
+      context.handle(
+        _studyYearMeta,
+        studyYear.isAcceptableOrUnknown(data['study_year']!, _studyYearMeta),
+      );
+    }
     return context;
   }
 
@@ -2071,6 +2194,24 @@ class $PreferencesTable extends Preferences
         DriftSqlType.bool,
         data['${effectivePrefix}context_correction'],
       )!,
+      schoolName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_name'],
+      ),
+      schoolType: $PreferencesTable.$converterschoolTypen.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}school_type'],
+        ),
+      ),
+      studyField: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}study_field'],
+      ),
+      studyYear: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}study_year'],
+      ),
     );
   }
 
@@ -2087,6 +2228,10 @@ class $PreferencesTable extends Preferences
       const EnumIndexConverter<NotesDepth>(NotesDepth.values);
   static JsonTypeConverter2<MicSensitivity, int, int> $convertermicSensitivity =
       const EnumIndexConverter<MicSensitivity>(MicSensitivity.values);
+  static JsonTypeConverter2<SchoolType, int, int> $converterschoolType =
+      const EnumIndexConverter<SchoolType>(SchoolType.values);
+  static JsonTypeConverter2<SchoolType?, int?, int?> $converterschoolTypen =
+      JsonTypeConverter2.asNullable($converterschoolType);
 }
 
 class Preference extends DataClass implements Insertable<Preference> {
@@ -2122,6 +2267,13 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// Lesson transcripts get a second look that fixes misheard subject terms.
   final bool contextCorrection;
+
+  /// The student's course: school, kind of school, field and year. All
+  /// optional; filled in, they tell every prompt the level of the lessons.
+  final String? schoolName;
+  final SchoolType? schoolType;
+  final String? studyField;
+  final int? studyYear;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2133,6 +2285,10 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.geminiModelOverride,
     required this.onboardingDismissed,
     required this.contextCorrection,
+    this.schoolName,
+    this.schoolType,
+    this.studyField,
+    this.studyYear,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2165,6 +2321,20 @@ class Preference extends DataClass implements Insertable<Preference> {
     }
     map['onboarding_dismissed'] = Variable<bool>(onboardingDismissed);
     map['context_correction'] = Variable<bool>(contextCorrection);
+    if (!nullToAbsent || schoolName != null) {
+      map['school_name'] = Variable<String>(schoolName);
+    }
+    if (!nullToAbsent || schoolType != null) {
+      map['school_type'] = Variable<int>(
+        $PreferencesTable.$converterschoolTypen.toSql(schoolType),
+      );
+    }
+    if (!nullToAbsent || studyField != null) {
+      map['study_field'] = Variable<String>(studyField);
+    }
+    if (!nullToAbsent || studyYear != null) {
+      map['study_year'] = Variable<int>(studyYear);
+    }
     return map;
   }
 
@@ -2184,6 +2354,18 @@ class Preference extends DataClass implements Insertable<Preference> {
           : Value(geminiModelOverride),
       onboardingDismissed: Value(onboardingDismissed),
       contextCorrection: Value(contextCorrection),
+      schoolName: schoolName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(schoolName),
+      schoolType: schoolType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(schoolType),
+      studyField: studyField == null && nullToAbsent
+          ? const Value.absent()
+          : Value(studyField),
+      studyYear: studyYear == null && nullToAbsent
+          ? const Value.absent()
+          : Value(studyYear),
     );
   }
 
@@ -2212,6 +2394,12 @@ class Preference extends DataClass implements Insertable<Preference> {
         json['onboardingDismissed'],
       ),
       contextCorrection: serializer.fromJson<bool>(json['contextCorrection']),
+      schoolName: serializer.fromJson<String?>(json['schoolName']),
+      schoolType: $PreferencesTable.$converterschoolTypen.fromJson(
+        serializer.fromJson<int?>(json['schoolType']),
+      ),
+      studyField: serializer.fromJson<String?>(json['studyField']),
+      studyYear: serializer.fromJson<int?>(json['studyYear']),
     );
   }
   @override
@@ -2236,6 +2424,12 @@ class Preference extends DataClass implements Insertable<Preference> {
       'geminiModelOverride': serializer.toJson<String?>(geminiModelOverride),
       'onboardingDismissed': serializer.toJson<bool>(onboardingDismissed),
       'contextCorrection': serializer.toJson<bool>(contextCorrection),
+      'schoolName': serializer.toJson<String?>(schoolName),
+      'schoolType': serializer.toJson<int?>(
+        $PreferencesTable.$converterschoolTypen.toJson(schoolType),
+      ),
+      'studyField': serializer.toJson<String?>(studyField),
+      'studyYear': serializer.toJson<int?>(studyYear),
     };
   }
 
@@ -2250,6 +2444,10 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<String?> geminiModelOverride = const Value.absent(),
     bool? onboardingDismissed,
     bool? contextCorrection,
+    Value<String?> schoolName = const Value.absent(),
+    Value<SchoolType?> schoolType = const Value.absent(),
+    Value<String?> studyField = const Value.absent(),
+    Value<int?> studyYear = const Value.absent(),
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2263,6 +2461,10 @@ class Preference extends DataClass implements Insertable<Preference> {
         : this.geminiModelOverride,
     onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
     contextCorrection: contextCorrection ?? this.contextCorrection,
+    schoolName: schoolName.present ? schoolName.value : this.schoolName,
+    schoolType: schoolType.present ? schoolType.value : this.schoolType,
+    studyField: studyField.present ? studyField.value : this.studyField,
+    studyYear: studyYear.present ? studyYear.value : this.studyYear,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2294,6 +2496,16 @@ class Preference extends DataClass implements Insertable<Preference> {
       contextCorrection: data.contextCorrection.present
           ? data.contextCorrection.value
           : this.contextCorrection,
+      schoolName: data.schoolName.present
+          ? data.schoolName.value
+          : this.schoolName,
+      schoolType: data.schoolType.present
+          ? data.schoolType.value
+          : this.schoolType,
+      studyField: data.studyField.present
+          ? data.studyField.value
+          : this.studyField,
+      studyYear: data.studyYear.present ? data.studyYear.value : this.studyYear,
     );
   }
 
@@ -2309,7 +2521,11 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('globalRules: $globalRules, ')
           ..write('geminiModelOverride: $geminiModelOverride, ')
           ..write('onboardingDismissed: $onboardingDismissed, ')
-          ..write('contextCorrection: $contextCorrection')
+          ..write('contextCorrection: $contextCorrection, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('schoolType: $schoolType, ')
+          ..write('studyField: $studyField, ')
+          ..write('studyYear: $studyYear')
           ..write(')'))
         .toString();
   }
@@ -2326,6 +2542,10 @@ class Preference extends DataClass implements Insertable<Preference> {
     geminiModelOverride,
     onboardingDismissed,
     contextCorrection,
+    schoolName,
+    schoolType,
+    studyField,
+    studyYear,
   );
   @override
   bool operator ==(Object other) =>
@@ -2340,7 +2560,11 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.globalRules == this.globalRules &&
           other.geminiModelOverride == this.geminiModelOverride &&
           other.onboardingDismissed == this.onboardingDismissed &&
-          other.contextCorrection == this.contextCorrection);
+          other.contextCorrection == this.contextCorrection &&
+          other.schoolName == this.schoolName &&
+          other.schoolType == this.schoolType &&
+          other.studyField == this.studyField &&
+          other.studyYear == this.studyYear);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2354,6 +2578,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<String?> geminiModelOverride;
   final Value<bool> onboardingDismissed;
   final Value<bool> contextCorrection;
+  final Value<String?> schoolName;
+  final Value<SchoolType?> schoolType;
+  final Value<String?> studyField;
+  final Value<int?> studyYear;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2365,6 +2593,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.geminiModelOverride = const Value.absent(),
     this.onboardingDismissed = const Value.absent(),
     this.contextCorrection = const Value.absent(),
+    this.schoolName = const Value.absent(),
+    this.schoolType = const Value.absent(),
+    this.studyField = const Value.absent(),
+    this.studyYear = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2377,6 +2609,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.geminiModelOverride = const Value.absent(),
     this.onboardingDismissed = const Value.absent(),
     this.contextCorrection = const Value.absent(),
+    this.schoolName = const Value.absent(),
+    this.schoolType = const Value.absent(),
+    this.studyField = const Value.absent(),
+    this.studyYear = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2389,6 +2625,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<String>? geminiModelOverride,
     Expression<bool>? onboardingDismissed,
     Expression<bool>? contextCorrection,
+    Expression<String>? schoolName,
+    Expression<int>? schoolType,
+    Expression<String>? studyField,
+    Expression<int>? studyYear,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2404,6 +2644,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (onboardingDismissed != null)
         'onboarding_dismissed': onboardingDismissed,
       if (contextCorrection != null) 'context_correction': contextCorrection,
+      if (schoolName != null) 'school_name': schoolName,
+      if (schoolType != null) 'school_type': schoolType,
+      if (studyField != null) 'study_field': studyField,
+      if (studyYear != null) 'study_year': studyYear,
     });
   }
 
@@ -2418,6 +2662,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<String?>? geminiModelOverride,
     Value<bool>? onboardingDismissed,
     Value<bool>? contextCorrection,
+    Value<String?>? schoolName,
+    Value<SchoolType?>? schoolType,
+    Value<String?>? studyField,
+    Value<int?>? studyYear,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2430,6 +2678,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       geminiModelOverride: geminiModelOverride ?? this.geminiModelOverride,
       onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
       contextCorrection: contextCorrection ?? this.contextCorrection,
+      schoolName: schoolName ?? this.schoolName,
+      schoolType: schoolType ?? this.schoolType,
+      studyField: studyField ?? this.studyField,
+      studyYear: studyYear ?? this.studyYear,
     );
   }
 
@@ -2476,6 +2728,20 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (contextCorrection.present) {
       map['context_correction'] = Variable<bool>(contextCorrection.value);
     }
+    if (schoolName.present) {
+      map['school_name'] = Variable<String>(schoolName.value);
+    }
+    if (schoolType.present) {
+      map['school_type'] = Variable<int>(
+        $PreferencesTable.$converterschoolTypen.toSql(schoolType.value),
+      );
+    }
+    if (studyField.present) {
+      map['study_field'] = Variable<String>(studyField.value);
+    }
+    if (studyYear.present) {
+      map['study_year'] = Variable<int>(studyYear.value);
+    }
     return map;
   }
 
@@ -2491,7 +2757,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('globalRules: $globalRules, ')
           ..write('geminiModelOverride: $geminiModelOverride, ')
           ..write('onboardingDismissed: $onboardingDismissed, ')
-          ..write('contextCorrection: $contextCorrection')
+          ..write('contextCorrection: $contextCorrection, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('schoolType: $schoolType, ')
+          ..write('studyField: $studyField, ')
+          ..write('studyYear: $studyYear')
           ..write(')'))
         .toString();
   }
@@ -3829,6 +4099,28 @@ class $SubjectsTable extends Subjects with TableInfo<$SubjectsTable, Subject> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _fullNameMeta = const VerificationMeta(
+    'fullName',
+  );
+  @override
+  late final GeneratedColumn<String> fullName = GeneratedColumn<String>(
+    'full_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _levelOverrideMeta = const VerificationMeta(
+    'levelOverride',
+  );
+  @override
+  late final GeneratedColumn<String> levelOverride = GeneratedColumn<String>(
+    'level_override',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3837,6 +4129,8 @@ class $SubjectsTable extends Subjects with TableInfo<$SubjectsTable, Subject> {
     rules,
     colorIndex,
     sortOrder,
+    fullName,
+    levelOverride,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3887,6 +4181,21 @@ class $SubjectsTable extends Subjects with TableInfo<$SubjectsTable, Subject> {
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('full_name')) {
+      context.handle(
+        _fullNameMeta,
+        fullName.isAcceptableOrUnknown(data['full_name']!, _fullNameMeta),
+      );
+    }
+    if (data.containsKey('level_override')) {
+      context.handle(
+        _levelOverrideMeta,
+        levelOverride.isAcceptableOrUnknown(
+          data['level_override']!,
+          _levelOverrideMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3920,6 +4229,14 @@ class $SubjectsTable extends Subjects with TableInfo<$SubjectsTable, Subject> {
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      fullName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}full_name'],
+      ),
+      levelOverride: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}level_override'],
+      ),
     );
   }
 
@@ -3942,6 +4259,14 @@ class Subject extends DataClass implements Insertable<Subject> {
   /// instead of being a stored RGB value that is wrong in dark mode.
   final int colorIndex;
   final int sortOrder;
+
+  /// The subject's full name when [name] is a short label — „PSI" is
+  /// „Počítačové sítě".
+  final String? fullName;
+
+  /// A level that differs from the course's year, e.g. „2. ročník" for a
+  /// seminar shared with a younger class.
+  final String? levelOverride;
   const Subject({
     required this.id,
     required this.name,
@@ -3949,6 +4274,8 @@ class Subject extends DataClass implements Insertable<Subject> {
     this.rules,
     required this.colorIndex,
     required this.sortOrder,
+    this.fullName,
+    this.levelOverride,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3961,6 +4288,12 @@ class Subject extends DataClass implements Insertable<Subject> {
     }
     map['color_index'] = Variable<int>(colorIndex);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || fullName != null) {
+      map['full_name'] = Variable<String>(fullName);
+    }
+    if (!nullToAbsent || levelOverride != null) {
+      map['level_override'] = Variable<String>(levelOverride);
+    }
     return map;
   }
 
@@ -3974,6 +4307,12 @@ class Subject extends DataClass implements Insertable<Subject> {
           : Value(rules),
       colorIndex: Value(colorIndex),
       sortOrder: Value(sortOrder),
+      fullName: fullName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fullName),
+      levelOverride: levelOverride == null && nullToAbsent
+          ? const Value.absent()
+          : Value(levelOverride),
     );
   }
 
@@ -3989,6 +4328,8 @@ class Subject extends DataClass implements Insertable<Subject> {
       rules: serializer.fromJson<String?>(json['rules']),
       colorIndex: serializer.fromJson<int>(json['colorIndex']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      fullName: serializer.fromJson<String?>(json['fullName']),
+      levelOverride: serializer.fromJson<String?>(json['levelOverride']),
     );
   }
   @override
@@ -4001,6 +4342,8 @@ class Subject extends DataClass implements Insertable<Subject> {
       'rules': serializer.toJson<String?>(rules),
       'colorIndex': serializer.toJson<int>(colorIndex),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'fullName': serializer.toJson<String?>(fullName),
+      'levelOverride': serializer.toJson<String?>(levelOverride),
     };
   }
 
@@ -4011,6 +4354,8 @@ class Subject extends DataClass implements Insertable<Subject> {
     Value<String?> rules = const Value.absent(),
     int? colorIndex,
     int? sortOrder,
+    Value<String?> fullName = const Value.absent(),
+    Value<String?> levelOverride = const Value.absent(),
   }) => Subject(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -4018,6 +4363,10 @@ class Subject extends DataClass implements Insertable<Subject> {
     rules: rules.present ? rules.value : this.rules,
     colorIndex: colorIndex ?? this.colorIndex,
     sortOrder: sortOrder ?? this.sortOrder,
+    fullName: fullName.present ? fullName.value : this.fullName,
+    levelOverride: levelOverride.present
+        ? levelOverride.value
+        : this.levelOverride,
   );
   Subject copyWithCompanion(SubjectsCompanion data) {
     return Subject(
@@ -4029,6 +4378,10 @@ class Subject extends DataClass implements Insertable<Subject> {
           ? data.colorIndex.value
           : this.colorIndex,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      fullName: data.fullName.present ? data.fullName.value : this.fullName,
+      levelOverride: data.levelOverride.present
+          ? data.levelOverride.value
+          : this.levelOverride,
     );
   }
 
@@ -4040,14 +4393,24 @@ class Subject extends DataClass implements Insertable<Subject> {
           ..write('createdAt: $createdAt, ')
           ..write('rules: $rules, ')
           ..write('colorIndex: $colorIndex, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('fullName: $fullName, ')
+          ..write('levelOverride: $levelOverride')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, createdAt, rules, colorIndex, sortOrder);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    createdAt,
+    rules,
+    colorIndex,
+    sortOrder,
+    fullName,
+    levelOverride,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4057,7 +4420,9 @@ class Subject extends DataClass implements Insertable<Subject> {
           other.createdAt == this.createdAt &&
           other.rules == this.rules &&
           other.colorIndex == this.colorIndex &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.fullName == this.fullName &&
+          other.levelOverride == this.levelOverride);
 }
 
 class SubjectsCompanion extends UpdateCompanion<Subject> {
@@ -4067,6 +4432,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
   final Value<String?> rules;
   final Value<int> colorIndex;
   final Value<int> sortOrder;
+  final Value<String?> fullName;
+  final Value<String?> levelOverride;
   const SubjectsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -4074,6 +4441,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
     this.rules = const Value.absent(),
     this.colorIndex = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.fullName = const Value.absent(),
+    this.levelOverride = const Value.absent(),
   });
   SubjectsCompanion.insert({
     this.id = const Value.absent(),
@@ -4082,6 +4451,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
     this.rules = const Value.absent(),
     this.colorIndex = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.fullName = const Value.absent(),
+    this.levelOverride = const Value.absent(),
   }) : name = Value(name),
        createdAt = Value(createdAt);
   static Insertable<Subject> custom({
@@ -4091,6 +4462,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
     Expression<String>? rules,
     Expression<int>? colorIndex,
     Expression<int>? sortOrder,
+    Expression<String>? fullName,
+    Expression<String>? levelOverride,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -4099,6 +4472,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
       if (rules != null) 'rules': rules,
       if (colorIndex != null) 'color_index': colorIndex,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (fullName != null) 'full_name': fullName,
+      if (levelOverride != null) 'level_override': levelOverride,
     });
   }
 
@@ -4109,6 +4484,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
     Value<String?>? rules,
     Value<int>? colorIndex,
     Value<int>? sortOrder,
+    Value<String?>? fullName,
+    Value<String?>? levelOverride,
   }) {
     return SubjectsCompanion(
       id: id ?? this.id,
@@ -4117,6 +4494,8 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
       rules: rules ?? this.rules,
       colorIndex: colorIndex ?? this.colorIndex,
       sortOrder: sortOrder ?? this.sortOrder,
+      fullName: fullName ?? this.fullName,
+      levelOverride: levelOverride ?? this.levelOverride,
     );
   }
 
@@ -4141,6 +4520,12 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (fullName.present) {
+      map['full_name'] = Variable<String>(fullName.value);
+    }
+    if (levelOverride.present) {
+      map['level_override'] = Variable<String>(levelOverride.value);
+    }
     return map;
   }
 
@@ -4152,7 +4537,9 @@ class SubjectsCompanion extends UpdateCompanion<Subject> {
           ..write('createdAt: $createdAt, ')
           ..write('rules: $rules, ')
           ..write('colorIndex: $colorIndex, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('fullName: $fullName, ')
+          ..write('levelOverride: $levelOverride')
           ..write(')'))
         .toString();
   }
@@ -8129,6 +8516,618 @@ class SubjectTermsCompanion extends UpdateCompanion<SubjectTerm> {
   }
 }
 
+class $SyllabusTopicsTable extends SyllabusTopics
+    with TableInfo<$SyllabusTopicsTable, SyllabusTopic> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyllabusTopicsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<int> subjectId = GeneratedColumn<int>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ordMeta = const VerificationMeta('ord');
+  @override
+  late final GeneratedColumn<int> ord = GeneratedColumn<int>(
+    'ord',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 160,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _termsMeta = const VerificationMeta('terms');
+  @override
+  late final GeneratedColumn<String> terms = GeneratedColumn<String>(
+    'terms',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _monthFromMeta = const VerificationMeta(
+    'monthFrom',
+  );
+  @override
+  late final GeneratedColumn<int> monthFrom = GeneratedColumn<int>(
+    'month_from',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _monthToMeta = const VerificationMeta(
+    'monthTo',
+  );
+  @override
+  late final GeneratedColumn<int> monthTo = GeneratedColumn<int>(
+    'month_to',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<SyllabusSource, int> source =
+      GeneratedColumn<int>(
+        'source',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<SyllabusSource>($SyllabusTopicsTable.$convertersource);
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    ord,
+    title,
+    description,
+    terms,
+    monthFrom,
+    monthTo,
+    source,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'syllabus_topics';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyllabusTopic> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('ord')) {
+      context.handle(
+        _ordMeta,
+        ord.isAcceptableOrUnknown(data['ord']!, _ordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ordMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('terms')) {
+      context.handle(
+        _termsMeta,
+        terms.isAcceptableOrUnknown(data['terms']!, _termsMeta),
+      );
+    }
+    if (data.containsKey('month_from')) {
+      context.handle(
+        _monthFromMeta,
+        monthFrom.isAcceptableOrUnknown(data['month_from']!, _monthFromMeta),
+      );
+    }
+    if (data.containsKey('month_to')) {
+      context.handle(
+        _monthToMeta,
+        monthTo.isAcceptableOrUnknown(data['month_to']!, _monthToMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyllabusTopic map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyllabusTopic(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      ord: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ord'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      terms: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}terms'],
+      ),
+      monthFrom: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}month_from'],
+      ),
+      monthTo: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}month_to'],
+      ),
+      source: $SyllabusTopicsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyllabusTopicsTable createAlias(String alias) {
+    return $SyllabusTopicsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<SyllabusSource, int, int> $convertersource =
+      const EnumIndexConverter<SyllabusSource>(SyllabusSource.values);
+}
+
+class SyllabusTopic extends DataClass implements Insertable<SyllabusTopic> {
+  final int id;
+  final int subjectId;
+  final int ord;
+  final String title;
+  final String? description;
+
+  /// Terms the topic uses, as a comma list.
+  final String? terms;
+  final int? monthFrom;
+  final int? monthTo;
+  final SyllabusSource source;
+  final DateTime createdAt;
+  const SyllabusTopic({
+    required this.id,
+    required this.subjectId,
+    required this.ord,
+    required this.title,
+    this.description,
+    this.terms,
+    this.monthFrom,
+    this.monthTo,
+    required this.source,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<int>(subjectId);
+    map['ord'] = Variable<int>(ord);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || terms != null) {
+      map['terms'] = Variable<String>(terms);
+    }
+    if (!nullToAbsent || monthFrom != null) {
+      map['month_from'] = Variable<int>(monthFrom);
+    }
+    if (!nullToAbsent || monthTo != null) {
+      map['month_to'] = Variable<int>(monthTo);
+    }
+    {
+      map['source'] = Variable<int>(
+        $SyllabusTopicsTable.$convertersource.toSql(source),
+      );
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SyllabusTopicsCompanion toCompanion(bool nullToAbsent) {
+    return SyllabusTopicsCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      ord: Value(ord),
+      title: Value(title),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      terms: terms == null && nullToAbsent
+          ? const Value.absent()
+          : Value(terms),
+      monthFrom: monthFrom == null && nullToAbsent
+          ? const Value.absent()
+          : Value(monthFrom),
+      monthTo: monthTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(monthTo),
+      source: Value(source),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SyllabusTopic.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyllabusTopic(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<int>(json['subjectId']),
+      ord: serializer.fromJson<int>(json['ord']),
+      title: serializer.fromJson<String>(json['title']),
+      description: serializer.fromJson<String?>(json['description']),
+      terms: serializer.fromJson<String?>(json['terms']),
+      monthFrom: serializer.fromJson<int?>(json['monthFrom']),
+      monthTo: serializer.fromJson<int?>(json['monthTo']),
+      source: $SyllabusTopicsTable.$convertersource.fromJson(
+        serializer.fromJson<int>(json['source']),
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<int>(subjectId),
+      'ord': serializer.toJson<int>(ord),
+      'title': serializer.toJson<String>(title),
+      'description': serializer.toJson<String?>(description),
+      'terms': serializer.toJson<String?>(terms),
+      'monthFrom': serializer.toJson<int?>(monthFrom),
+      'monthTo': serializer.toJson<int?>(monthTo),
+      'source': serializer.toJson<int>(
+        $SyllabusTopicsTable.$convertersource.toJson(source),
+      ),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SyllabusTopic copyWith({
+    int? id,
+    int? subjectId,
+    int? ord,
+    String? title,
+    Value<String?> description = const Value.absent(),
+    Value<String?> terms = const Value.absent(),
+    Value<int?> monthFrom = const Value.absent(),
+    Value<int?> monthTo = const Value.absent(),
+    SyllabusSource? source,
+    DateTime? createdAt,
+  }) => SyllabusTopic(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    ord: ord ?? this.ord,
+    title: title ?? this.title,
+    description: description.present ? description.value : this.description,
+    terms: terms.present ? terms.value : this.terms,
+    monthFrom: monthFrom.present ? monthFrom.value : this.monthFrom,
+    monthTo: monthTo.present ? monthTo.value : this.monthTo,
+    source: source ?? this.source,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SyllabusTopic copyWithCompanion(SyllabusTopicsCompanion data) {
+    return SyllabusTopic(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      ord: data.ord.present ? data.ord.value : this.ord,
+      title: data.title.present ? data.title.value : this.title,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      terms: data.terms.present ? data.terms.value : this.terms,
+      monthFrom: data.monthFrom.present ? data.monthFrom.value : this.monthFrom,
+      monthTo: data.monthTo.present ? data.monthTo.value : this.monthTo,
+      source: data.source.present ? data.source.value : this.source,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyllabusTopic(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('ord: $ord, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('terms: $terms, ')
+          ..write('monthFrom: $monthFrom, ')
+          ..write('monthTo: $monthTo, ')
+          ..write('source: $source, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    subjectId,
+    ord,
+    title,
+    description,
+    terms,
+    monthFrom,
+    monthTo,
+    source,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyllabusTopic &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.ord == this.ord &&
+          other.title == this.title &&
+          other.description == this.description &&
+          other.terms == this.terms &&
+          other.monthFrom == this.monthFrom &&
+          other.monthTo == this.monthTo &&
+          other.source == this.source &&
+          other.createdAt == this.createdAt);
+}
+
+class SyllabusTopicsCompanion extends UpdateCompanion<SyllabusTopic> {
+  final Value<int> id;
+  final Value<int> subjectId;
+  final Value<int> ord;
+  final Value<String> title;
+  final Value<String?> description;
+  final Value<String?> terms;
+  final Value<int?> monthFrom;
+  final Value<int?> monthTo;
+  final Value<SyllabusSource> source;
+  final Value<DateTime> createdAt;
+  const SyllabusTopicsCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.ord = const Value.absent(),
+    this.title = const Value.absent(),
+    this.description = const Value.absent(),
+    this.terms = const Value.absent(),
+    this.monthFrom = const Value.absent(),
+    this.monthTo = const Value.absent(),
+    this.source = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SyllabusTopicsCompanion.insert({
+    this.id = const Value.absent(),
+    required int subjectId,
+    required int ord,
+    required String title,
+    this.description = const Value.absent(),
+    this.terms = const Value.absent(),
+    this.monthFrom = const Value.absent(),
+    this.monthTo = const Value.absent(),
+    required SyllabusSource source,
+    required DateTime createdAt,
+  }) : subjectId = Value(subjectId),
+       ord = Value(ord),
+       title = Value(title),
+       source = Value(source),
+       createdAt = Value(createdAt);
+  static Insertable<SyllabusTopic> custom({
+    Expression<int>? id,
+    Expression<int>? subjectId,
+    Expression<int>? ord,
+    Expression<String>? title,
+    Expression<String>? description,
+    Expression<String>? terms,
+    Expression<int>? monthFrom,
+    Expression<int>? monthTo,
+    Expression<int>? source,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (ord != null) 'ord': ord,
+      if (title != null) 'title': title,
+      if (description != null) 'description': description,
+      if (terms != null) 'terms': terms,
+      if (monthFrom != null) 'month_from': monthFrom,
+      if (monthTo != null) 'month_to': monthTo,
+      if (source != null) 'source': source,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SyllabusTopicsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? subjectId,
+    Value<int>? ord,
+    Value<String>? title,
+    Value<String?>? description,
+    Value<String?>? terms,
+    Value<int?>? monthFrom,
+    Value<int?>? monthTo,
+    Value<SyllabusSource>? source,
+    Value<DateTime>? createdAt,
+  }) {
+    return SyllabusTopicsCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      ord: ord ?? this.ord,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      terms: terms ?? this.terms,
+      monthFrom: monthFrom ?? this.monthFrom,
+      monthTo: monthTo ?? this.monthTo,
+      source: source ?? this.source,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<int>(subjectId.value);
+    }
+    if (ord.present) {
+      map['ord'] = Variable<int>(ord.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (terms.present) {
+      map['terms'] = Variable<String>(terms.value);
+    }
+    if (monthFrom.present) {
+      map['month_from'] = Variable<int>(monthFrom.value);
+    }
+    if (monthTo.present) {
+      map['month_to'] = Variable<int>(monthTo.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<int>(
+        $SyllabusTopicsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyllabusTopicsCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('ord: $ord, ')
+          ..write('title: $title, ')
+          ..write('description: $description, ')
+          ..write('terms: $terms, ')
+          ..write('monthFrom: $monthFrom, ')
+          ..write('monthTo: $monthTo, ')
+          ..write('source: $source, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -8150,6 +9149,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $SubjectTermsTable subjectTerms = $SubjectTermsTable(this);
+  late final $SyllabusTopicsTable syllabusTopics = $SyllabusTopicsTable(this);
   late final MeetingsDao meetingsDao = MeetingsDao(this as AppDatabase);
   late final TranscriptSegmentsDao transcriptSegmentsDao =
       TranscriptSegmentsDao(this as AppDatabase);
@@ -8193,6 +9193,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chatMessages,
     refinedSegments,
     subjectTerms,
+    syllabusTopics,
   ];
 }
 
@@ -8204,6 +9205,7 @@ typedef $$MeetingsTableCreateCompanionBuilder = MeetingsCompanion Function({
   Value<bool> interrupted,
   Value<int?> subjectId,
   Value<String?> rules,
+  Value<int?> topicId,
 });
 typedef $$MeetingsTableUpdateCompanionBuilder = MeetingsCompanion Function({
   Value<int> id,
@@ -8213,6 +9215,7 @@ typedef $$MeetingsTableUpdateCompanionBuilder = MeetingsCompanion Function({
   Value<bool> interrupted,
   Value<int?> subjectId,
   Value<String?> rules,
+  Value<int?> topicId,
 });
 
 class $$MeetingsTableFilterComposer
@@ -8256,6 +9259,11 @@ class $$MeetingsTableFilterComposer
 
   ColumnFilters<String> get rules => $composableBuilder(
     column: $table.rules,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get topicId => $composableBuilder(
+    column: $table.topicId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8303,6 +9311,11 @@ class $$MeetingsTableOrderingComposer
     column: $table.rules,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get topicId => $composableBuilder(
+    column: $table.topicId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MeetingsTableAnnotationComposer
@@ -8336,6 +9349,9 @@ class $$MeetingsTableAnnotationComposer
 
   GeneratedColumn<String> get rules =>
       $composableBuilder(column: $table.rules, builder: (column) => column);
+
+  GeneratedColumn<int> get topicId =>
+      $composableBuilder(column: $table.topicId, builder: (column) => column);
 }
 
 class $$MeetingsTableTableManager
@@ -8373,6 +9389,7 @@ class $$MeetingsTableTableManager
                 Value<bool> interrupted = const Value.absent(),
                 Value<int?> subjectId = const Value.absent(),
                 Value<String?> rules = const Value.absent(),
+                Value<int?> topicId = const Value.absent(),
               }) => MeetingsCompanion(
                 id: id,
                 title: title,
@@ -8381,6 +9398,7 @@ class $$MeetingsTableTableManager
                 interrupted: interrupted,
                 subjectId: subjectId,
                 rules: rules,
+                topicId: topicId,
               ),
           createCompanionCallback:
               ({
@@ -8391,6 +9409,7 @@ class $$MeetingsTableTableManager
                 Value<bool> interrupted = const Value.absent(),
                 Value<int?> subjectId = const Value.absent(),
                 Value<String?> rules = const Value.absent(),
+                Value<int?> topicId = const Value.absent(),
               }) => MeetingsCompanion.insert(
                 id: id,
                 title: title,
@@ -8399,6 +9418,7 @@ class $$MeetingsTableTableManager
                 interrupted: interrupted,
                 subjectId: subjectId,
                 rules: rules,
+                topicId: topicId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -9106,6 +10126,10 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<String?> geminiModelOverride,
       Value<bool> onboardingDismissed,
       Value<bool> contextCorrection,
+      Value<String?> schoolName,
+      Value<SchoolType?> schoolType,
+      Value<String?> studyField,
+      Value<int?> studyYear,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -9119,6 +10143,10 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<String?> geminiModelOverride,
       Value<bool> onboardingDismissed,
       Value<bool> contextCorrection,
+      Value<String?> schoolName,
+      Value<SchoolType?> schoolType,
+      Value<String?> studyField,
+      Value<int?> studyYear,
     });
 
 class $$PreferencesTableFilterComposer
@@ -9182,6 +10210,27 @@ class $$PreferencesTableFilterComposer
     column: $table.contextCorrection,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<SchoolType?, SchoolType, int> get schoolType =>
+      $composableBuilder(
+        column: $table.schoolType,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get studyField => $composableBuilder(
+    column: $table.studyField,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get studyYear => $composableBuilder(
+    column: $table.studyYear,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -9240,6 +10289,26 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<bool> get contextCorrection => $composableBuilder(
     column: $table.contextCorrection,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get schoolType => $composableBuilder(
+    column: $table.schoolType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get studyField => $composableBuilder(
+    column: $table.studyField,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get studyYear => $composableBuilder(
+    column: $table.studyYear,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -9303,6 +10372,25 @@ class $$PreferencesTableAnnotationComposer
     column: $table.contextCorrection,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<SchoolType?, int> get schoolType =>
+      $composableBuilder(
+        column: $table.schoolType,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get studyField => $composableBuilder(
+    column: $table.studyField,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get studyYear =>
+      $composableBuilder(column: $table.studyYear, builder: (column) => column);
 }
 
 class $$PreferencesTableTableManager
@@ -9347,6 +10435,10 @@ class $$PreferencesTableTableManager
                 Value<String?> geminiModelOverride = const Value.absent(),
                 Value<bool> onboardingDismissed = const Value.absent(),
                 Value<bool> contextCorrection = const Value.absent(),
+                Value<String?> schoolName = const Value.absent(),
+                Value<SchoolType?> schoolType = const Value.absent(),
+                Value<String?> studyField = const Value.absent(),
+                Value<int?> studyYear = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -9358,6 +10450,10 @@ class $$PreferencesTableTableManager
                 geminiModelOverride: geminiModelOverride,
                 onboardingDismissed: onboardingDismissed,
                 contextCorrection: contextCorrection,
+                schoolName: schoolName,
+                schoolType: schoolType,
+                studyField: studyField,
+                studyYear: studyYear,
               ),
           createCompanionCallback:
               ({
@@ -9372,6 +10468,10 @@ class $$PreferencesTableTableManager
                 Value<String?> geminiModelOverride = const Value.absent(),
                 Value<bool> onboardingDismissed = const Value.absent(),
                 Value<bool> contextCorrection = const Value.absent(),
+                Value<String?> schoolName = const Value.absent(),
+                Value<SchoolType?> schoolType = const Value.absent(),
+                Value<String?> studyField = const Value.absent(),
+                Value<int?> studyYear = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -9383,6 +10483,10 @@ class $$PreferencesTableTableManager
                 geminiModelOverride: geminiModelOverride,
                 onboardingDismissed: onboardingDismissed,
                 contextCorrection: contextCorrection,
+                schoolName: schoolName,
+                schoolType: schoolType,
+                studyField: studyField,
+                studyYear: studyYear,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -10025,6 +11129,8 @@ typedef $$SubjectsTableCreateCompanionBuilder = SubjectsCompanion Function({
   Value<String?> rules,
   Value<int> colorIndex,
   Value<int> sortOrder,
+  Value<String?> fullName,
+  Value<String?> levelOverride,
 });
 typedef $$SubjectsTableUpdateCompanionBuilder = SubjectsCompanion Function({
   Value<int> id,
@@ -10033,6 +11139,8 @@ typedef $$SubjectsTableUpdateCompanionBuilder = SubjectsCompanion Function({
   Value<String?> rules,
   Value<int> colorIndex,
   Value<int> sortOrder,
+  Value<String?> fullName,
+  Value<String?> levelOverride,
 });
 
 class $$SubjectsTableFilterComposer
@@ -10071,6 +11179,16 @@ class $$SubjectsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fullName => $composableBuilder(
+    column: $table.fullName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get levelOverride => $composableBuilder(
+    column: $table.levelOverride,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10113,6 +11231,16 @@ class $$SubjectsTableOrderingComposer
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get fullName => $composableBuilder(
+    column: $table.fullName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get levelOverride => $composableBuilder(
+    column: $table.levelOverride,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SubjectsTableAnnotationComposer
@@ -10143,6 +11271,14 @@ class $$SubjectsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get fullName =>
+      $composableBuilder(column: $table.fullName, builder: (column) => column);
+
+  GeneratedColumn<String> get levelOverride => $composableBuilder(
+    column: $table.levelOverride,
+    builder: (column) => column,
+  );
 }
 
 class $$SubjectsTableTableManager
@@ -10179,6 +11315,8 @@ class $$SubjectsTableTableManager
                 Value<String?> rules = const Value.absent(),
                 Value<int> colorIndex = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> fullName = const Value.absent(),
+                Value<String?> levelOverride = const Value.absent(),
               }) => SubjectsCompanion(
                 id: id,
                 name: name,
@@ -10186,6 +11324,8 @@ class $$SubjectsTableTableManager
                 rules: rules,
                 colorIndex: colorIndex,
                 sortOrder: sortOrder,
+                fullName: fullName,
+                levelOverride: levelOverride,
               ),
           createCompanionCallback:
               ({
@@ -10195,6 +11335,8 @@ class $$SubjectsTableTableManager
                 Value<String?> rules = const Value.absent(),
                 Value<int> colorIndex = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<String?> fullName = const Value.absent(),
+                Value<String?> levelOverride = const Value.absent(),
               }) => SubjectsCompanion.insert(
                 id: id,
                 name: name,
@@ -10202,6 +11344,8 @@ class $$SubjectsTableTableManager
                 rules: rules,
                 colorIndex: colorIndex,
                 sortOrder: sortOrder,
+                fullName: fullName,
+                levelOverride: levelOverride,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -12296,6 +13440,309 @@ typedef $$SubjectTermsTableProcessedTableManager =
       SubjectTerm,
       PrefetchHooks Function()
     >;
+typedef $$SyllabusTopicsTableCreateCompanionBuilder =
+    SyllabusTopicsCompanion Function({
+      Value<int> id,
+      required int subjectId,
+      required int ord,
+      required String title,
+      Value<String?> description,
+      Value<String?> terms,
+      Value<int?> monthFrom,
+      Value<int?> monthTo,
+      required SyllabusSource source,
+      required DateTime createdAt,
+    });
+typedef $$SyllabusTopicsTableUpdateCompanionBuilder =
+    SyllabusTopicsCompanion Function({
+      Value<int> id,
+      Value<int> subjectId,
+      Value<int> ord,
+      Value<String> title,
+      Value<String?> description,
+      Value<String?> terms,
+      Value<int?> monthFrom,
+      Value<int?> monthTo,
+      Value<SyllabusSource> source,
+      Value<DateTime> createdAt,
+    });
+
+class $$SyllabusTopicsTableFilterComposer
+    extends Composer<_$AppDatabase, $SyllabusTopicsTable> {
+  $$SyllabusTopicsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get ord => $composableBuilder(
+    column: $table.ord,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get terms => $composableBuilder(
+    column: $table.terms,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get monthFrom => $composableBuilder(
+    column: $table.monthFrom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get monthTo => $composableBuilder(
+    column: $table.monthTo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<SyllabusSource, SyllabusSource, int>
+  get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyllabusTopicsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyllabusTopicsTable> {
+  $$SyllabusTopicsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get ord => $composableBuilder(
+    column: $table.ord,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get terms => $composableBuilder(
+    column: $table.terms,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get monthFrom => $composableBuilder(
+    column: $table.monthFrom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get monthTo => $composableBuilder(
+    column: $table.monthTo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyllabusTopicsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyllabusTopicsTable> {
+  $$SyllabusTopicsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<int> get ord =>
+      $composableBuilder(column: $table.ord, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get terms =>
+      $composableBuilder(column: $table.terms, builder: (column) => column);
+
+  GeneratedColumn<int> get monthFrom =>
+      $composableBuilder(column: $table.monthFrom, builder: (column) => column);
+
+  GeneratedColumn<int> get monthTo =>
+      $composableBuilder(column: $table.monthTo, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<SyllabusSource, int> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SyllabusTopicsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyllabusTopicsTable,
+          SyllabusTopic,
+          $$SyllabusTopicsTableFilterComposer,
+          $$SyllabusTopicsTableOrderingComposer,
+          $$SyllabusTopicsTableAnnotationComposer,
+          $$SyllabusTopicsTableCreateCompanionBuilder,
+          $$SyllabusTopicsTableUpdateCompanionBuilder,
+          (
+            SyllabusTopic,
+            BaseReferences<_$AppDatabase, $SyllabusTopicsTable, SyllabusTopic>,
+          ),
+          SyllabusTopic,
+          PrefetchHooks Function()
+        > {
+  $$SyllabusTopicsTableTableManager(
+    _$AppDatabase db,
+    $SyllabusTopicsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyllabusTopicsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyllabusTopicsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyllabusTopicsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> subjectId = const Value.absent(),
+                Value<int> ord = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<String?> terms = const Value.absent(),
+                Value<int?> monthFrom = const Value.absent(),
+                Value<int?> monthTo = const Value.absent(),
+                Value<SyllabusSource> source = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SyllabusTopicsCompanion(
+                id: id,
+                subjectId: subjectId,
+                ord: ord,
+                title: title,
+                description: description,
+                terms: terms,
+                monthFrom: monthFrom,
+                monthTo: monthTo,
+                source: source,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int subjectId,
+                required int ord,
+                required String title,
+                Value<String?> description = const Value.absent(),
+                Value<String?> terms = const Value.absent(),
+                Value<int?> monthFrom = const Value.absent(),
+                Value<int?> monthTo = const Value.absent(),
+                required SyllabusSource source,
+                required DateTime createdAt,
+              }) => SyllabusTopicsCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                ord: ord,
+                title: title,
+                description: description,
+                terms: terms,
+                monthFrom: monthFrom,
+                monthTo: monthTo,
+                source: source,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SyllabusTopicsTable, SyllabusTopic>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $SyllabusTopicsTable,
+                    SyllabusTopic
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyllabusTopicsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyllabusTopicsTable,
+      SyllabusTopic,
+      $$SyllabusTopicsTableFilterComposer,
+      $$SyllabusTopicsTableOrderingComposer,
+      $$SyllabusTopicsTableAnnotationComposer,
+      $$SyllabusTopicsTableCreateCompanionBuilder,
+      $$SyllabusTopicsTableUpdateCompanionBuilder,
+      (
+        SyllabusTopic,
+        BaseReferences<_$AppDatabase, $SyllabusTopicsTable, SyllabusTopic>,
+      ),
+      SyllabusTopic,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -12330,4 +13777,6 @@ class $AppDatabaseManager {
       $$RefinedSegmentsTableTableManager(_db, _db.refinedSegments);
   $$SubjectTermsTableTableManager get subjectTerms =>
       $$SubjectTermsTableTableManager(_db, _db.subjectTerms);
+  $$SyllabusTopicsTableTableManager get syllabusTopics =>
+      $$SyllabusTopicsTableTableManager(_db, _db.syllabusTopics);
 }

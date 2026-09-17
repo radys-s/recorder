@@ -32,6 +32,12 @@ final allSlotsProvider = StreamProvider<List<TimetableSlot>>((ref) {
   return ref.watch(subjectsDaoProvider).watchAllSlots();
 });
 
+/// A subject's thematic plan, in teaching order.
+final subjectTopicsProvider =
+    StreamProvider.family<List<SyllabusTopic>, int>((ref, subjectId) {
+  return ref.watch(subjectsDaoProvider).watchTopics(subjectId);
+});
+
 final contextCardProvider =
     StreamProvider.family<ContextCard?, int>((ref, id) {
   return ref.watch(subjectsDaoProvider).watchCard(id);

@@ -24,4 +24,12 @@ class Subjects extends Table {
   IntColumn get colorIndex => integer().withDefault(const Constant(0))();
 
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  /// The subject's full name when [name] is a short label — „PSI" is
+  /// „Počítačové sítě".
+  TextColumn get fullName => text().nullable()();
+
+  /// A level that differs from the course's year, e.g. „2. ročník" for a
+  /// seminar shared with a younger class.
+  TextColumn get levelOverride => text().nullable()();
 }

@@ -81,6 +81,33 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Rules for every lesson; blank clears them.
+  /// Where and what the student studies; blanks clear, a year outside 1–10
+  /// is dropped.
+  Future<void> setStudyProfile({
+    String? schoolName,
+    SchoolType? schoolType,
+    String? studyField,
+    int? studyYear,
+  }) {
+    String? clean(String? v) {
+      final t = v?.trim() ?? '';
+      return t.isEmpty ? null : t;
+    }
+
+    return _write(
+      PreferencesCompanion(
+        schoolName: Value(clean(schoolName)),
+        schoolType: Value(schoolType),
+        studyField: Value(clean(studyField)),
+        studyYear: Value(
+          studyYear != null && studyYear >= 1 && studyYear <= 10
+              ? studyYear
+              : null,
+        ),
+      ),
+    );
+  }
+
   Future<void> setGlobalRules(String? value) {
     final trimmed = value?.trim() ?? '';
     return _write(
