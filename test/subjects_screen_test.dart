@@ -44,8 +44,9 @@ void main() {
     expect(find.text('Nový předmět'), findsOneWidget);
   });
 
-  subjectsTest('the tab has a collapsing large title and a tile grid',
-      (tester) async {
+  subjectsTest('the tab has a collapsing large title and a tile grid', (
+    tester,
+  ) async {
     await db.savedNotesDao.createFolder('Čeština');
     await pumpSubjects(tester);
 
@@ -53,6 +54,28 @@ void main() {
     // The large variant renders the title twice: expanded and collapsed.
     expect(find.text('Předměty'), findsNWidgets(2));
     expect(find.byType(SliverGrid), findsOneWidget);
+  });
+
+  subjectsTest('the new-subject button stays above a floating bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+        child: const MaterialApp(
+          home: Scaffold(
+            extendBody: true,
+            body: SubjectsScreen(),
+            bottomNavigationBar: SizedBox(height: 100),
+          ),
+        ),
+      ),
+    );
+    await settle(tester);
+
+    final screen = tester.getSize(find.byType(SubjectsScreen));
+    final fab = tester.getRect(find.byType(FloatingActionButton));
+    expect(fab.bottom, lessThanOrEqualTo(screen.height - 100));
   });
 
   subjectsTest('a subject lists its cards and opens them', (tester) async {
@@ -81,8 +104,9 @@ void main() {
     expect(find.text('Upravit kartu'), findsOneWidget);
   });
 
-  subjectsTest('a deleted subject leaves the detail screen empty-handed',
-      (tester) async {
+  subjectsTest('a deleted subject leaves the detail screen empty-handed', (
+    tester,
+  ) async {
     final cz = await db.savedNotesDao.createFolder('Čeština');
 
     await pumpSubjects(tester);

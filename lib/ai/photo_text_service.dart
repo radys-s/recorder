@@ -146,7 +146,7 @@ String geminiFailureText(Object error) {
       GeminiErrorKind.badKey =>
         'Gemini klíč neprošel. Zkontroluj ho v Nastavení.',
       GeminiErrorKind.modelMissing =>
-        'Model Gemini není pro tvůj klíč dostupný. V Nastavení → Ověřit klíč '
+        'Model Gemini není pro tvůj klíč dostupný. V Nastavení › Ověřit klíč '
             'vyber jiný.',
       GeminiErrorKind.apiDisabled =>
         'U klíče není zapnuté Gemini API. Zapni ho v Google AI Studiu.',

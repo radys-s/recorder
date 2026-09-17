@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../core/logging.dart';
@@ -43,7 +44,7 @@ class ForegroundRecordingService {
   static const _serviceId = 4001;
 
   /// Whether this platform has the thing at all.
-  static bool get _supported => Platform.isAndroid;
+  static bool get _supported => !kIsWeb && Platform.isAndroid;
 
   /// Registers the notification channel and task options. Safe to call more
   /// than once; must be called before [start].

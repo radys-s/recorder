@@ -83,7 +83,7 @@ class SubjectVocabulary extends ConsumerWidget {
               term.heard == null ? Icons.translate : Icons.spellcheck,
             ),
             title: Text(
-              term.heard == null ? term.term : '${term.heard} → ${term.term}',
+              term.heard == null ? term.term : '${term.heard} › ${term.term}',
             ),
             subtitle: Text(termSourceLabel(term.source)),
             onTap: () => _edit(context, ref, term),

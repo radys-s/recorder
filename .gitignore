@@ -50,3 +50,6 @@ app.*.map.json
 # Local tooling
 .claude/
 flutter_*.log
+
+# Playwright screenshots and logs from the web preview
+.playwright-mcp/

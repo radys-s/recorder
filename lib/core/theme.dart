@@ -51,10 +51,9 @@ ThemeData _build(Brightness brightness) {
       // the bar it is sliding under.
       scrolledUnderElevation: 3,
       centerTitle: false,
-      titleTextStyle: text.titleLarge?.copyWith(
-        color: scheme.onSurface,
-        fontWeight: FontWeight.w600,
-      ),
+      // No titleTextStyle here: SliverAppBar.large prefers the theme's title
+      // style over its own expanded headline, which shrank every large title
+      // to toolbar size. The default is titleLarge, already w600 below.
     ),
 
     // Flat cards with a tinted surface rather than a shadow. Elevation was

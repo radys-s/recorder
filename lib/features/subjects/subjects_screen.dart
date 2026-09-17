@@ -37,11 +37,20 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
     final subjects = ref.watch(subjectsProvider);
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
+    // The Scaffold lifts its button by viewPadding only, and the floating
+    // navigation bar arrives as padding; without this the button sits under
+    // the bar.
+    final fabLift = (bottomInset - MediaQuery.viewPaddingOf(context).bottom)
+        .clamp(0.0, double.infinity);
+
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _create,
-        icon: const Icon(Icons.add),
-        label: const Text('Nový předmět'),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(bottom: fabLift),
+        child: FloatingActionButton.extended(
+          onPressed: _create,
+          icon: const Icon(Icons.add),
+          label: const Text('Nový předmět'),
+        ),
       ),
       body: CustomScrollView(
         slivers: [
