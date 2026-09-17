@@ -12,6 +12,7 @@ import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
+import '../ai/timetable_import.dart';
 import '../ai/chat_answer_service.dart';
 import '../ai/gemini_model_resolver.dart';
 import '../ai/gemini_models.dart';
@@ -257,6 +258,11 @@ final photoPickerProvider = Provider<PhotoPicker>((ref) => PhotoPicker());
 /// Page and board photos, read by Gemini.
 final photoTextServiceProvider = Provider<PhotoTextService>((ref) {
   return PhotoTextService(ref.watch(geminiProvider));
+});
+
+/// Timetable screenshots, read by Gemini.
+final timetableImportServiceProvider = Provider<TimetableImportService>((ref) {
+  return TimetableImportService(ref.watch(geminiProvider));
 });
 
 final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {

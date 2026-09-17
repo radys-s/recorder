@@ -12,6 +12,7 @@ import '../settings/settings_screen.dart';
 import 'subject_actions.dart';
 import 'subject_detail_screen.dart';
 import 'subjects_providers.dart';
+import 'timetable_import_screen.dart';
 
 /// Every subject, each with the cards, lessons and notes that belong to it.
 class SubjectsScreen extends ConsumerStatefulWidget {
@@ -58,6 +59,11 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
             title: const Text('Předměty'),
             actions: [
               IconButton(
+                icon: const Icon(Icons.document_scanner_outlined),
+                tooltip: 'Importovat rozvrh z obrázku',
+                onPressed: () => importTimetableFlow(context, ref),
+              ),
+              IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Nastavení',
                 onPressed: () => Navigator.of(context).push(
@@ -84,14 +90,20 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
 
   Widget _buildGrid(List<SubjectSummary> list) {
     if (list.isEmpty) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         hasScrollBody: false,
         child: EmptyState(
           icon: Icons.school_outlined,
           title: 'Zatím žádné předměty',
           message:
               'Předmět drží karty s kontextem — knihy, témata, pojmy. '
-              'AI je pak použije, když v hodině padne otázka.',
+              'AI je pak použije, když v hodině padne otázka. Předměty '
+              'i rozvrh můžeš načíst ze screenshotu rozvrhu.',
+          action: FilledButton.tonalIcon(
+            onPressed: () => importTimetableFlow(context, ref),
+            icon: const Icon(Icons.document_scanner_outlined),
+            label: const Text('Importovat rozvrh'),
+          ),
         ),
       );
     }

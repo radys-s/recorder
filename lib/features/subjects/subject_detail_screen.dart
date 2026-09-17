@@ -15,6 +15,7 @@ import 'card_editor_screen.dart';
 import 'subject_actions.dart';
 import 'subjects_providers.dart';
 import 'timetable.dart';
+import 'timetable_import_screen.dart';
 import 'widgets/timetable_slot_dialog.dart';
 import 'widgets/subject_badge.dart';
 import 'widgets/subject_vocabulary.dart';
@@ -476,13 +477,21 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   ref.read(subjectsDaoProvider).deleteSlot(slot.id),
             ),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: _addSlot,
-            icon: const Icon(Icons.add),
-            label: const Text('Přidat hodinu'),
-          ),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _addSlot,
+              icon: const Icon(Icons.add),
+              label: const Text('Přidat hodinu'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => importTimetableFlow(context, ref),
+              icon: const Icon(Icons.document_scanner_outlined),
+              label: const Text('Ze screenshotu'),
+            ),
+          ],
         ),
         const SizedBox(height: Gap.xl),
         SubjectVocabulary(subjectId: subject.id),

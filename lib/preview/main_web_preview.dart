@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -8,9 +10,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
+import '../ai/gemini_provider.dart';
 import '../ai/llm_provider.dart';
+import '../ai/timetable_import.dart';
 import '../app.dart';
 import '../audio/recording_controller.dart';
+import '../core/photo_picker.dart';
 import '../core/providers.dart';
 import '../data/db/app_database.dart';
 import '../data/secure/api_key_store.dart';
@@ -48,6 +53,12 @@ Future<void> main() async {
           _MemoryKeyStore(fresh ? null : 'AIza_test'),
         ),
         llmProvider.overrideWithValue(_FakeLlm()),
+        photoPickerProvider.overrideWithValue(_FakePicker()),
+        timetableImportServiceProvider.overrideWith(
+          (ref) => TimetableImportService(
+            _FakeTimetableGemini(ref.read(geminiKeyStoreProvider)),
+          ),
+        ),
         recordingControllerProvider.overrideWith(
           () => _PreviewRecordingController(recordingId),
         ),
@@ -55,6 +66,52 @@ Future<void> main() async {
       child: const RecorderApp(),
     ),
   );
+}
+
+/// Hands back one tiny picture instead of opening the camera or gallery.
+class _FakePicker extends PhotoPicker {
+  static final _photo = PickedPhoto(
+    bytes: Uint8List.fromList(const [0xFF, 0xD8, 0xFF, 0xD9]),
+    mimeType: 'image/jpeg',
+    extension: 'jpg',
+  );
+
+  @override
+  Future<PickedPhoto?> takePhoto() async => _photo;
+
+  @override
+  Future<List<PickedPhoto>> pickPages() async => [_photo];
+}
+
+/// A canned timetable read, as Gemini would return it for a Bakaláři
+/// screenshot: one subject the demo already has, new ones, a double lesson
+/// and a period without times.
+class _FakeTimetableGemini extends GeminiProvider {
+  _FakeTimetableGemini(super.store);
+
+  @override
+  Future<GeminiCompletion> generate({
+    required String model,
+    required List<LlmMessage> messages,
+    List<LlmImage> images = const [],
+    bool search = false,
+    bool jsonMode = false,
+    int? maxTokens,
+    Duration? timeout,
+    CancelToken? cancelToken,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    return const GeminiCompletion(
+      content:
+          '{"lessons":['
+          '{"subject":"Čeština","day":1,"start":"8:00","end":"8:45"},'
+          '{"subject":"Matematika","day":1,"start":"8:55","end":"9:40"},'
+          '{"subject":"Matematika","day":1,"start":"10:00","end":"10:45"},'
+          '{"subject":"Anglický jazyk","day":2,"start":"8:00","end":"8:45"},'
+          '{"subject":"Dějepis","day":2,"period":2},'
+          '{"subject":"Fyzika","day":3,"start":"11:50","end":"12:35"}]}',
+    );
+  }
 }
 
 class _MemoryKeyStore extends ApiKeyStore {
@@ -107,7 +164,10 @@ class _PreviewRecordingController extends RecordingController {
     Timer(const Duration(seconds: 2), () {
       final db = ref.read(appDatabaseProvider);
       (db.update(db.meetings)..where((t) => t.id.equals(id))).write(
-        const MeetingsCompanion(endedAt: Value(null), interrupted: Value(false)),
+        const MeetingsCompanion(
+          endedAt: Value(null),
+          interrupted: Value(false),
+        ),
       );
     });
     _tick();
