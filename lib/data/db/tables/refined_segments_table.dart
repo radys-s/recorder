@@ -23,4 +23,7 @@ class RefinedSegments extends Table {
   IntColumn get status => intEnum<RefinedStatus>()();
   TextColumn get error => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+
+  /// The window's text before a correction; null while untouched.
+  TextColumn get rawContent => text().nullable()();
 }

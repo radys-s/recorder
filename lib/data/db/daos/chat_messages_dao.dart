@@ -60,6 +60,28 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  /// A ⭐ on a moment of the lesson, with an optional note.
+  Future<int> addImportant({
+    required int meetingId,
+    required int atMs,
+    String note = '',
+  }) {
+    final trimmed = note.trim();
+    return into(chatMessages).insert(
+      ChatMessagesCompanion.insert(
+        meetingId: meetingId,
+        role: ChatRole.user,
+        intent: ChatIntent.important,
+        body: Value(
+          trimmed.length <= maxLength ? trimmed : trimmed.substring(0, maxLength),
+        ),
+        atMs: atMs,
+        status: ChatStatus.ready,
+        createdAt: DateTime.now(),
+      ),
+    );
+  }
+
   /// A board photo, pending until [completePhoto] fills in what is on it.
   Future<int> addPhotoMessage({
     required int meetingId,

@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/logging.dart';
+import 'core/pending_deletions.dart';
 import 'core/providers.dart';
 import 'core/theme.dart';
 import 'data/db/app_database.dart';
@@ -18,13 +19,30 @@ class RecorderApp extends ConsumerStatefulWidget {
   ConsumerState<RecorderApp> createState() => _RecorderAppState();
 }
 
-class _RecorderAppState extends ConsumerState<RecorderApp> {
+class _RecorderAppState extends ConsumerState<RecorderApp>
+    with WidgetsBindingObserver {
   static const _tag = 'app';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_startup());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Going to the background commits every delete still waiting for „Vrátit",
+  /// since iOS may never wake the app again to let the timers fire.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      unawaited(ref.read(pendingDeletionsProvider.notifier).commitAll());
+    }
   }
 
   /// Runs once, before anything can be recording — which is what makes the
@@ -87,7 +105,10 @@ class _RecorderAppState extends ConsumerState<RecorderApp> {
     // Started here rather than lazily on first use: starting the worker is
     // what picks up chunks a previous run left unsent, and that has to happen
     // even if the user never opens the screen those chunks belong to.
-    await _step('start queue worker', () => ref.read(queueWorkerProvider).start());
+    await _step(
+      'start queue worker',
+      () => ref.read(queueWorkerProvider).start(),
+    );
     // Not awaited: a pass can take minutes and must not hold up launch.
     await _step('resume refined transcripts', () async {
       unawaited(ref.read(refinedTranscriptServiceProvider).resume());

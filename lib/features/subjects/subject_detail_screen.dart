@@ -17,6 +17,7 @@ import 'subjects_providers.dart';
 import 'timetable.dart';
 import 'widgets/timetable_slot_dialog.dart';
 import 'widgets/subject_badge.dart';
+import '../../core/pending_deletions.dart';
 
 /// One subject: its cards, its recorded lessons, and its settings.
 class SubjectDetailScreen extends ConsumerStatefulWidget {
@@ -25,8 +26,8 @@ class SubjectDetailScreen extends ConsumerStatefulWidget {
   final int subjectId;
 
   static Route<void> route(int subjectId) => MaterialPageRoute<void>(
-        builder: (_) => SubjectDetailScreen(subjectId: subjectId),
-      );
+    builder: (_) => SubjectDetailScreen(subjectId: subjectId),
+  );
 
   @override
   ConsumerState<SubjectDetailScreen> createState() =>
@@ -80,8 +81,9 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
       ),
       floatingActionButton: subject != null && _tabs.index == 0
           ? FloatingActionButton.extended(
-              onPressed: () => Navigator.of(context)
-                  .push(CardEditorScreen.route(subjectId: subject.id)),
+              onPressed: () =>
+                  Navigator.of(context)
+                      .push(CardEditorScreen.route(subjectId: subject.id)),
               icon: const Icon(Icons.add),
               label: const Text('Nová karta'),
             )
@@ -130,7 +132,15 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final cards = ref.watch(subjectCardsProvider(widget.subjectId));
+    final hidden = ref.watch(pendingIdsProvider(DeletionKind.card));
+    final cards = ref
+        .watch(subjectCardsProvider(widget.subjectId))
+        .whenData(
+          (all) => [
+            for (final c in all)
+              if (!hidden.contains(c.id)) c,
+          ],
+        );
 
     return AsyncView(
       value: cards,
@@ -141,7 +151,8 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
           return const EmptyState(
             icon: Icons.style_outlined,
             title: 'Zatím žádné karty',
-            message: 'Karta je kontext pro AI: kniha, úryvek, téma nebo '
+            message:
+                'Karta je kontext pro AI: kniha, úryvek, téma nebo '
                 'pojmy. Když ji připneš k hodině, AI podle ní odpovídá.',
           );
         }
@@ -152,15 +163,20 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
             .toList();
         final visible = [
           for (final card in all)
-            if (words.every(normalizeForArtifactMatch(
-                    '${card.title}\n${card.content}')
-                .contains))
+            if (words.every(
+              normalizeForArtifactMatch('${card.title}\n${card.content}')
+                  .contains,
+            ))
               card,
         ];
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(
-              Gap.lg, Gap.md, Gap.lg, Gap.fabClearance),
+            Gap.lg,
+            Gap.md,
+            Gap.lg,
+            Gap.fabClearance,
+          ),
           children: [
             if (all.length > 3) ...[
               TextField(
@@ -204,9 +220,9 @@ class _CardTile extends StatelessWidget {
 
     return Card(
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          CardEditorScreen.route(subjectId: card.subjectId, card: card),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(CardEditorScreen.route(subjectId: card.subjectId, card: card)),
         child: Padding(
           padding: const EdgeInsets.all(Gap.md),
           child: Row(
@@ -234,8 +250,9 @@ class _CardTile extends StatelessWidget {
                       card.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: Gap.xs),
                     Text(
@@ -250,8 +267,9 @@ class _CardTile extends StatelessWidget {
                     const SizedBox(height: Gap.sm),
                     Text(
                       'Upraveno ${formatMeetingDate(card.updatedAt)}',
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: scheme.outline),
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.outline,
+                      ),
                     ),
                   ],
                 ),
@@ -273,7 +291,15 @@ class _LessonsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lessons = ref.watch(subjectLessonsProvider(subjectId));
+    final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
+    final lessons = ref
+        .watch(subjectLessonsProvider(subjectId))
+        .whenData(
+          (all) => [
+            for (final m in all)
+              if (!hidden.contains(m.id)) m,
+          ],
+        );
     final theme = Theme.of(context);
 
     return AsyncView(
@@ -285,7 +311,8 @@ class _LessonsTab extends ConsumerWidget {
           return const EmptyState(
             icon: Icons.mic_none_outlined,
             title: 'Zatím žádné hodiny',
-            message: 'Když při nahrávání vybereš tento předmět, hodina se '
+            message:
+                'Když při nahrávání vybereš tento předmět, hodina se '
                 'objeví tady.',
           );
         }
@@ -301,17 +328,22 @@ class _LessonsTab extends ConsumerWidget {
                 child: ListTile(
                   leading: const Icon(Icons.description_outlined),
                   title: Text(
-                    named ? meeting.title : formatMeetingDate(meeting.createdAt),
+                    named
+                        ? meeting.title
+                        : formatMeetingDate(meeting.createdAt),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: named
-                      ? Text(formatMeetingDate(meeting.createdAt),
-                          style: theme.textTheme.bodySmall)
+                      ? Text(
+                          formatMeetingDate(meeting.createdAt),
+                          style: theme.textTheme.bodySmall,
+                        )
                       : null,
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context)
-                      .push(MeetingDetailScreen.route(meeting.id)),
+                  onTap: () =>
+                      Navigator.of(context)
+                          .push(MeetingDetailScreen.route(meeting.id)),
                 ),
               ),
             );
@@ -336,8 +368,7 @@ class _SettingsTab extends ConsumerStatefulWidget {
 class _SettingsTabState extends ConsumerState<_SettingsTab> {
   late final _rules = TextEditingController(text: widget.subject.rules ?? '');
 
-  bool get _rulesChanged =>
-      _rules.text.trim() != (widget.subject.rules ?? '');
+  bool get _rulesChanged => _rules.text.trim() != (widget.subject.rules ?? '');
 
   @override
   void dispose() {
@@ -359,7 +390,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
   Future<void> _addSlot() async {
     final slot = await showTimetableSlotDialog(context);
     if (slot == null) return;
-    await ref.read(subjectsDaoProvider).addSlot(
+    await ref
+        .read(subjectsDaoProvider)
+        .addSlot(
           subjectId: widget.subject.id,
           weekday: slot.weekday,
           startMinute: slot.startMinute,
@@ -369,8 +402,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
 
   Future<void> _delete() async {
     final navigator = Navigator.of(context);
-    final deleted =
-        await confirmAndDeleteSubject(context, ref, widget.subject);
+    final deleted = await confirmAndDeleteSubject(context, ref, widget.subject);
     if (deleted) navigator.pop();
   }
 
@@ -393,7 +425,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             hintText: 'Třeba: odpovídej jednou větou, používej odborné pojmy',
-            helperText: 'Platí pro všechny hodiny tohoto předmětu. Pravidla '
+            helperText:
+                'Platí pro všechny hodiny tohoto předmětu. Pravidla '
                 'napsaná v hodině mají přednost.',
             helperMaxLines: 3,
           ),
@@ -411,12 +444,14 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         const SizedBox(height: Gap.xs),
         Text(
           'Když nahrávání začne v čase hodiny, předmět se vybere sám.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: Gap.sm),
-        for (final slot in ref.watch(subjectSlotsProvider(subject.id)).valueOrNull ??
-            const <TimetableSlot>[])
+        for (final slot
+            in ref.watch(subjectSlotsProvider(subject.id)).valueOrNull ??
+                const <TimetableSlot>[])
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.schedule),

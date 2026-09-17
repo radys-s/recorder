@@ -125,6 +125,10 @@ class Preferences extends Table {
   /// A Gemini model id picked in Settings; null follows the app's default.
   TextColumn get geminiModelOverride => text().nullable()();
 
+  /// The first-run guide was closed by the user.
+  BoolColumn get onboardingDismissed =>
+      boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

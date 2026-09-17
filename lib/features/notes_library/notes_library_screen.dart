@@ -18,6 +18,7 @@ import '../subjects/widgets/subject_badge.dart';
 import 'notes_library_providers.dart';
 import 'saved_note_screen.dart';
 import 'widgets/folder_sheets.dart';
+import '../../core/pending_deletions.dart';
 
 /// The notes the user kept: searchable, sorted into folders.
 class NotesLibraryScreen extends ConsumerStatefulWidget {
@@ -68,7 +69,17 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final notes = ref.watch(savedNotesProvider);
+    final hidden = ref.watch(pendingIdsProvider(DeletionKind.note));
+    final notes = ref
+        .watch(savedNotesProvider)
+        .whenData(
+          (all) => hidden.isEmpty
+              ? all
+              : [
+                  for (final n in all)
+                    if (!hidden.contains(n.id)) n,
+                ],
+        );
     final folders = ref.watch(noteFoldersProvider).valueOrNull ?? const [];
 
     // A folder deleted — here or from a note's sheet — takes its filter with it.

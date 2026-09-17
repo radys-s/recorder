@@ -35,6 +35,31 @@ class TranscriptSegmentsDao extends DatabaseAccessor<AppDatabase>
         TranscriptSegmentsCompanion(content: Value(text), status: Value(status)),
       );
 
+  /// Replaces text the user or the AI corrected, keeping what was heard
+  /// first. A second correction keeps the first original.
+  Future<void> correctSegment(int id, String text) => transaction(() async {
+        final row = await segmentById(id);
+        if (row == null || row.content == null || row.content == text) return;
+        await (update(transcriptSegments)..where((t) => t.id.equals(id))).write(
+          TranscriptSegmentsCompanion(
+            content: Value(text),
+            rawContent: Value(row.rawContent ?? row.content),
+          ),
+        );
+      });
+
+  /// Puts back what was heard.
+  Future<void> restoreSegment(int id) => transaction(() async {
+        final row = await segmentById(id);
+        if (row == null || row.rawContent == null) return;
+        await (update(transcriptSegments)..where((t) => t.id.equals(id))).write(
+          TranscriptSegmentsCompanion(
+            content: Value(row.rawContent),
+            rawContent: const Value(null),
+          ),
+        );
+      });
+
   Future<void> updateSegmentStatus(int id, SegmentStatus status) =>
       (update(transcriptSegments)..where((t) => t.id.equals(id)))
           .write(TranscriptSegmentsCompanion(status: Value(status)));

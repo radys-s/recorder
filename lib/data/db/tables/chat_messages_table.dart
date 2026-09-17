@@ -3,7 +3,8 @@ import 'package:drift/drift.dart';
 enum ChatRole { user, assistant }
 
 /// What a message typed during a lesson is for.
-enum ChatIntent { context, question, rule, photo, answerNow }
+/// Stored by name. [important] is a ⭐ the student put on a moment.
+enum ChatIntent { context, question, rule, photo, answerNow, important }
 
 enum ChatStatus { pending, ready, failed }
 

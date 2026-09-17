@@ -65,11 +65,37 @@ class RefinedSegmentsDao extends DatabaseAccessor<AppDatabase>
         id,
         RefinedSegmentsCompanion(
           content: Value(text),
+          rawContent: const Value(null),
           engine: Value(engine),
           status: const Value(RefinedStatus.ready),
           error: const Value(null),
         ),
       );
+
+  /// A corrected window text; the first original is kept.
+  Future<void> correctWindow(int id, String text) => transaction(() async {
+        final row = await window(id);
+        if (row == null || row.content == null || row.content == text) return;
+        await _write(
+          id,
+          RefinedSegmentsCompanion(
+            content: Value(text),
+            rawContent: Value(row.rawContent ?? row.content),
+          ),
+        );
+      });
+
+  Future<void> restoreWindow(int id) => transaction(() async {
+        final row = await window(id);
+        if (row == null || row.rawContent == null) return;
+        await _write(
+          id,
+          RefinedSegmentsCompanion(
+            content: Value(row.rawContent),
+            rawContent: const Value(null),
+          ),
+        );
+      });
 
   Future<void> markFailed(int id, String error) => _write(
         id,

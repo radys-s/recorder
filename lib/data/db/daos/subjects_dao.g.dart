@@ -12,6 +12,7 @@ mixin _$SubjectsDaoMixin on DatabaseAccessor<AppDatabase> {
   $MeetingsTable get meetings => attachedDatabase.meetings;
   $SavedNotesTable get savedNotes => attachedDatabase.savedNotes;
   $ChatMessagesTable get chatMessages => attachedDatabase.chatMessages;
+  $SubjectTermsTable get subjectTerms => attachedDatabase.subjectTerms;
   SubjectsDaoManager get managers => SubjectsDaoManager(this);
 }
 
@@ -37,4 +38,6 @@ class SubjectsDaoManager {
       $$SavedNotesTableTableManager(_db.attachedDatabase, _db.savedNotes);
   $$ChatMessagesTableTableManager get chatMessages =>
       $$ChatMessagesTableTableManager(_db.attachedDatabase, _db.chatMessages);
+  $$SubjectTermsTableTableManager get subjectTerms =>
+      $$SubjectTermsTableTableManager(_db.attachedDatabase, _db.subjectTerms);
 }

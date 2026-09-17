@@ -20,4 +20,8 @@ class TranscriptSegments extends Table {
   /// worker reject a transcript far longer than the speech it came from;
   /// null for rows written before v12, which skip that check.
   IntColumn get voicedMs => integer().nullable()();
+
+  /// What was heard before the user or the AI changed [content]; null while
+  /// the text is untouched.
+  TextColumn get rawContent => text().nullable()();
 }

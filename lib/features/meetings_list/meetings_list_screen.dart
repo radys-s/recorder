@@ -25,6 +25,7 @@ import '../subjects/widgets/lesson_sheet.dart';
 import '../subjects/widgets/subject_badge.dart';
 import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
+import '../../core/pending_deletions.dart';
 
 /// Home screen: a big start card, then every recorded meeting, newest first.
 class MeetingsListScreen extends ConsumerStatefulWidget {
@@ -77,7 +78,15 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summaries = ref.watch(meetingSummariesProvider);
+    final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
+    final summaries = ref.watch(meetingSummariesProvider).whenData(
+          (all) => hidden.isEmpty
+              ? all
+              : [
+                  for (final s in all)
+                    if (!hidden.contains(s.meeting.id)) s,
+                ],
+        );
     final isRecording = ref.watch(
       recordingControllerProvider.select((s) => s.isRecording),
     );

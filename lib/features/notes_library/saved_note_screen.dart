@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatting.dart';
+import '../../core/pending_deletions.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/dialogs.dart';
@@ -24,9 +25,8 @@ class SavedNoteScreen extends ConsumerWidget {
 
   final int noteId;
 
-  static Route<void> route(int noteId) => MaterialPageRoute<void>(
-        builder: (_) => SavedNoteScreen(noteId: noteId),
-      );
+  static Route<void> route(int noteId) =>
+      MaterialPageRoute<void>(builder: (_) => SavedNoteScreen(noteId: noteId));
 
   Future<void> _copy(BuildContext context, SavedNote note) async {
     await Clipboard.setData(ClipboardData(text: note.content));
@@ -36,7 +36,11 @@ class SavedNoteScreen extends ConsumerWidget {
       ..showSnackBar(const SnackBar(content: Text('Zkopírováno.')));
   }
 
-  Future<void> _move(BuildContext context, WidgetRef ref, SavedNote note) async {
+  Future<void> _move(
+    BuildContext context,
+    WidgetRef ref,
+    SavedNote note,
+  ) async {
     final dao = ref.read(savedNotesDaoProvider);
     final picked = await showMoveToFolderSheet(
       context,
@@ -46,25 +50,19 @@ class SavedNoteScreen extends ConsumerWidget {
     await dao.moveNote(note.id, picked.folderId);
   }
 
-  Future<void> _delete(BuildContext context, WidgetRef ref, SavedNote note) async {
+  void _delete(BuildContext context, WidgetRef ref, SavedNote note) {
     final dao = ref.read(savedNotesDaoProvider);
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showConfirmDialog(
-      context,
-      icon: Icons.delete_outline,
-      title: 'Smazat poznámku?',
-      message: 'Zmizí z knihovny. Schůzka a její poznámky zůstanou, jak jsou.',
-      confirmLabel: 'Smazat',
-      destructive: true,
-    );
-    if (!confirmed || !context.mounted) return;
-
     // Closed first, so the screen never flashes „Poznámka už neexistuje".
     Navigator.of(context).pop();
-    await dao.deleteNote(note.id);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Poznámka je smazaná.')));
+    deleteWithUndo(
+      messenger: messenger,
+      ref: ref,
+      kind: DeletionKind.note,
+      id: note.id,
+      message: 'Poznámka smazána',
+      commit: () => dao.deleteNote(note.id),
+    );
   }
 
   void _onAction(
@@ -101,14 +99,14 @@ class SavedNoteScreen extends ConsumerWidget {
                 IconButton(
                   icon: const Icon(Icons.edit_outlined),
                   tooltip: 'Upravit',
-                  onPressed: () => Navigator.of(context)
-                      .push(SavedNoteEditorScreen.route(note)),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .push(SavedNoteEditorScreen.route(note)),
                 ),
                 PopupMenuButton<_NoteAction>(
                   icon: const Icon(Icons.more_vert),
                   tooltip: 'Další akce',
-                  onSelected: (action) =>
-                      _onAction(context, ref, note, action),
+                  onSelected: (action) => _onAction(context, ref, note, action),
                   itemBuilder: (_) => [
                     const PopupMenuItem(
                       value: _NoteAction.move,
@@ -199,10 +197,7 @@ class _SavedNoteBody extends ConsumerWidget {
                   : 'Uloženo ${formatMeetingDate(note.createdAt)}',
             ),
             if (note.depth != null)
-              StatusChip(
-                icon: Icons.tune,
-                label: note.depth!.label,
-              ),
+              StatusChip(icon: Icons.tune, label: note.depth!.label),
           ],
         ),
         const Padding(
@@ -222,9 +217,9 @@ class SavedNoteEditorScreen extends ConsumerStatefulWidget {
   final SavedNote note;
 
   static Route<void> route(SavedNote note) => MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => SavedNoteEditorScreen(note: note),
-      );
+    fullscreenDialog: true,
+    builder: (_) => SavedNoteEditorScreen(note: note),
+  );
 
   @override
   ConsumerState<SavedNoteEditorScreen> createState() =>
@@ -255,11 +250,9 @@ class _SavedNoteEditorScreenState extends ConsumerState<SavedNoteEditorScreen> {
     if (!_canSave) return;
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
-    await ref.read(savedNotesDaoProvider).updateNote(
-          widget.note.id,
-          title: _title.text,
-          content: _content.text,
-        );
+    await ref
+        .read(savedNotesDaoProvider)
+        .updateNote(widget.note.id, title: _title.text, content: _content.text);
     navigator.pop();
   }
 
@@ -304,9 +297,12 @@ class _SavedNoteEditorScreenState extends ConsumerState<SavedNoteEditorScreen> {
               maxLength: SavedNotesDao.maxTitleLength,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(labelText: 'Název'),
-              buildCounter: (_, {required currentLength, required isFocused,
-                      maxLength}) =>
-                  null,
+              buildCounter: (
+                _, {
+                required currentLength,
+                required isFocused,
+                maxLength,
+              }) => null,
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: Gap.lg),
@@ -319,7 +315,8 @@ class _SavedNoteEditorScreenState extends ConsumerState<SavedNoteEditorScreen> {
               decoration: const InputDecoration(
                 labelText: 'Text',
                 alignLabelWithHint: true,
-                helperText: 'Řádek začínající „- " je odrážka, krátký řádek '
+                helperText:
+                    'Řádek začínající „- " je odrážka, krátký řádek '
                     'končící dvojtečkou je nadpis.',
                 helperMaxLines: 2,
               ),

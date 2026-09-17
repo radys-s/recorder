@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import 'connection/connection.dart';
 
 import 'daos/answer_cards_dao.dart';
 import 'daos/chat_messages_dao.dart';
@@ -24,6 +21,7 @@ import 'tables/meetings_table.dart';
 import 'tables/preferences_table.dart';
 import 'tables/refined_segments_table.dart';
 import 'tables/saved_notes_table.dart';
+import 'tables/subject_terms_table.dart';
 import 'tables/subjects_table.dart';
 import 'tables/transcript_segments_table.dart';
 import 'tables/upload_queue_table.dart';
@@ -46,6 +44,7 @@ part 'app_database.g.dart';
     TimetableSlots,
     ChatMessages,
     RefinedSegments,
+    SubjectTerms,
   ],
   daos: [
     MeetingsDao,
@@ -61,13 +60,13 @@ part 'app_database.g.dart';
   ],
 )
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase() : super(openAppConnection());
 
   /// An arbitrary executor — `NativeDatabase.memory()` in tests.
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -142,16 +141,18 @@ class AppDatabase extends _$AppDatabase {
           if (from < 15 && from >= 3) {
             await m.addColumn(preferences, preferences.geminiModelOverride);
           }
+          if (from < 16) {
+            await m.createTable(subjectTerms);
+            await m.addColumn(transcriptSegments, transcriptSegments.rawContent);
+            if (from >= 13) {
+              await m.addColumn(refinedSegments, refinedSegments.rawContent);
+            }
+            if (from >= 3) {
+              await m.addColumn(preferences, preferences.onboardingDismissed);
+            }
+          }
         },
       );
-
-  static QueryExecutor _openConnection() {
-    return LazyDatabase(() async {
-      final dbFolder = await getApplicationDocumentsDirectory();
-      final file = File(p.join(dbFolder.path, 'recorder.sqlite'));
-      return NativeDatabase.createInBackground(file);
-    });
-  }
 }
 
 /// App-wide singleton so the recording controller and queue worker (both

@@ -11,6 +11,7 @@ import '../../ai/gemini_provider.dart';
 import '../../ai/photo_text_service.dart';
 import '../../core/logging.dart';
 import '../../core/paths.dart';
+import '../../core/pending_deletions.dart';
 import '../../core/photo_files.dart';
 import '../../core/photo_picker.dart';
 import '../../core/providers.dart';
@@ -372,21 +373,20 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     }
   }
 
-  Future<void> _delete() async {
+  void _delete() {
     final card = widget.card;
     if (card == null) return;
-    final navigator = Navigator.of(context);
-    final confirmed = await showConfirmDialog(
-      context,
-      icon: Icons.delete_outline,
-      title: 'Smazat kartu „${card.title}"?',
-      message: 'Karta zmizí i z hodin, ve kterých byla připnutá.',
-      confirmLabel: 'Smazat',
-      destructive: true,
+    final deleter = ref.read(cardDeleterProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    deleteWithUndo(
+      messenger: messenger,
+      ref: ref,
+      kind: DeletionKind.card,
+      id: card.id,
+      message: 'Karta smazána',
+      commit: () => deleter.deleteCard(card.id),
     );
-    if (!confirmed) return;
-    await ref.read(cardDeleterProvider).deleteCard(card.id);
-    navigator.pop();
   }
 
   Future<void> _confirmDiscard() async {

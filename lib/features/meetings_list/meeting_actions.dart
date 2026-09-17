@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/logging.dart';
 import '../../core/paths.dart';
+import '../../core/pending_deletions.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../data/db/app_database.dart';
 import '../../data/meeting_deleter.dart';
@@ -27,13 +28,13 @@ final meetingDeleterProvider = Provider<MeetingDeleter>((ref) {
 bool isDefaultMeetingTitle(String title) =>
     RegExp(r'^(?:Schůzka|Hodina) \d{2}\.\d{2}\. \d{2}:\d{2}$').hasMatch(title);
 
-/// Asks, then deletes the meeting with its audio, transcript, answers and
-/// notes. Saved notes in the library stay.
+/// Deletes the meeting with its audio, transcript, answers and notes after
+/// the undo window. Saved notes in the library stay.
 ///
 /// With [popRoute] the current route — the meeting's own screen — is closed
-/// *before* the delete, so it never renders a meeting that is half gone.
-/// Everything that is needed afterwards is captured up front, because the
-/// screen's `ref` and `context` die with the route.
+/// first, so it never renders a meeting that is about to go. Everything
+/// needed afterwards is captured up front, because the screen's `ref` and
+/// `context` die with the route.
 Future<void> confirmAndDeleteMeeting(
   BuildContext context,
   WidgetRef ref, {
@@ -45,39 +46,36 @@ Future<void> confirmAndDeleteMeeting(
   if (recording.isRecording && recording.meetingId == meetingId) {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        content: Text('Nahrávanou schůzku nejde smazat. Nejdřív ji zastav.'),
-      ));
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Nahrávanou schůzku nejde smazat. Nejdřív ji zastav.'),
+        ),
+      );
     return;
   }
-
-  final confirmed = await showConfirmDialog(
-    context,
-    icon: Icons.delete_outline,
-    title: 'Smazat schůzku?',
-    message: 'Smaže se nahrávka, přepis, odpovědi i vygenerované poznámky. '
-        'Poznámky uložené v knihovně zůstanou.',
-    confirmLabel: 'Smazat',
-    destructive: true,
-  );
-  if (!confirmed || !context.mounted) return;
 
   final deleter = ref.read(meetingDeleterProvider);
   if (popRoute) Navigator.of(context).pop();
 
-  try {
-    await deleter.delete(meetingId);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Schůzka je smazaná.')));
-  } catch (e, st) {
-    AppLog.e(_tag, 'meeting $meetingId: delete failed', e, st);
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text('Schůzku se nepodařilo smazat.')),
-      );
-  }
+  deleteWithUndo(
+    messenger: messenger,
+    ref: ref,
+    kind: DeletionKind.meeting,
+    id: meetingId,
+    message: 'Smazáno',
+    commit: () async {
+      try {
+        await deleter.delete(meetingId);
+      } catch (e, st) {
+        AppLog.e(_tag, 'meeting $meetingId: delete failed', e, st);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text('Schůzku se nepodařilo smazat.')),
+          );
+      }
+    },
+  );
 }
 
 Future<void> renameMeetingFlow(

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../ai/answer_source.dart';
 import '../../../ai/chat_intent.dart';
+import '../../../core/formatting.dart';
 import '../../../core/paths.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
@@ -26,6 +27,7 @@ import 'answer_card_tile.dart';
       ChatIntent.rule => (label: 'Pravidlo', icon: Icons.rule),
       ChatIntent.photo => (label: 'Fotka', icon: Icons.photo_camera_outlined),
       ChatIntent.answerNow => (label: 'Odpověz teď', icon: Icons.bolt),
+      ChatIntent.important => (label: 'Důležité', icon: Icons.star_rounded),
     };
 
 /// One chat row in the transcript timeline.
@@ -37,9 +39,11 @@ class ChatMessageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => message.role != ChatRole.user
       ? _AssistantReply(message: message)
+      : message.intent == ChatIntent.important
+      ? ImportantMarker(message: message)
       : message.intent == ChatIntent.photo && message.imagePath != null
-          ? _PhotoBubble(message: message)
-          : _UserBubble(message: message);
+      ? _PhotoBubble(message: message)
+      : _UserBubble(message: message);
 }
 
 /// A card title from a board description: its first sentence, cut on a word.
@@ -91,73 +95,77 @@ class _PhotoBubbleState extends ConsumerState<_PhotoBubble> {
 
   void _saveToCard(int subjectId) {
     final description = _m.short ?? '';
-    Navigator.of(context).push(CardEditorScreen.route(
-      subjectId: subjectId,
-      initialTitle: boardCardTitle(description),
-      initialContent: _m.body.trim().isEmpty ? description : _m.body,
-      initialImagePaths: [_m.imagePath!],
-    ));
+    Navigator.of(context).push(
+      CardEditorScreen.route(
+        subjectId: subjectId,
+        initialTitle: boardCardTitle(description),
+        initialContent: _m.body.trim().isEmpty ? description : _m.body,
+        initialImagePaths: [_m.imagePath!],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final subjectId =
-        ref.watch(meetingProvider(_m.meetingId)).valueOrNull?.subjectId;
+    final subjectId = ref
+        .watch(meetingProvider(_m.meetingId))
+        .valueOrNull
+        ?.subjectId;
     final width = MediaQuery.sizeOf(context).width * 0.7;
 
     final Widget status = switch (_m.status) {
       ChatStatus.pending => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox.square(
-              dimension: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: Gap.sm),
-            Text('Čtu fotku…', style: theme.textTheme.bodySmall),
-          ],
-        ),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox.square(
+            dimension: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: Gap.sm),
+          Text('Čtu fotku…', style: theme.textTheme.bodySmall),
+        ],
+      ),
       ChatStatus.failed => Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _m.detail ?? 'Fotku se nepodařilo přečíst.',
-              textAlign: TextAlign.end,
-              style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
-            ),
-            TextButton.icon(
-              onPressed: () =>
-                  ref.read(boardPhotoServiceProvider).read(_m.id),
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Zkusit znovu'),
-            ),
-          ],
-        ),
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            _m.detail ?? 'Fotku se nepodařilo přečíst.',
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+          ),
+          TextButton.icon(
+            onPressed: () => ref.read(boardPhotoServiceProvider).read(_m.id),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Zkusit znovu'),
+          ),
+        ],
+      ),
       ChatStatus.ready => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if ((_m.short ?? '').isNotEmpty)
-              Text(
-                _m.short!,
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if ((_m.short ?? '').isNotEmpty)
+            Text(
+              _m.short!,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
               ),
-            if (_m.body.trim().isNotEmpty) ...[
-              const SizedBox(height: Gap.xs),
-              GestureDetector(
-                onTap: () => setState(() => _expanded = !_expanded),
-                child: Text(
-                  _m.body,
-                  maxLines: _expanded ? null : 6,
-                  overflow: _expanded ? null : TextOverflow.fade,
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
-                ),
+            ),
+          if (_m.body.trim().isNotEmpty) ...[
+            const SizedBox(height: Gap.xs),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _m.body,
+                maxLines: _expanded ? null : 6,
+                overflow: _expanded ? null : TextOverflow.fade,
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
               ),
-            ],
+            ),
           ],
-        ),
+        ],
+      ),
     };
 
     return Padding(
@@ -232,7 +240,8 @@ class _UserBubble extends ConsumerWidget {
       destructive: true,
       icon: Icons.delete_outline,
     );
-    if (confirmed) await ref.read(chatMessagesDaoProvider).deleteMessage(message.id);
+    if (confirmed)
+      await ref.read(chatMessagesDaoProvider).deleteMessage(message.id);
   }
 
   @override
@@ -240,7 +249,8 @@ class _UserBubble extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final chip = chatIntentChip(message.intent);
-    final cyclable = message.intent == ChatIntent.context ||
+    final cyclable =
+        message.intent == ChatIntent.context ||
         message.intent == ChatIntent.question ||
         message.intent == ChatIntent.rule;
 
@@ -327,8 +337,9 @@ class _AssistantReply extends ConsumerWidget {
                 const SizedBox(width: Gap.md),
                 Text(
                   'Přemýšlím…',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: scheme.onSecondaryContainer),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSecondaryContainer,
+                  ),
                 ),
               ],
             ),
@@ -348,8 +359,9 @@ class _AssistantReply extends ConsumerWidget {
                   message.body.isEmpty
                       ? 'Odpověď se nepodařilo získat.'
                       : message.body,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: scheme.onErrorContainer),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onErrorContainer,
+                  ),
                 ),
                 if (replyTo != null)
                   Align(
@@ -375,5 +387,63 @@ class _AssistantReply extends ConsumerWidget {
           icon: Icons.chat_bubble_outline,
         );
     }
+  }
+}
+
+/// A ⭐ the student put on a moment of the lesson: a slim row with the time
+/// and the optional note. Long-press takes the star away.
+class ImportantMarker extends ConsumerWidget {
+  const ImportantMarker({super.key, required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final note = message.body.trim();
+    return Semantics(
+      label:
+          'Důležité v ${formatClockMs(message.atMs)}'
+          '${note.isEmpty ? '' : ': $note'}',
+      excludeSemantics: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onLongPress: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          await ref.read(chatMessagesDaoProvider).deleteMessage(message.id);
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(const SnackBar(content: Text('Hvězdička odebrána')));
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: Gap.sm),
+          child: Row(
+            children: [
+              Icon(Icons.star_rounded, size: 18, color: scheme.tertiary),
+              const SizedBox(width: Gap.sm),
+              Text(
+                formatClockMs(message.atMs),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.tertiary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(width: Gap.sm),
+              Expanded(
+                child: Text(
+                  note.isEmpty ? 'Důležité' : note,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

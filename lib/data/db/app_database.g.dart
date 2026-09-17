@@ -579,6 +579,17 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _rawContentMeta = const VerificationMeta(
+    'rawContent',
+  );
+  @override
+  late final GeneratedColumn<String> rawContent = GeneratedColumn<String>(
+    'raw_content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -591,6 +602,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     localAudioPath,
     createdAt,
     voicedMs,
+    rawContent,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -670,6 +682,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         voicedMs.isAcceptableOrUnknown(data['voiced_ms']!, _voicedMsMeta),
       );
     }
+    if (data.containsKey('raw_content')) {
+      context.handle(
+        _rawContentMeta,
+        rawContent.isAcceptableOrUnknown(data['raw_content']!, _rawContentMeta),
+      );
+    }
     return context;
   }
 
@@ -721,6 +739,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.int,
         data['${effectivePrefix}voiced_ms'],
       ),
+      rawContent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw_content'],
+      ),
     );
   }
 
@@ -749,6 +771,10 @@ class TranscriptSegment extends DataClass
   /// worker reject a transcript far longer than the speech it came from;
   /// null for rows written before v12, which skip that check.
   final int? voicedMs;
+
+  /// What was heard before the user or the AI changed [content]; null while
+  /// the text is untouched.
+  final String? rawContent;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -760,6 +786,7 @@ class TranscriptSegment extends DataClass
     required this.localAudioPath,
     required this.createdAt,
     this.voicedMs,
+    this.rawContent,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -782,6 +809,9 @@ class TranscriptSegment extends DataClass
     if (!nullToAbsent || voicedMs != null) {
       map['voiced_ms'] = Variable<int>(voicedMs);
     }
+    if (!nullToAbsent || rawContent != null) {
+      map['raw_content'] = Variable<String>(rawContent);
+    }
     return map;
   }
 
@@ -801,6 +831,9 @@ class TranscriptSegment extends DataClass
       voicedMs: voicedMs == null && nullToAbsent
           ? const Value.absent()
           : Value(voicedMs),
+      rawContent: rawContent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawContent),
     );
   }
 
@@ -822,6 +855,7 @@ class TranscriptSegment extends DataClass
       localAudioPath: serializer.fromJson<String>(json['localAudioPath']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       voicedMs: serializer.fromJson<int?>(json['voicedMs']),
+      rawContent: serializer.fromJson<String?>(json['rawContent']),
     );
   }
   @override
@@ -840,6 +874,7 @@ class TranscriptSegment extends DataClass
       'localAudioPath': serializer.toJson<String>(localAudioPath),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'voicedMs': serializer.toJson<int?>(voicedMs),
+      'rawContent': serializer.toJson<String?>(rawContent),
     };
   }
 
@@ -854,6 +889,7 @@ class TranscriptSegment extends DataClass
     String? localAudioPath,
     DateTime? createdAt,
     Value<int?> voicedMs = const Value.absent(),
+    Value<String?> rawContent = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -865,6 +901,7 @@ class TranscriptSegment extends DataClass
     localAudioPath: localAudioPath ?? this.localAudioPath,
     createdAt: createdAt ?? this.createdAt,
     voicedMs: voicedMs.present ? voicedMs.value : this.voicedMs,
+    rawContent: rawContent.present ? rawContent.value : this.rawContent,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -880,6 +917,9 @@ class TranscriptSegment extends DataClass
           : this.localAudioPath,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       voicedMs: data.voicedMs.present ? data.voicedMs.value : this.voicedMs,
+      rawContent: data.rawContent.present
+          ? data.rawContent.value
+          : this.rawContent,
     );
   }
 
@@ -895,7 +935,8 @@ class TranscriptSegment extends DataClass
           ..write('status: $status, ')
           ..write('localAudioPath: $localAudioPath, ')
           ..write('createdAt: $createdAt, ')
-          ..write('voicedMs: $voicedMs')
+          ..write('voicedMs: $voicedMs, ')
+          ..write('rawContent: $rawContent')
           ..write(')'))
         .toString();
   }
@@ -912,6 +953,7 @@ class TranscriptSegment extends DataClass
     localAudioPath,
     createdAt,
     voicedMs,
+    rawContent,
   );
   @override
   bool operator ==(Object other) =>
@@ -926,7 +968,8 @@ class TranscriptSegment extends DataClass
           other.status == this.status &&
           other.localAudioPath == this.localAudioPath &&
           other.createdAt == this.createdAt &&
-          other.voicedMs == this.voicedMs);
+          other.voicedMs == this.voicedMs &&
+          other.rawContent == this.rawContent);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -940,6 +983,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<String> localAudioPath;
   final Value<DateTime> createdAt;
   final Value<int?> voicedMs;
+  final Value<String?> rawContent;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -951,6 +995,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.localAudioPath = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.voicedMs = const Value.absent(),
+    this.rawContent = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -963,6 +1008,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required String localAudioPath,
     required DateTime createdAt,
     this.voicedMs = const Value.absent(),
+    this.rawContent = const Value.absent(),
   }) : meetingId = Value(meetingId),
        sequence = Value(sequence),
        startMs = Value(startMs),
@@ -981,6 +1027,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<String>? localAudioPath,
     Expression<DateTime>? createdAt,
     Expression<int>? voicedMs,
+    Expression<String>? rawContent,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -993,6 +1040,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (localAudioPath != null) 'local_audio_path': localAudioPath,
       if (createdAt != null) 'created_at': createdAt,
       if (voicedMs != null) 'voiced_ms': voicedMs,
+      if (rawContent != null) 'raw_content': rawContent,
     });
   }
 
@@ -1007,6 +1055,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<String>? localAudioPath,
     Value<DateTime>? createdAt,
     Value<int?>? voicedMs,
+    Value<String?>? rawContent,
   }) {
     return TranscriptSegmentsCompanion(
       id: id ?? this.id,
@@ -1019,6 +1068,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       localAudioPath: localAudioPath ?? this.localAudioPath,
       createdAt: createdAt ?? this.createdAt,
       voicedMs: voicedMs ?? this.voicedMs,
+      rawContent: rawContent ?? this.rawContent,
     );
   }
 
@@ -1057,6 +1107,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (voicedMs.present) {
       map['voiced_ms'] = Variable<int>(voicedMs.value);
     }
+    if (rawContent.present) {
+      map['raw_content'] = Variable<String>(rawContent.value);
+    }
     return map;
   }
 
@@ -1072,7 +1125,8 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('status: $status, ')
           ..write('localAudioPath: $localAudioPath, ')
           ..write('createdAt: $createdAt, ')
-          ..write('voicedMs: $voicedMs')
+          ..write('voicedMs: $voicedMs, ')
+          ..write('rawContent: $rawContent')
           ..write(')'))
         .toString();
   }
@@ -1796,6 +1850,20 @@ class $PreferencesTable extends Preferences
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _onboardingDismissedMeta =
+      const VerificationMeta('onboardingDismissed');
+  @override
+  late final GeneratedColumn<bool> onboardingDismissed = GeneratedColumn<bool>(
+    'onboarding_dismissed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("onboarding_dismissed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1806,6 +1874,7 @@ class $PreferencesTable extends Preferences
     micSensitivity,
     globalRules,
     geminiModelOverride,
+    onboardingDismissed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1858,6 +1927,15 @@ class $PreferencesTable extends Preferences
         ),
       );
     }
+    if (data.containsKey('onboarding_dismissed')) {
+      context.handle(
+        _onboardingDismissedMeta,
+        onboardingDismissed.isAcceptableOrUnknown(
+          data['onboarding_dismissed']!,
+          _onboardingDismissedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1906,6 +1984,10 @@ class $PreferencesTable extends Preferences
         DriftSqlType.string,
         data['${effectivePrefix}gemini_model_override'],
       ),
+      onboardingDismissed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}onboarding_dismissed'],
+      )!,
     );
   }
 
@@ -1951,6 +2033,9 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// A Gemini model id picked in Settings; null follows the app's default.
   final String? geminiModelOverride;
+
+  /// The first-run guide was closed by the user.
+  final bool onboardingDismissed;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -1960,6 +2045,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     required this.micSensitivity,
     this.globalRules,
     this.geminiModelOverride,
+    required this.onboardingDismissed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1990,6 +2076,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     if (!nullToAbsent || geminiModelOverride != null) {
       map['gemini_model_override'] = Variable<String>(geminiModelOverride);
     }
+    map['onboarding_dismissed'] = Variable<bool>(onboardingDismissed);
     return map;
   }
 
@@ -2007,6 +2094,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       geminiModelOverride: geminiModelOverride == null && nullToAbsent
           ? const Value.absent()
           : Value(geminiModelOverride),
+      onboardingDismissed: Value(onboardingDismissed),
     );
   }
 
@@ -2031,6 +2119,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       geminiModelOverride: serializer.fromJson<String?>(
         json['geminiModelOverride'],
       ),
+      onboardingDismissed: serializer.fromJson<bool>(
+        json['onboardingDismissed'],
+      ),
     );
   }
   @override
@@ -2053,6 +2144,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       ),
       'globalRules': serializer.toJson<String?>(globalRules),
       'geminiModelOverride': serializer.toJson<String?>(geminiModelOverride),
+      'onboardingDismissed': serializer.toJson<bool>(onboardingDismissed),
     };
   }
 
@@ -2065,6 +2157,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     MicSensitivity? micSensitivity,
     Value<String?> globalRules = const Value.absent(),
     Value<String?> geminiModelOverride = const Value.absent(),
+    bool? onboardingDismissed,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2076,6 +2169,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     geminiModelOverride: geminiModelOverride.present
         ? geminiModelOverride.value
         : this.geminiModelOverride,
+    onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2101,6 +2195,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       geminiModelOverride: data.geminiModelOverride.present
           ? data.geminiModelOverride.value
           : this.geminiModelOverride,
+      onboardingDismissed: data.onboardingDismissed.present
+          ? data.onboardingDismissed.value
+          : this.onboardingDismissed,
     );
   }
 
@@ -2114,7 +2211,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('webAnswersEnabled: $webAnswersEnabled, ')
           ..write('micSensitivity: $micSensitivity, ')
           ..write('globalRules: $globalRules, ')
-          ..write('geminiModelOverride: $geminiModelOverride')
+          ..write('geminiModelOverride: $geminiModelOverride, ')
+          ..write('onboardingDismissed: $onboardingDismissed')
           ..write(')'))
         .toString();
   }
@@ -2129,6 +2227,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     micSensitivity,
     globalRules,
     geminiModelOverride,
+    onboardingDismissed,
   );
   @override
   bool operator ==(Object other) =>
@@ -2141,7 +2240,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.webAnswersEnabled == this.webAnswersEnabled &&
           other.micSensitivity == this.micSensitivity &&
           other.globalRules == this.globalRules &&
-          other.geminiModelOverride == this.geminiModelOverride);
+          other.geminiModelOverride == this.geminiModelOverride &&
+          other.onboardingDismissed == this.onboardingDismissed);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2153,6 +2253,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<MicSensitivity> micSensitivity;
   final Value<String?> globalRules;
   final Value<String?> geminiModelOverride;
+  final Value<bool> onboardingDismissed;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2162,6 +2263,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.micSensitivity = const Value.absent(),
     this.globalRules = const Value.absent(),
     this.geminiModelOverride = const Value.absent(),
+    this.onboardingDismissed = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2172,6 +2274,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.micSensitivity = const Value.absent(),
     this.globalRules = const Value.absent(),
     this.geminiModelOverride = const Value.absent(),
+    this.onboardingDismissed = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2182,6 +2285,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<int>? micSensitivity,
     Expression<String>? globalRules,
     Expression<String>? geminiModelOverride,
+    Expression<bool>? onboardingDismissed,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2194,6 +2298,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (globalRules != null) 'global_rules': globalRules,
       if (geminiModelOverride != null)
         'gemini_model_override': geminiModelOverride,
+      if (onboardingDismissed != null)
+        'onboarding_dismissed': onboardingDismissed,
     });
   }
 
@@ -2206,6 +2312,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<MicSensitivity>? micSensitivity,
     Value<String?>? globalRules,
     Value<String?>? geminiModelOverride,
+    Value<bool>? onboardingDismissed,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2216,6 +2323,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       micSensitivity: micSensitivity ?? this.micSensitivity,
       globalRules: globalRules ?? this.globalRules,
       geminiModelOverride: geminiModelOverride ?? this.geminiModelOverride,
+      onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
     );
   }
 
@@ -2256,6 +2364,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
         geminiModelOverride.value,
       );
     }
+    if (onboardingDismissed.present) {
+      map['onboarding_dismissed'] = Variable<bool>(onboardingDismissed.value);
+    }
     return map;
   }
 
@@ -2269,7 +2380,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('webAnswersEnabled: $webAnswersEnabled, ')
           ..write('micSensitivity: $micSensitivity, ')
           ..write('globalRules: $globalRules, ')
-          ..write('geminiModelOverride: $geminiModelOverride')
+          ..write('geminiModelOverride: $geminiModelOverride, ')
+          ..write('onboardingDismissed: $onboardingDismissed')
           ..write(')'))
         .toString();
   }
@@ -6901,6 +7013,17 @@ class $RefinedSegmentsTable extends RefinedSegments
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _rawContentMeta = const VerificationMeta(
+    'rawContent',
+  );
+  @override
+  late final GeneratedColumn<String> rawContent = GeneratedColumn<String>(
+    'raw_content',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6913,6 +7036,7 @@ class $RefinedSegmentsTable extends RefinedSegments
     status,
     error,
     createdAt,
+    rawContent,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6984,6 +7108,12 @@ class $RefinedSegmentsTable extends RefinedSegments
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('raw_content')) {
+      context.handle(
+        _rawContentMeta,
+        rawContent.isAcceptableOrUnknown(data['raw_content']!, _rawContentMeta),
+      );
+    }
     return context;
   }
 
@@ -7037,6 +7167,10 @@ class $RefinedSegmentsTable extends RefinedSegments
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      rawContent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}raw_content'],
+      ),
     );
   }
 
@@ -7064,6 +7198,9 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
   final RefinedStatus status;
   final String? error;
   final DateTime createdAt;
+
+  /// The window's text before a correction; null while untouched.
+  final String? rawContent;
   const RefinedSegment({
     required this.id,
     required this.meetingId,
@@ -7075,6 +7212,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
     required this.status,
     this.error,
     required this.createdAt,
+    this.rawContent,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7101,6 +7239,9 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
       map['error'] = Variable<String>(error);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || rawContent != null) {
+      map['raw_content'] = Variable<String>(rawContent);
+    }
     return map;
   }
 
@@ -7120,6 +7261,9 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
           ? const Value.absent()
           : Value(error),
       createdAt: Value(createdAt),
+      rawContent: rawContent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawContent),
     );
   }
 
@@ -7143,6 +7287,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
       ),
       error: serializer.fromJson<String?>(json['error']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      rawContent: serializer.fromJson<String?>(json['rawContent']),
     );
   }
   @override
@@ -7163,6 +7308,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
       ),
       'error': serializer.toJson<String?>(error),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'rawContent': serializer.toJson<String?>(rawContent),
     };
   }
 
@@ -7177,6 +7323,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
     RefinedStatus? status,
     Value<String?> error = const Value.absent(),
     DateTime? createdAt,
+    Value<String?> rawContent = const Value.absent(),
   }) => RefinedSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -7188,6 +7335,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
     status: status ?? this.status,
     error: error.present ? error.value : this.error,
     createdAt: createdAt ?? this.createdAt,
+    rawContent: rawContent.present ? rawContent.value : this.rawContent,
   );
   RefinedSegment copyWithCompanion(RefinedSegmentsCompanion data) {
     return RefinedSegment(
@@ -7203,6 +7351,9 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
       status: data.status.present ? data.status.value : this.status,
       error: data.error.present ? data.error.value : this.error,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      rawContent: data.rawContent.present
+          ? data.rawContent.value
+          : this.rawContent,
     );
   }
 
@@ -7218,7 +7369,8 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
           ..write('engine: $engine, ')
           ..write('status: $status, ')
           ..write('error: $error, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('rawContent: $rawContent')
           ..write(')'))
         .toString();
   }
@@ -7235,6 +7387,7 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
     status,
     error,
     createdAt,
+    rawContent,
   );
   @override
   bool operator ==(Object other) =>
@@ -7249,7 +7402,8 @@ class RefinedSegment extends DataClass implements Insertable<RefinedSegment> {
           other.engine == this.engine &&
           other.status == this.status &&
           other.error == this.error &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.rawContent == this.rawContent);
 }
 
 class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
@@ -7263,6 +7417,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
   final Value<RefinedStatus> status;
   final Value<String?> error;
   final Value<DateTime> createdAt;
+  final Value<String?> rawContent;
   const RefinedSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -7274,6 +7429,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
     this.status = const Value.absent(),
     this.error = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.rawContent = const Value.absent(),
   });
   RefinedSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -7286,6 +7442,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
     required RefinedStatus status,
     this.error = const Value.absent(),
     required DateTime createdAt,
+    this.rawContent = const Value.absent(),
   }) : meetingId = Value(meetingId),
        windowIndex = Value(windowIndex),
        startMs = Value(startMs),
@@ -7304,6 +7461,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
     Expression<int>? status,
     Expression<String>? error,
     Expression<DateTime>? createdAt,
+    Expression<String>? rawContent,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -7316,6 +7474,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
       if (status != null) 'status': status,
       if (error != null) 'error': error,
       if (createdAt != null) 'created_at': createdAt,
+      if (rawContent != null) 'raw_content': rawContent,
     });
   }
 
@@ -7330,6 +7489,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
     Value<RefinedStatus>? status,
     Value<String?>? error,
     Value<DateTime>? createdAt,
+    Value<String?>? rawContent,
   }) {
     return RefinedSegmentsCompanion(
       id: id ?? this.id,
@@ -7342,6 +7502,7 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
       status: status ?? this.status,
       error: error ?? this.error,
       createdAt: createdAt ?? this.createdAt,
+      rawContent: rawContent ?? this.rawContent,
     );
   }
 
@@ -7382,6 +7543,9 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (rawContent.present) {
+      map['raw_content'] = Variable<String>(rawContent.value);
+    }
     return map;
   }
 
@@ -7397,6 +7561,458 @@ class RefinedSegmentsCompanion extends UpdateCompanion<RefinedSegment> {
           ..write('engine: $engine, ')
           ..write('status: $status, ')
           ..write('error: $error, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rawContent: $rawContent')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SubjectTermsTable extends SubjectTerms
+    with TableInfo<$SubjectTermsTable, SubjectTerm> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SubjectTermsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<int> subjectId = GeneratedColumn<int>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _termMeta = const VerificationMeta('term');
+  @override
+  late final GeneratedColumn<String> term = GeneratedColumn<String>(
+    'term',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 80,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _heardMeta = const VerificationMeta('heard');
+  @override
+  late final GeneratedColumn<String> heard = GeneratedColumn<String>(
+    'heard',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<TermSource, int> source =
+      GeneratedColumn<int>(
+        'source',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<TermSource>($SubjectTermsTable.$convertersource);
+  static const VerificationMeta _usesMeta = const VerificationMeta('uses');
+  @override
+  late final GeneratedColumn<int> uses = GeneratedColumn<int>(
+    'uses',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    term,
+    heard,
+    source,
+    uses,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'subject_terms';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SubjectTerm> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('term')) {
+      context.handle(
+        _termMeta,
+        term.isAcceptableOrUnknown(data['term']!, _termMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_termMeta);
+    }
+    if (data.containsKey('heard')) {
+      context.handle(
+        _heardMeta,
+        heard.isAcceptableOrUnknown(data['heard']!, _heardMeta),
+      );
+    }
+    if (data.containsKey('uses')) {
+      context.handle(
+        _usesMeta,
+        uses.isAcceptableOrUnknown(data['uses']!, _usesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SubjectTerm map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SubjectTerm(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      term: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}term'],
+      )!,
+      heard: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}heard'],
+      ),
+      source: $SubjectTermsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      uses: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}uses'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SubjectTermsTable createAlias(String alias) {
+    return $SubjectTermsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<TermSource, int, int> $convertersource =
+      const EnumIndexConverter<TermSource>(TermSource.values);
+}
+
+class SubjectTerm extends DataClass implements Insertable<SubjectTerm> {
+  final int id;
+  final int subjectId;
+  final String term;
+  final String? heard;
+  final TermSource source;
+
+  /// How often the term turned up in a transcript; ranks the vocabulary.
+  final int uses;
+  final DateTime createdAt;
+  const SubjectTerm({
+    required this.id,
+    required this.subjectId,
+    required this.term,
+    this.heard,
+    required this.source,
+    required this.uses,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<int>(subjectId);
+    map['term'] = Variable<String>(term);
+    if (!nullToAbsent || heard != null) {
+      map['heard'] = Variable<String>(heard);
+    }
+    {
+      map['source'] = Variable<int>(
+        $SubjectTermsTable.$convertersource.toSql(source),
+      );
+    }
+    map['uses'] = Variable<int>(uses);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SubjectTermsCompanion toCompanion(bool nullToAbsent) {
+    return SubjectTermsCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      term: Value(term),
+      heard: heard == null && nullToAbsent
+          ? const Value.absent()
+          : Value(heard),
+      source: Value(source),
+      uses: Value(uses),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SubjectTerm.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SubjectTerm(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<int>(json['subjectId']),
+      term: serializer.fromJson<String>(json['term']),
+      heard: serializer.fromJson<String?>(json['heard']),
+      source: $SubjectTermsTable.$convertersource.fromJson(
+        serializer.fromJson<int>(json['source']),
+      ),
+      uses: serializer.fromJson<int>(json['uses']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<int>(subjectId),
+      'term': serializer.toJson<String>(term),
+      'heard': serializer.toJson<String?>(heard),
+      'source': serializer.toJson<int>(
+        $SubjectTermsTable.$convertersource.toJson(source),
+      ),
+      'uses': serializer.toJson<int>(uses),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SubjectTerm copyWith({
+    int? id,
+    int? subjectId,
+    String? term,
+    Value<String?> heard = const Value.absent(),
+    TermSource? source,
+    int? uses,
+    DateTime? createdAt,
+  }) => SubjectTerm(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    term: term ?? this.term,
+    heard: heard.present ? heard.value : this.heard,
+    source: source ?? this.source,
+    uses: uses ?? this.uses,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SubjectTerm copyWithCompanion(SubjectTermsCompanion data) {
+    return SubjectTerm(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      term: data.term.present ? data.term.value : this.term,
+      heard: data.heard.present ? data.heard.value : this.heard,
+      source: data.source.present ? data.source.value : this.source,
+      uses: data.uses.present ? data.uses.value : this.uses,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubjectTerm(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('term: $term, ')
+          ..write('heard: $heard, ')
+          ..write('source: $source, ')
+          ..write('uses: $uses, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, subjectId, term, heard, source, uses, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SubjectTerm &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.term == this.term &&
+          other.heard == this.heard &&
+          other.source == this.source &&
+          other.uses == this.uses &&
+          other.createdAt == this.createdAt);
+}
+
+class SubjectTermsCompanion extends UpdateCompanion<SubjectTerm> {
+  final Value<int> id;
+  final Value<int> subjectId;
+  final Value<String> term;
+  final Value<String?> heard;
+  final Value<TermSource> source;
+  final Value<int> uses;
+  final Value<DateTime> createdAt;
+  const SubjectTermsCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.term = const Value.absent(),
+    this.heard = const Value.absent(),
+    this.source = const Value.absent(),
+    this.uses = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SubjectTermsCompanion.insert({
+    this.id = const Value.absent(),
+    required int subjectId,
+    required String term,
+    this.heard = const Value.absent(),
+    required TermSource source,
+    this.uses = const Value.absent(),
+    required DateTime createdAt,
+  }) : subjectId = Value(subjectId),
+       term = Value(term),
+       source = Value(source),
+       createdAt = Value(createdAt);
+  static Insertable<SubjectTerm> custom({
+    Expression<int>? id,
+    Expression<int>? subjectId,
+    Expression<String>? term,
+    Expression<String>? heard,
+    Expression<int>? source,
+    Expression<int>? uses,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (term != null) 'term': term,
+      if (heard != null) 'heard': heard,
+      if (source != null) 'source': source,
+      if (uses != null) 'uses': uses,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SubjectTermsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? subjectId,
+    Value<String>? term,
+    Value<String?>? heard,
+    Value<TermSource>? source,
+    Value<int>? uses,
+    Value<DateTime>? createdAt,
+  }) {
+    return SubjectTermsCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      term: term ?? this.term,
+      heard: heard ?? this.heard,
+      source: source ?? this.source,
+      uses: uses ?? this.uses,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<int>(subjectId.value);
+    }
+    if (term.present) {
+      map['term'] = Variable<String>(term.value);
+    }
+    if (heard.present) {
+      map['heard'] = Variable<String>(heard.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<int>(
+        $SubjectTermsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (uses.present) {
+      map['uses'] = Variable<int>(uses.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubjectTermsCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('term: $term, ')
+          ..write('heard: $heard, ')
+          ..write('source: $source, ')
+          ..write('uses: $uses, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -7423,6 +8039,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $RefinedSegmentsTable refinedSegments = $RefinedSegmentsTable(
     this,
   );
+  late final $SubjectTermsTable subjectTerms = $SubjectTermsTable(this);
   late final MeetingsDao meetingsDao = MeetingsDao(this as AppDatabase);
   late final TranscriptSegmentsDao transcriptSegmentsDao =
       TranscriptSegmentsDao(this as AppDatabase);
@@ -7465,6 +8082,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     timetableSlots,
     chatMessages,
     refinedSegments,
+    subjectTerms,
   ];
 }
 
@@ -7715,6 +8333,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required String localAudioPath,
       required DateTime createdAt,
       Value<int?> voicedMs,
+      Value<String?> rawContent,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -7728,6 +8347,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<String> localAudioPath,
       Value<DateTime> createdAt,
       Value<int?> voicedMs,
+      Value<String?> rawContent,
     });
 
 class $$TranscriptSegmentsTableFilterComposer
@@ -7787,6 +8407,11 @@ class $$TranscriptSegmentsTableFilterComposer
 
   ColumnFilters<int> get voicedMs => $composableBuilder(
     column: $table.voicedMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7849,6 +8474,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     column: $table.voicedMs,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TranscriptSegmentsTableAnnotationComposer
@@ -7891,6 +8521,11 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<int> get voicedMs =>
       $composableBuilder(column: $table.voicedMs, builder: (column) => column);
+
+  GeneratedColumn<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
+    builder: (column) => column,
+  );
 }
 
 class $$TranscriptSegmentsTableTableManager
@@ -7943,6 +8578,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<String> localAudioPath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int?> voicedMs = const Value.absent(),
+                Value<String?> rawContent = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -7954,6 +8590,7 @@ class $$TranscriptSegmentsTableTableManager
                 localAudioPath: localAudioPath,
                 createdAt: createdAt,
                 voicedMs: voicedMs,
+                rawContent: rawContent,
               ),
           createCompanionCallback:
               ({
@@ -7967,6 +8604,7 @@ class $$TranscriptSegmentsTableTableManager
                 required String localAudioPath,
                 required DateTime createdAt,
                 Value<int?> voicedMs = const Value.absent(),
+                Value<String?> rawContent = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -7978,6 +8616,7 @@ class $$TranscriptSegmentsTableTableManager
                 localAudioPath: localAudioPath,
                 createdAt: createdAt,
                 voicedMs: voicedMs,
+                rawContent: rawContent,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -8334,6 +8973,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<MicSensitivity> micSensitivity,
       Value<String?> globalRules,
       Value<String?> geminiModelOverride,
+      Value<bool> onboardingDismissed,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -8345,6 +8985,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<MicSensitivity> micSensitivity,
       Value<String?> globalRules,
       Value<String?> geminiModelOverride,
+      Value<bool> onboardingDismissed,
     });
 
 class $$PreferencesTableFilterComposer
@@ -8398,6 +9039,11 @@ class $$PreferencesTableFilterComposer
     column: $table.geminiModelOverride,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get onboardingDismissed => $composableBuilder(
+    column: $table.onboardingDismissed,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -8446,6 +9092,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<String> get geminiModelOverride => $composableBuilder(
     column: $table.geminiModelOverride,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get onboardingDismissed => $composableBuilder(
+    column: $table.onboardingDismissed,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -8499,6 +9150,11 @@ class $$PreferencesTableAnnotationComposer
     column: $table.geminiModelOverride,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get onboardingDismissed => $composableBuilder(
+    column: $table.onboardingDismissed,
+    builder: (column) => column,
+  );
 }
 
 class $$PreferencesTableTableManager
@@ -8541,6 +9197,7 @@ class $$PreferencesTableTableManager
                 Value<MicSensitivity> micSensitivity = const Value.absent(),
                 Value<String?> globalRules = const Value.absent(),
                 Value<String?> geminiModelOverride = const Value.absent(),
+                Value<bool> onboardingDismissed = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -8550,6 +9207,7 @@ class $$PreferencesTableTableManager
                 micSensitivity: micSensitivity,
                 globalRules: globalRules,
                 geminiModelOverride: geminiModelOverride,
+                onboardingDismissed: onboardingDismissed,
               ),
           createCompanionCallback:
               ({
@@ -8562,6 +9220,7 @@ class $$PreferencesTableTableManager
                 Value<MicSensitivity> micSensitivity = const Value.absent(),
                 Value<String?> globalRules = const Value.absent(),
                 Value<String?> geminiModelOverride = const Value.absent(),
+                Value<bool> onboardingDismissed = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -8571,6 +9230,7 @@ class $$PreferencesTableTableManager
                 micSensitivity: micSensitivity,
                 globalRules: globalRules,
                 geminiModelOverride: geminiModelOverride,
+                onboardingDismissed: onboardingDismissed,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -10925,6 +11585,7 @@ typedef $$RefinedSegmentsTableCreateCompanionBuilder =
       required RefinedStatus status,
       Value<String?> error,
       required DateTime createdAt,
+      Value<String?> rawContent,
     });
 typedef $$RefinedSegmentsTableUpdateCompanionBuilder =
     RefinedSegmentsCompanion Function({
@@ -10938,6 +11599,7 @@ typedef $$RefinedSegmentsTableUpdateCompanionBuilder =
       Value<RefinedStatus> status,
       Value<String?> error,
       Value<DateTime> createdAt,
+      Value<String?> rawContent,
     });
 
 class $$RefinedSegmentsTableFilterComposer
@@ -11000,6 +11662,11 @@ class $$RefinedSegmentsTableFilterComposer
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$RefinedSegmentsTableOrderingComposer
@@ -11060,6 +11727,11 @@ class $$RefinedSegmentsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$RefinedSegmentsTableAnnotationComposer
@@ -11102,6 +11774,11 @@ class $$RefinedSegmentsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get rawContent => $composableBuilder(
+    column: $table.rawContent,
+    builder: (column) => column,
+  );
 }
 
 class $$RefinedSegmentsTableTableManager
@@ -11151,6 +11828,7 @@ class $$RefinedSegmentsTableTableManager
                 Value<RefinedStatus> status = const Value.absent(),
                 Value<String?> error = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<String?> rawContent = const Value.absent(),
               }) => RefinedSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -11162,6 +11840,7 @@ class $$RefinedSegmentsTableTableManager
                 status: status,
                 error: error,
                 createdAt: createdAt,
+                rawContent: rawContent,
               ),
           createCompanionCallback:
               ({
@@ -11175,6 +11854,7 @@ class $$RefinedSegmentsTableTableManager
                 required RefinedStatus status,
                 Value<String?> error = const Value.absent(),
                 required DateTime createdAt,
+                Value<String?> rawContent = const Value.absent(),
               }) => RefinedSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -11186,6 +11866,7 @@ class $$RefinedSegmentsTableTableManager
                 status: status,
                 error: error,
                 createdAt: createdAt,
+                rawContent: rawContent,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -11221,6 +11902,248 @@ typedef $$RefinedSegmentsTableProcessedTableManager =
       RefinedSegment,
       PrefetchHooks Function()
     >;
+typedef $$SubjectTermsTableCreateCompanionBuilder =
+    SubjectTermsCompanion Function({
+      Value<int> id,
+      required int subjectId,
+      required String term,
+      Value<String?> heard,
+      required TermSource source,
+      Value<int> uses,
+      required DateTime createdAt,
+    });
+typedef $$SubjectTermsTableUpdateCompanionBuilder =
+    SubjectTermsCompanion Function({
+      Value<int> id,
+      Value<int> subjectId,
+      Value<String> term,
+      Value<String?> heard,
+      Value<TermSource> source,
+      Value<int> uses,
+      Value<DateTime> createdAt,
+    });
+
+class $$SubjectTermsTableFilterComposer
+    extends Composer<_$AppDatabase, $SubjectTermsTable> {
+  $$SubjectTermsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get term => $composableBuilder(
+    column: $table.term,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get heard => $composableBuilder(
+    column: $table.heard,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<TermSource, TermSource, int> get source =>
+      $composableBuilder(
+        column: $table.source,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<int> get uses => $composableBuilder(
+    column: $table.uses,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SubjectTermsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SubjectTermsTable> {
+  $$SubjectTermsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get term => $composableBuilder(
+    column: $table.term,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get heard => $composableBuilder(
+    column: $table.heard,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get uses => $composableBuilder(
+    column: $table.uses,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SubjectTermsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SubjectTermsTable> {
+  $$SubjectTermsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get term =>
+      $composableBuilder(column: $table.term, builder: (column) => column);
+
+  GeneratedColumn<String> get heard =>
+      $composableBuilder(column: $table.heard, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<TermSource, int> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<int> get uses =>
+      $composableBuilder(column: $table.uses, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SubjectTermsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SubjectTermsTable,
+          SubjectTerm,
+          $$SubjectTermsTableFilterComposer,
+          $$SubjectTermsTableOrderingComposer,
+          $$SubjectTermsTableAnnotationComposer,
+          $$SubjectTermsTableCreateCompanionBuilder,
+          $$SubjectTermsTableUpdateCompanionBuilder,
+          (
+            SubjectTerm,
+            BaseReferences<_$AppDatabase, $SubjectTermsTable, SubjectTerm>,
+          ),
+          SubjectTerm,
+          PrefetchHooks Function()
+        > {
+  $$SubjectTermsTableTableManager(_$AppDatabase db, $SubjectTermsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SubjectTermsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SubjectTermsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SubjectTermsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> subjectId = const Value.absent(),
+                Value<String> term = const Value.absent(),
+                Value<String?> heard = const Value.absent(),
+                Value<TermSource> source = const Value.absent(),
+                Value<int> uses = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SubjectTermsCompanion(
+                id: id,
+                subjectId: subjectId,
+                term: term,
+                heard: heard,
+                source: source,
+                uses: uses,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int subjectId,
+                required String term,
+                Value<String?> heard = const Value.absent(),
+                required TermSource source,
+                Value<int> uses = const Value.absent(),
+                required DateTime createdAt,
+              }) => SubjectTermsCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                term: term,
+                heard: heard,
+                source: source,
+                uses: uses,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SubjectTermsTable, SubjectTerm>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $SubjectTermsTable,
+                    SubjectTerm
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SubjectTermsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SubjectTermsTable,
+      SubjectTerm,
+      $$SubjectTermsTableFilterComposer,
+      $$SubjectTermsTableOrderingComposer,
+      $$SubjectTermsTableAnnotationComposer,
+      $$SubjectTermsTableCreateCompanionBuilder,
+      $$SubjectTermsTableUpdateCompanionBuilder,
+      (
+        SubjectTerm,
+        BaseReferences<_$AppDatabase, $SubjectTermsTable, SubjectTerm>,
+      ),
+      SubjectTerm,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11253,4 +12176,6 @@ class $AppDatabaseManager {
       $$ChatMessagesTableTableManager(_db, _db.chatMessages);
   $$RefinedSegmentsTableTableManager get refinedSegments =>
       $$RefinedSegmentsTableTableManager(_db, _db.refinedSegments);
+  $$SubjectTermsTableTableManager get subjectTerms =>
+      $$SubjectTermsTableTableManager(_db, _db.subjectTerms);
 }

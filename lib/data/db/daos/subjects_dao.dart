@@ -4,7 +4,9 @@ import '../app_database.dart';
 import '../tables/chat_messages_table.dart';
 import '../tables/context_cards_table.dart';
 import '../tables/meetings_table.dart';
+import '../../../stt/transcript_sanitizer.dart';
 import '../tables/saved_notes_table.dart';
+import '../tables/subject_terms_table.dart';
 import '../tables/subjects_table.dart';
 
 part 'subjects_dao.g.dart';
@@ -39,6 +41,7 @@ class SubjectSummary {
     Meetings,
     SavedNotes,
     ChatMessages,
+    SubjectTerms,
   ],
 )
 class SubjectsDao extends DatabaseAccessor<AppDatabase>
@@ -116,6 +119,7 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         await (delete(contextCards)..where((t) => t.subjectId.equals(id))).go();
         await (delete(timetableSlots)..where((t) => t.subjectId.equals(id)))
             .go();
+        await (delete(subjectTerms)..where((t) => t.subjectId.equals(id))).go();
         await (update(savedNotes)..where((t) => t.folderId.equals(id)))
             .write(const SavedNotesCompanion(folderId: Value(null)));
         await (update(meetings)..where((t) => t.subjectId.equals(id)))
@@ -250,6 +254,111 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
     if (list.isEmpty) return Future.value();
     return (update(contextCards)..where((t) => t.id.isIn(list)))
         .write(ContextCardsCompanion(lastUsedAt: Value(at)));
+  }
+
+  // ---------------------------------------------------------------- terms
+
+  static const maxTermLength = 80;
+
+  SimpleSelectStatement<$SubjectTermsTable, SubjectTerm> _terms(int subjectId) =>
+      select(subjectTerms)
+        ..where((t) => t.subjectId.equals(subjectId))
+        ..orderBy([
+          (t) => OrderingTerm.desc(t.uses),
+          (t) => OrderingTerm.desc(t.createdAt),
+          (t) => OrderingTerm.desc(t.id),
+        ]);
+
+  /// Most used first, then newest.
+  Stream<List<SubjectTerm>> watchTerms(int subjectId) =>
+      _terms(subjectId).watch();
+
+  Future<List<SubjectTerm>> terms(int subjectId) => _terms(subjectId).get();
+
+  /// Adds a word to the subject's vocabulary, or returns the row that already
+  /// holds it — compared without case and diacritics, so „Proško" and
+  /// „prosko" are one entry. A correction ([heard] set) is its own entry per
+  /// misheard form. A manual or correction source upgrades an automatic one,
+  /// because the user said so.
+  Future<int> addTerm(
+    int subjectId,
+    String term, {
+    String? heard,
+    TermSource source = TermSource.manual,
+  }) =>
+      transaction(() async {
+        final clean = requiredText(term, maxTermLength, 'term');
+        final cleanHeard = _optional(heard);
+        if (cleanHeard == clean) {
+          throw ArgumentError.value(heard, 'heard', 'same as the term');
+        }
+        final key = normalizeForArtifactMatch(clean);
+        final heardKey =
+            cleanHeard == null ? null : normalizeForArtifactMatch(cleanHeard);
+        final userMade =
+            source == TermSource.manual || source == TermSource.correction;
+        for (final row in await terms(subjectId)) {
+          final rowHeard =
+              row.heard == null ? null : normalizeForArtifactMatch(row.heard!);
+          if (normalizeForArtifactMatch(row.term) != key ||
+              rowHeard != heardKey) {
+            continue;
+          }
+          final rowAuto =
+              row.source == TermSource.card || row.source == TermSource.notes;
+          if (userMade && (row.term != clean || rowAuto)) {
+            await (update(subjectTerms)..where((t) => t.id.equals(row.id)))
+                .write(SubjectTermsCompanion(
+              term: Value(clean),
+              source: Value(rowAuto ? source : row.source),
+            ));
+          }
+          return row.id;
+        }
+        return into(subjectTerms).insert(SubjectTermsCompanion.insert(
+          subjectId: subjectId,
+          term: clean,
+          heard: Value(cleanHeard),
+          source: source,
+          createdAt: DateTime.now(),
+        ));
+      });
+
+  /// Adds several automatic terms at once; blanks and over-long ones are
+  /// skipped rather than thrown on, since they come from AI output.
+  Future<void> addTerms(
+    int subjectId,
+    Iterable<String> words,
+    TermSource source,
+  ) async {
+    for (final word in words) {
+      final trimmed = word.trim();
+      if (trimmed.isEmpty || trimmed.length > maxTermLength) continue;
+      if (normalizeForArtifactMatch(trimmed).isEmpty) continue;
+      await addTerm(subjectId, trimmed, source: source);
+    }
+  }
+
+  Future<void> updateTerm(int id, {required String term, String? heard}) =>
+      (update(subjectTerms)..where((t) => t.id.equals(id))).write(
+        SubjectTermsCompanion(
+          term: Value(requiredText(term, maxTermLength, 'term')),
+          heard: Value(_optional(heard)),
+        ),
+      );
+
+  Future<void> deleteTerm(int id) =>
+      (delete(subjectTerms)..where((t) => t.id.equals(id))).go();
+
+  Future<void> bumpTermUses(Iterable<int> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    await customUpdate(
+      'UPDATE subject_terms SET uses = uses + 1 WHERE id IN '
+      '(${List.filled(list.length, '?').join(', ')})',
+      variables: [for (final id in list) Variable.withInt(id)],
+      updates: {subjectTerms},
+    );
   }
 
   // -------------------------------------------------------------- lessons

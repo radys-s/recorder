@@ -28,6 +28,7 @@ class _Prefs implements PreferencesDao {
         liveAnswersEnabled: live,
         webAnswersEnabled: web,
         micSensitivity: MicSensitivity.medium,
+        onboardingDismissed: false,
       );
 
   @override
