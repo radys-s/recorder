@@ -240,8 +240,9 @@ class _UserBubble extends ConsumerWidget {
       destructive: true,
       icon: Icons.delete_outline,
     );
-    if (confirmed)
+    if (confirmed) {
       await ref.read(chatMessagesDaoProvider).deleteMessage(message.id);
+    }
   }
 
   @override

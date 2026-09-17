@@ -71,6 +71,26 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     }
   }
 
+  /// ⭐ on this moment of the lesson. Whatever is typed becomes its note, so
+  /// „tohle bude v testu" is one tap away from being remembered in výpisky.
+  Future<void> _markImportant() async {
+    final note = _controller.text.trim();
+    _controller.clear();
+    unawaited(HapticFeedback.mediumImpact());
+    await ref
+        .read(chatMessagesDaoProvider)
+        .addImportant(meetingId: widget.meetingId, atMs: _atMs(), note: note);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Označeno jako důležité'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+  }
+
   /// Photos of the board or the slides: stored and shown at once, read by
   /// Gemini in the background. They become lesson context, so no answer is
   /// generated. Also after the lesson, for slides that arrive later.
@@ -217,20 +237,39 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                       Gap.sm,
                       Gap.xs,
                     ),
-                    child: FilledButton.tonalIcon(
-                      onPressed: _answering ? null : _answerNow,
-                      style: FilledButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: _answering
-                          ? const SizedBox.square(
-                              dimension: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.bolt, size: 18),
-                      label: Text(
-                        _answering ? 'Hledám otázku…' : 'Odpověz teď',
-                      ),
+                    child: Row(
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _answering ? null : _answerNow,
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: _answering
+                              ? const SizedBox.square(
+                                  dimension: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.bolt, size: 18),
+                          label: Text(
+                            _answering ? 'Hledám otázku…' : 'Odpověz teď',
+                          ),
+                        ),
+                        const SizedBox(width: Gap.sm),
+                        OutlinedButton.icon(
+                          onPressed: _markImportant,
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: Icon(
+                            Icons.star_rounded,
+                            size: 18,
+                            color: scheme.tertiary,
+                          ),
+                          label: const Text('Důležité'),
+                        ),
+                      ],
                     ),
                   ),
                 Row(

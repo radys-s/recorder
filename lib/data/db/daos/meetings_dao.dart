@@ -24,6 +24,7 @@ class MeetingSummary {
     required this.failedCount,
     required this.durationMs,
     this.subject,
+    this.importantCount = 0,
   });
 
   final Meeting meeting;
@@ -37,6 +38,9 @@ class MeetingSummary {
   /// End of the last chunk. A better duration than `endedAt - createdAt`,
   /// which also counts the moments spent starting and stopping.
   final int durationMs;
+
+  /// Moments the student starred during the lesson.
+  final int importantCount;
 
   /// Everything neither finished nor given up on: queued, uploading, or
   /// waiting out a backoff.
@@ -79,6 +83,16 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
     final failed = transcriptSegments.id.count(
       filter: transcriptSegments.status.equalsValue(SegmentStatus.failed),
     );
+    // A correlated count rather than a third join, which would multiply the
+    // segment rows and break every count above.
+    final stars = subqueryExpression<int>(
+      selectOnly(chatMessages)
+        ..addColumns([chatMessages.id.count()])
+        ..where(
+          chatMessages.meetingId.equalsExp(meetings.id) &
+              chatMessages.intent.equalsValue(ChatIntent.important),
+        ),
+    );
 
     // Left outer: a meeting that was stopped before its first chunk closed
     // still has to appear, with zeroes.
@@ -90,7 +104,7 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
       // One subject per meeting at most, so this join does not multiply rows.
       leftOuterJoin(subjects, subjects.id.equalsExp(meetings.subjectId)),
     ])
-      ..addColumns([count, longest, transcribed, failed])
+      ..addColumns([count, longest, transcribed, failed, stars])
       ..groupBy([meetings.id])
       ..orderBy([OrderingTerm.desc(meetings.createdAt)]);
 
@@ -102,6 +116,7 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase> with _$MeetingsDaoMixin 
         transcribedCount: row.read(transcribed) ?? 0,
         failedCount: row.read(failed) ?? 0,
         durationMs: row.read(longest) ?? 0,
+        importantCount: row.read(stars) ?? 0,
       );
     }).watch();
   }

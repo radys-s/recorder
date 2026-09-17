@@ -691,6 +691,12 @@ class _MeetingCard extends ConsumerWidget {
           label: 'Nahrává se',
           tone: ChipTone.alert,
         ),
+      if (summary.importantCount > 0)
+        StatusChip(
+          icon: Icons.star_rounded,
+          label: '${summary.importantCount}',
+          tone: ChipTone.progress,
+        ),
       if (summary.failedCount > 0)
         StatusChip(
           icon: Icons.error_outline,

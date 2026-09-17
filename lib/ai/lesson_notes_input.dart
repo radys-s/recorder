@@ -8,6 +8,7 @@ class LessonNotesInput {
     this.context = const [],
     this.photos = const [],
     this.questions = const [],
+    this.important = const [],
   });
 
   final String subjectName;
@@ -23,6 +24,10 @@ class LessonNotesInput {
 
   /// Questions from the lesson with the app's answers, oldest first.
   final List<({String question, String answer})> questions;
+
+  /// Moments the student starred: their note (may be empty) and what was said
+  /// around them, oldest first.
+  final List<({String note, String excerpt})> important;
 }
 
 /// The labelled material after the transcript, each block cut to fit [maxChars]
@@ -30,6 +35,15 @@ class LessonNotesInput {
 /// ends its block, so a later block still gets its share.
 String lessonNotesBlocks(LessonNotesInput input, {int? maxChars}) {
   final blocks = <(String, List<String>)>[
+    (
+      'Student označil jako důležité',
+      [
+        for (final i in input.important)
+          if (i.excerpt.trim().isNotEmpty || i.note.trim().isNotEmpty)
+            '- ${i.note.trim().isEmpty ? '' : 'Poznámka: ${i.note.trim()}\n  '}'
+                'Řečeno: ${i.excerpt.trim()}',
+      ],
+    ),
     ('Kontext od studenta', [for (final c in input.context) '- ${c.trim()}']),
     (
       'Fotky tabule a prezentace',
@@ -46,7 +60,10 @@ String lessonNotesBlocks(LessonNotesInput input, {int? maxChars}) {
       ],
     ),
   ];
-  final present = [for (final b in blocks) if (b.$2.isNotEmpty) b];
+  final present = [
+    for (final b in blocks)
+      if (b.$2.isNotEmpty) b,
+  ];
   if (present.isEmpty) return '';
 
   final share = maxChars == null ? null : maxChars ~/ present.length;
@@ -94,6 +111,8 @@ a lesson and learns from before a test. The material comes in labelled blocks:
   class was reading or working on.
 - "Fotky tabule a prezentace": text read from photos of the board and of slides.
 - "Otázky a odpovědi": questions from the lesson with answers an AI gave then.
+- "Student označil jako důležité": moments the student starred during the
+  lesson, each with what was said around it and sometimes the student's note.
 
 Rules:
 - Write in the same language as the transcript, headings included.
@@ -102,6 +121,9 @@ Rules:
   names and terms over the transcript's, and never leave out a term that is on
   it. An answer from "Otázky a odpovědi" may be used only where the lesson
   agrees with it.
+- Every starred moment must appear under "Co si zapamatovat (může být v
+  testu)" — at every depth — as what was actually said there, not as the
+  note alone.
 - Leave out classroom logistics, discipline, jokes and chatter.
 - Plain text: "- " for a bullet, "Nadpis:" alone on its line. No Markdown, no
   bold, no tables. A term and its definition as "- pojem – definice".
@@ -112,17 +134,20 @@ Rules:
 ${_lessonDepthPrompt(depth)}''';
 
 String _lessonDepthPrompt(NotesDepth depth) => switch (depth) {
-      NotesDepth.keywords => '''
+  NotesDepth.keywords =>
+    '''
 At most 6 lines, about 50 words, no headings: each line "- " and a key term with
 a few words of definition, the most testable ones first. A last line
 "- Domácí úkol: ..." only if homework was given.''',
-      NotesDepth.brief => '''
+  NotesDepth.brief =>
+    '''
 At most 100 words. The shape:
 
   Téma: <one line>
   - <the 3 to 6 things from the lesson most worth knowing, one sentence each>
   Domácí úkol: <only if given>''',
-      NotesDepth.standard => '''
+  NotesDepth.standard =>
+    '''
 150 to 300 words. The shape:
 
   Téma: <one line>
@@ -137,7 +162,8 @@ At most 100 words. The shape:
   - ...
 
   Domácí úkol: <only if given>''',
-      NotesDepth.detailed => '''
+  NotesDepth.detailed =>
+    '''
 300 to 600 words. The shape:
 
   Téma: <one line>
@@ -161,9 +187,10 @@ At most 100 words. The shape:
   Domácí úkol: <only if given>
 
 One heading per subtopic, in the order the lesson took them.''',
-      NotesDepth.full => '''
+  NotesDepth.full =>
+    '''
 As long as the lesson needs: keep every explanation, example, date, name and
 term. Same shape as a detailed version — Téma, Klíčové pojmy, one heading per
 subtopic, Příklady / ukázky, Souvislosti, Co si zapamatovat (může být v testu),
 Domácí úkol — with nothing from the lesson left out.''',
-    };
+};

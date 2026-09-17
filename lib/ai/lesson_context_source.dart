@@ -1,4 +1,3 @@
-
 import 'package:drift/drift.dart';
 
 import '../data/db/app_database.dart';
@@ -19,14 +18,15 @@ class LessonContextSource {
   /// Everything for [meetingId]. Empty for an ordinary meeting with no rules
   /// anywhere, which keeps the meeting prompt exactly as it was.
   Future<LessonMaterial> load(int meetingId) async {
-    final meeting = await (_db.select(_db.meetings)
-          ..where((t) => t.id.equals(meetingId)))
-        .getSingleOrNull();
+    final meeting = await (_db.select(
+      _db.meetings,
+    )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
     final prefs = await _db.preferencesDao.current();
 
     final subjectId = meeting?.subjectId;
-    final subject =
-        subjectId == null ? null : await _db.subjectsDao.subject(subjectId);
+    final subject = subjectId == null
+        ? null
+        : await _db.subjectsDao.subject(subjectId);
 
     final chat = await _db.chatMessagesDao.messages(meetingId);
     final userChat = [
@@ -44,13 +44,15 @@ class LessonContextSource {
       for (final pinnedFirst in [true, false]) {
         for (final c in all) {
           if (pinned.contains(c.id) != pinnedFirst) continue;
-          cards.add(LessonCard(
-            id: c.id,
-            title: c.title,
-            content: c.content,
-            summary: c.summary,
-            pinned: pinnedFirst,
-          ));
+          cards.add(
+            LessonCard(
+              id: c.id,
+              title: c.title,
+              content: c.content,
+              summary: c.summary,
+              pinned: pinnedFirst,
+            ),
+          );
         }
       }
     }
@@ -80,9 +82,9 @@ class LessonContextSource {
   /// What výpisky are made from besides the transcript, or null for a meeting
   /// without a subject.
   Future<LessonNotesInput?> notesInput(int meetingId) async {
-    final meeting = await (_db.select(_db.meetings)
-          ..where((t) => t.id.equals(meetingId)))
-        .getSingleOrNull();
+    final meeting = await (_db.select(
+      _db.meetings,
+    )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
     final subjectId = meeting?.subjectId;
     if (subjectId == null) return null;
     final subject = await _db.subjectsDao.subject(subjectId);
@@ -91,10 +93,11 @@ class LessonContextSource {
     final pinned = (await _db.subjectsDao.pinnedCardIds(meetingId)).toSet();
     final cards = await _db.subjectsDao.cards(subjectId);
     final chat = await _db.chatMessagesDao.messages(meetingId);
-    final answerCards = await (_db.select(_db.answerCards)
-          ..where((t) => t.meetingId.equals(meetingId))
-          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-        .get();
+    final answerCards =
+        await (_db.select(_db.answerCards)
+              ..where((t) => t.meetingId.equals(meetingId))
+              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+            .get();
 
     final ready = [
       for (final m in chat)
@@ -114,8 +117,9 @@ class LessonContextSource {
       if (answer.isEmpty) continue;
       questions.add((atMs: m.atMs, question: m.body, answer: answer));
     }
-    final segments =
-        await _db.transcriptSegmentsDao.segmentsForMeeting(meetingId);
+    final segments = await _db.transcriptSegmentsDao.segmentsForMeeting(
+      meetingId,
+    );
     final segmentStart = {for (final s in segments) s.id: s.startMs};
     for (final c in answerCards) {
       final answer = _answerText(c.answer, c.detail);
@@ -157,6 +161,11 @@ class LessonContextSource {
       questions: [
         for (final q in questions) (question: q.question, answer: q.answer),
       ],
+      important: [
+        for (final m in ready)
+          if (m.intent == ChatIntent.important)
+            (note: m.body, excerpt: importantExcerpt(segments, m.atMs)),
+      ],
     );
   }
 
@@ -172,9 +181,9 @@ class LessonContextSource {
   Future<String?> glossary(int meetingId) async {
     final ids = await _db.subjectsDao.pinnedCardIds(meetingId);
     if (ids.isEmpty) return null;
-    final rows = await (_db.select(_db.contextCards)
-          ..where((t) => t.id.isIn(ids)))
-        .get();
+    final rows = await (_db.select(
+      _db.contextCards,
+    )..where((t) => t.id.isIn(ids))).get();
     return buildWhisperGlossary([
       for (final c in rows)
         (title: c.title, content: c.content, keywords: c.keywords),
@@ -183,4 +192,23 @@ class LessonContextSource {
 
   Future<void> markUsed(int cardId) =>
       _db.subjectsDao.markCardsUsed([cardId], DateTime.now());
+}
+
+/// What was said within [window] of a star at [atMs]: the live segments that
+/// overlap it, in order. Live rather than refined, because refined windows are
+/// minutes long and would bury the moment.
+String importantExcerpt(
+  List<TranscriptSegment> segments,
+  int atMs, {
+  int window = 30000,
+}) {
+  final from = atMs - window;
+  final to = atMs + window;
+  return [
+    for (final s in segments)
+      if (s.endMs > from &&
+          s.startMs < to &&
+          (s.content ?? '').trim().isNotEmpty)
+        s.content!.trim(),
+  ].join(' ');
 }
