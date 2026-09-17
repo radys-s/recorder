@@ -23,7 +23,7 @@ class GroqFailure {
 }
 
 /// Maps a transport/HTTP failure onto the retry contract.
-GroqFailure classifyGroqFailure(DioException e) {
+GroqFailure classifyGroqFailure(DioException e, {String vendor = 'Groq'}) {
   switch (e.type) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
@@ -61,7 +61,7 @@ GroqFailure classifyGroqFailure(DioException e) {
   if (status == 401 || status == 403) {
     return GroqFailure(
       transient: false,
-      message: 'Groq rejected the API key. Check it in Settings. ($detail)',
+      message: '$vendor rejected the API key. Check it in Settings. ($detail)',
       statusCode: status,
     );
   }

@@ -21,7 +21,13 @@ class LlmMessage {
 /// same reason: the caller's only real decision is whether trying again could
 /// help.
 abstract class AiException implements Exception {
-  const AiException(this.message, {this.statusCode, this.kind, this.reason});
+  const AiException(
+    this.message, {
+    this.statusCode,
+    this.kind,
+    this.reason,
+    this.retryAfter,
+  });
 
   final String message;
   final int? statusCode;
@@ -32,6 +38,9 @@ abstract class AiException implements Exception {
   /// The provider's own short explanation, safe to show.
   final String? reason;
 
+  /// How long the provider asked to wait (`retry-after`), when it said.
+  final Duration? retryAfter;
+
   @override
   String toString() =>
       '$runtimeType($message${statusCode == null ? '' : ', HTTP $statusCode'})';
@@ -40,7 +49,7 @@ abstract class AiException implements Exception {
 /// Rate limits, server errors, timeouts, no connectivity.
 class AiTransientException extends AiException {
   const AiTransientException(super.message,
-      {super.statusCode, super.kind, super.reason});
+      {super.statusCode, super.kind, super.reason, super.retryAfter});
 }
 
 /// Bad or missing API key, a retired model id, a malformed request.

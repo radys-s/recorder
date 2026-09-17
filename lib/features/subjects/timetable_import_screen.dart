@@ -16,18 +16,20 @@ import 'timetable.dart';
 enum _Source { gallery, camera }
 
 /// Picks timetable screenshots and opens the review. Explains instead when
-/// there is no Gemini key, since only Gemini reads pictures.
+/// there is no Gemini or Mistral key, since only those read pictures.
 Future<void> importTimetableFlow(BuildContext context, WidgetRef ref) async {
   final messenger = ScaffoldMessenger.of(context);
   final navigator = Navigator.of(context);
-  if (!await ref.read(geminiKeyStoreProvider).hasKey()) {
+  ref.invalidate(hasVisionKeyProvider);
+  if (!await ref.read(hasVisionKeyProvider.future)) {
     ref.invalidate(hasGeminiKeyProvider);
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
           content: Text(
-            'Rozvrh z obrázku čte Gemini. Přidej Gemini klíč v Nastavení.',
+            'Rozvrh z obrázku čte Gemini nebo Mistral. Přidej klíč v '
+            'Nastavení.',
           ),
         ),
       );

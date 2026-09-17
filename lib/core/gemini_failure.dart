@@ -31,6 +31,10 @@ enum GeminiErrorKind {
 
   /// Timeouts, connectivity, server errors.
   network,
+
+  /// The model is busy for everyone right now (503 / UNAVAILABLE). Nothing is
+  /// wrong with the key or the request; another model or service will do.
+  overloaded,
 }
 
 /// The retry decision for one failed Gemini request, plus what kind of
@@ -123,6 +127,17 @@ GeminiFailure classifyGeminiFailure(DioException e) {
   // a 413 from it means the request (usually a photo) really is too big.
   if (status == 413) {
     return permanent(GeminiErrorKind.badRequest, base.message);
+  }
+  if (status == 503 ||
+      googleStatus == 'UNAVAILABLE' ||
+      lower.contains('overloaded')) {
+    return GeminiFailure(
+      transient: true,
+      message: base.message,
+      kind: GeminiErrorKind.overloaded,
+      statusCode: status,
+      reason: reason,
+    );
   }
   if (status != null && status >= 500) {
     return GeminiFailure(

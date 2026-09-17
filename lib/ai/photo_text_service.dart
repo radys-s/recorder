@@ -154,6 +154,8 @@ String geminiFailureText(Object error) {
       GeminiErrorKind.quota =>
         'Došel bezplatný limit Gemini. Zkus to za chvíli znovu.',
       GeminiErrorKind.badRequest => 'Gemini tenhle požadavek nepřijal.',
+      GeminiErrorKind.overloaded =>
+        'Gemini je teď přetížené (moc lidí najednou). Zkus to za chvíli znovu.',
       GeminiErrorKind.network =>
         'Gemini teď neodpovídá (síť nebo výpadek). Zkus to za chvíli znovu.',
     };

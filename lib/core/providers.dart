@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../ai/ai_router.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
@@ -22,6 +23,8 @@ import '../ai/lesson_context_source.dart';
 import '../ai/live_answer_service.dart';
 import '../ai/llm_provider.dart';
 import '../ai/notes_generator.dart';
+import '../ai/openai_compatible_provider.dart';
+import '../ai/vision_fallback.dart';
 import '../ai/web_answer_service.dart';
 import '../audio/audio_capture_service.dart';
 import '../audio/pcm_audio_source.dart';
@@ -98,11 +101,93 @@ final meetingNotesDaoProvider = Provider<MeetingNotesDao>((ref) {
   return ref.watch(appDatabaseProvider).meetingNotesDao;
 });
 
-/// The chat model, shared by notes and (later) live answers. Stateless apart
-/// from its Dio client, so one instance for the whole app is enough.
-final llmProvider = Provider<LlmProvider>((ref) {
-  return GroqChatProvider(ref.watch(apiKeyStoreProvider));
+/// Extra text services, each in its own Keychain slot. The custom one is for
+/// a school's own model: its address and model id are stored the same way.
+final mistralKeyStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kMistralApiKeyStorageKey),
+);
+final cerebrasKeyStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kCerebrasApiKeyStorageKey),
+);
+final customAiKeyStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kCustomAiKeyStorageKey),
+);
+final customAiBaseUrlStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kCustomAiBaseUrlStorageKey),
+);
+final customAiModelStoreProvider = Provider<ApiKeyStore>(
+  (ref) => ApiKeyStore(storageKey: kCustomAiModelStorageKey),
+);
+
+/// Cooldowns shared by both routers, so the corrector and the answers see
+/// the same busy services.
+final aiRouteHealthProvider = Provider<AiRouteHealth>((ref) => AiRouteHealth());
+
+List<AiRoute> _aiRoutes(Ref ref, {String? reasoningEffort}) {
+  final customModel = ref.watch(customAiModelStoreProvider);
+  return [
+    AiRoute(
+      vendor: AiVendor.custom,
+      provider: OpenAiCompatibleProvider(
+        ref.watch(customAiKeyStoreProvider),
+        vendor: 'Vlastní',
+        baseUrl: ref.watch(customAiBaseUrlStoreProvider).read,
+      ),
+      models: (tier, _) async {
+        final id = (await customModel.read())?.trim() ?? '';
+        return tier == AiTier.vision || id.isEmpty ? const [] : [id];
+      },
+    ),
+    AiRoute(
+      vendor: AiVendor.cerebras,
+      provider: OpenAiCompatibleProvider(
+        ref.watch(cerebrasKeyStoreProvider),
+        vendor: 'Cerebras',
+        baseUrl: () async => kCerebrasBaseUrl,
+        reasoningEffort: reasoningEffort,
+      ),
+      models: (tier, _) async =>
+          tier == AiTier.vision ? const [] : kCerebrasModels,
+      maxInputTokens: kCerebrasMaxInputTokens,
+    ),
+    AiRoute(
+      vendor: AiVendor.mistral,
+      provider: OpenAiCompatibleProvider(
+        ref.watch(mistralKeyStoreProvider),
+        vendor: 'Mistral',
+        baseUrl: () async => kMistralBaseUrl,
+      ),
+      models: (tier, _) async => switch (tier) {
+        AiTier.fast => kMistralFastModels,
+        AiTier.strong => kMistralStrongModels,
+        AiTier.vision => kMistralVisionModels,
+      },
+    ),
+    AiRoute(
+      vendor: AiVendor.groq,
+      provider: GroqChatProvider(
+        ref.watch(apiKeyStoreProvider),
+        reasoningEffort: reasoningEffort,
+      ),
+      models: (tier, requested) async =>
+          tier == AiTier.vision || requested.isEmpty ? const [] : [requested],
+    ),
+  ];
+}
+
+/// Every text request of the app: Groq, Cerebras, Mistral and a custom
+/// service, whichever has a key and is not resting. One instance for the app.
+final routedLlmProvider = Provider<RoutedLlmProvider>((ref) {
+  return RoutedLlmProvider(
+    routes: _aiRoutes(ref),
+    health: ref.watch(aiRouteHealthProvider),
+  );
 });
+
+/// The chat model, shared by notes, answers and cards.
+final llmProvider = Provider<LlmProvider>(
+  (ref) => ref.watch(routedLlmProvider),
+);
 
 final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
   final db = ref.watch(appDatabaseProvider);
@@ -228,10 +313,17 @@ final geminiModelResolverProvider = Provider<GeminiModelResolver>((ref) {
 });
 
 final geminiProvider = Provider<GeminiProvider>((ref) {
-  return GeminiProvider(
+  return GeminiWithVisionFallback(
     ref.watch(geminiKeyStoreProvider),
     models: ref.watch(geminiModelResolverProvider),
+    router: ref.watch(routedLlmProvider),
   );
+});
+
+/// Whether any service can read a photo: Gemini, or Mistral behind it.
+final hasVisionKeyProvider = FutureProvider<bool>((ref) async {
+  return await ref.watch(geminiKeyStoreProvider).hasKey() ||
+      await ref.watch(mistralKeyStoreProvider).hasKey();
 });
 
 final hasGeminiKeyProvider = FutureProvider<bool>((ref) {
@@ -304,7 +396,10 @@ final cardDeleterProvider = Provider<CardDeleter>((ref) {
 /// model so it never spends the answer model's per-minute budget.
 final transcriptCorrectorProvider = Provider<TranscriptCorrector>((ref) {
   return TranscriptCorrector(
-    GroqChatProvider(ref.watch(apiKeyStoreProvider), reasoningEffort: 'low'),
+    RoutedLlmProvider(
+      routes: _aiRoutes(ref, reasoningEffort: 'low'),
+      health: ref.watch(aiRouteHealthProvider),
+    ),
   );
 });
 

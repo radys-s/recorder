@@ -185,10 +185,11 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
 
   Future<void> _fromPhotos() async {
     if (_busy != null) return;
-    if (!await ref.read(geminiKeyStoreProvider).hasKey()) {
+    ref.invalidate(hasVisionKeyProvider);
+    if (!await ref.read(hasVisionKeyProvider.future)) {
       if (mounted) {
         ref.invalidate(hasGeminiKeyProvider);
-        _say('Text z fotek čte Gemini. Přidej Gemini klíč v Nastavení.');
+        _say('Text z fotek čte Gemini nebo Mistral. Přidej klíč v Nastavení.');
       }
       return;
     }

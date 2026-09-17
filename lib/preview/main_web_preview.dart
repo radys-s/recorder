@@ -52,6 +52,13 @@ Future<void> main() async {
         geminiKeyStoreProvider.overrideWithValue(
           _MemoryKeyStore(fresh ? null : 'AIza_test'),
         ),
+        mistralKeyStoreProvider.overrideWithValue(
+          _MemoryKeyStore(fresh ? null : 'm_test'),
+        ),
+        cerebrasKeyStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
+        customAiKeyStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
+        customAiBaseUrlStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
+        customAiModelStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         llmProvider.overrideWithValue(_FakeLlm()),
         photoPickerProvider.overrideWithValue(_FakePicker()),
         timetableImportServiceProvider.overrideWith(

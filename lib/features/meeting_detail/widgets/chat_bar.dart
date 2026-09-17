@@ -100,8 +100,9 @@ class _ChatBarState extends ConsumerState<ChatBar> {
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
 
-    if (!await ref.read(geminiKeyStoreProvider).hasKey()) {
-      say('Fotky čte Gemini. Přidej Gemini klíč v Nastavení.');
+    ref.invalidate(hasVisionKeyProvider);
+    if (!await ref.read(hasVisionKeyProvider.future)) {
+      say('Fotky čte Gemini nebo Mistral. Přidej klíč v Nastavení.');
       return;
     }
     // The moment of the tap, not of the shutter: that is when it was shown.

@@ -221,6 +221,45 @@ const int kWebMaxAttempts = 4;
 /// going to read.
 const int kMaxAnswerSources = 3;
 
+/// Optional OpenAI-compatible services behind the AI router (M40). Model ids
+/// were checked against the vendors' docs on 2026-09-17; each list is tried in
+/// order, so a retired id costs one 404 and moves on.
+const String kMistralApiKeyStorageKey = 'mistral_api_key';
+const String kCerebrasApiKeyStorageKey = 'cerebras_api_key';
+const String kCustomAiKeyStorageKey = 'custom_ai_key';
+const String kCustomAiBaseUrlStorageKey = 'custom_ai_base_url';
+const String kCustomAiModelStorageKey = 'custom_ai_model';
+
+const String kMistralBaseUrl = 'https://api.mistral.ai/v1';
+const String kCerebrasBaseUrl = 'https://api.cerebras.ai/v1';
+const String kGroqBaseUrl = 'https://api.groq.com/openai/v1';
+
+const List<String> kMistralFastModels = [
+  'mistral-small-latest',
+  'ministral-8b-latest',
+];
+const List<String> kMistralStrongModels = [
+  'mistral-medium-latest',
+  'mistral-large-latest',
+  'mistral-small-latest',
+];
+const List<String> kMistralVisionModels = [
+  'mistral-medium-latest',
+  'mistral-small-latest',
+  'mistral-large-latest',
+];
+const List<String> kCerebrasModels = ['gpt-oss-120b', 'qwen-3.8-27b'];
+
+/// Cerebras' free tier caps context at ~65k tokens; bigger requests skip it.
+const int kCerebrasMaxInputTokens = 55000;
+
+/// Above this estimated input, Mistral's long context goes first.
+const int kRouterLargeInputTokens = 20000;
+
+/// First cooldown after a rate limit or overload, doubled per repeat.
+const Duration kRouteCooldown = Duration(seconds: 60);
+const Duration kRouteMaxCooldown = Duration(minutes: 10);
+
 /// Secure storage key for the optional Google Gemini API key.
 const String kGeminiApiKeyStorageKey = 'gemini_api_key';
 

@@ -288,6 +288,12 @@ void main() {
       'server 503': (
         503,
         _error(503, 'The model is overloaded.', 'UNAVAILABLE'),
+        GeminiErrorKind.overloaded,
+        true
+      ),
+      'server 500': (
+        500,
+        _error(500, 'Internal error encountered.', 'INTERNAL'),
         GeminiErrorKind.network,
         true
       ),

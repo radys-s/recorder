@@ -57,7 +57,12 @@ class GeminiCompletion {
 /// fight an 8 000-token-per-minute ceiling. Like the Groq providers, the key
 /// is read per request, so a change in Settings applies to the next call.
 class GeminiProvider extends LlmProvider {
-  GeminiProvider(this._apiKeyStore, {Dio? dio, this._models})
+  GeminiProvider(
+    this._apiKeyStore, {
+    Dio? dio,
+    this._models,
+    this.overloadDelay = const Duration(seconds: 2),
+  })
       : _dio = dio ??
             Dio(
               BaseOptions(
@@ -73,6 +78,9 @@ class GeminiProvider extends LlmProvider {
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
   final GeminiModelResolver? _models;
+
+  /// How long to wait before asking an overloaded model once more.
+  final Duration overloadDelay;
 
   /// Models that answered 400 to `thinkingConfig`; it is left out for them.
   final Set<String> _noThinking = {};
@@ -119,9 +127,12 @@ class GeminiProvider extends LlmProvider {
     var withSearch = search;
     var searchDropped = false;
     var modelSwapped = false;
+    var overloadRetried = false;
+    var liteTried = false;
 
     // At most one repair of each kind: a model Google does not offer, a
-    // thinking field the model does not take, a search tool it cannot use.
+    // thinking field the model does not take, a search tool it cannot use,
+    // and for an overloaded model one more try and then the lite model.
     for (var attempt = 0;; attempt++) {
       final thinking = !_noThinking.contains(id);
       try {
@@ -160,7 +171,24 @@ class GeminiProvider extends LlmProvider {
           AppLog.d(_tag, 'body: ${clipReason('${e.response?.data}', max: 300)}');
           if (kDebugMode) AppLog.d(_tag, 'raw body: ${e.response?.data}');
         }
-        if (attempt < 3 && e.type != DioExceptionType.cancel) {
+        if (attempt < 5 && e.type != DioExceptionType.cancel) {
+          if (failure.kind == GeminiErrorKind.overloaded) {
+            if (!overloadRetried) {
+              overloadRetried = true;
+              AppLog.d(_tag, '$id overloaded, retrying once');
+              await Future<void>.delayed(overloadDelay);
+              if (cancelToken?.isCancelled != true) continue;
+            } else if (!liteTried && model == kGeminiModel) {
+              liteTried = true;
+              final lite = await _models?.resolve(kGeminiLiteModel) ??
+                  kGeminiLiteModel;
+              if (lite != id) {
+                AppLog.d(_tag, '$id still overloaded, trying $lite');
+                id = lite;
+                continue;
+              }
+            }
+          }
           final reason = (failure.reason ?? '').toLowerCase();
           if (failure.kind == GeminiErrorKind.modelMissing &&
               !modelSwapped &&
