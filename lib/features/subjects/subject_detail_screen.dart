@@ -17,6 +17,7 @@ import 'subjects_providers.dart';
 import 'timetable.dart';
 import 'widgets/timetable_slot_dialog.dart';
 import 'widgets/subject_badge.dart';
+import 'widgets/subject_vocabulary.dart';
 import '../../core/pending_deletions.dart';
 
 /// One subject: its cards, its recorded lessons, and its settings.
@@ -471,6 +472,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
             label: const Text('Přidat hodinu'),
           ),
         ),
+        const SizedBox(height: Gap.xl),
+        SubjectVocabulary(subjectId: subject.id),
         const SizedBox(height: Gap.xl),
         Text('Barva', style: theme.textTheme.titleSmall),
         const SizedBox(height: Gap.md),

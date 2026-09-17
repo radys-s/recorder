@@ -19,6 +19,7 @@ import '../../notes_library/saved_note_screen.dart';
 import '../../notes_library/widgets/save_note_sheet.dart';
 import '../../subjects/subjects_providers.dart';
 import '../meeting_detail_providers.dart';
+import '../transcript_fix.dart';
 
 /// The "Poznámky" tab: pick a depth, press the button, read the result.
 ///
@@ -142,6 +143,11 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     final subjectId =
         ref.watch(meetingProvider(widget.meetingId)).valueOrNull?.subjectId;
     final lesson = subjectId != null;
+    final editedAt = ref.watch(transcriptEditedAtProvider)[widget.meetingId];
+    final outdated = !generating &&
+        note?.content != null &&
+        editedAt != null &&
+        editedAt.isAfter(note!.createdAt);
     final suggestions = lesson && !generating
         ? decodeCardSuggestions(note?.cardSuggestions)
         : const <CardSuggestion>[];
@@ -194,6 +200,23 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
               : 'Vytvořit znovu'),
         ),
         const SizedBox(height: Gap.xl),
+        if (outdated) ...[
+          Card(
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            child: ListTile(
+              leading: const Icon(Icons.edit_note),
+              title: const Text('Přepis se změnil'),
+              subtitle: Text(lesson
+                  ? 'Výpisky jsou ze starší verze přepisu.'
+                  : 'Poznámky jsou ze starší verze přepisu.'),
+              trailing: TextButton(
+                onPressed: () => _generate(depth),
+                child: const Text('Vytvořit znovu'),
+              ),
+            ),
+          ),
+          const SizedBox(height: Gap.md),
+        ],
         if (generating) const _GeneratingIndicator(),
         if (note?.status == NotesStatus.failed && note?.error != null)
           _NotesError(message: note!.error!),

@@ -17,10 +17,15 @@ class TranscriptSegmentTile extends StatelessWidget {
     super.key,
     required this.segment,
     required this.onRetry,
+    this.onLongPress,
   });
 
   final TranscriptSegment segment;
   final VoidCallback onRetry;
+
+  /// Opens the word fix sheet. The text is then plain rather than selectable,
+  /// because selection would swallow the long-press; the sheet copies it.
+  final VoidCallback? onLongPress;
 
   /// Identifies which of the four bodies is showing, so [AnimatedSwitcher] can
   /// tell "the same body, rebuilt" from "a different body, swap it".
@@ -35,7 +40,7 @@ class TranscriptSegmentTile extends StatelessWidget {
     final theme = Theme.of(context);
     final reduced = reducedMotion(context);
 
-    return Padding(
+    final tile = Padding(
       padding: const EdgeInsets.symmetric(vertical: Gap.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,6 +108,15 @@ class TranscriptSegmentTile extends StatelessWidget {
         ],
       ),
     );
+    if (onLongPress == null || segment.content == null) return tile;
+    return Semantics(
+      onLongPressHint: 'Opravit slovo',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: onLongPress,
+        child: tile,
+      ),
+    );
   }
 
   Widget _body(ThemeData theme) {
@@ -110,7 +124,9 @@ class TranscriptSegmentTile extends StatelessWidget {
       return _FailedBody(onRetry: onRetry);
     }
     if (segment.content != null) {
-      return SelectableText(segment.content!, style: theme.textTheme.bodyLarge);
+      return onLongPress == null
+          ? SelectableText(segment.content!, style: theme.textTheme.bodyLarge)
+          : Text(segment.content!, style: theme.textTheme.bodyLarge);
     }
     return Text(
       segment.status == SegmentStatus.uploading

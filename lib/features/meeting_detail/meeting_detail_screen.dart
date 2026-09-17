@@ -27,6 +27,7 @@ import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
 import 'widgets/refined_window_tile.dart';
 import 'widgets/transcript_segment_tile.dart';
+import 'widgets/word_fix_sheet.dart';
 
 enum _MeetingAction { lesson, rename, delete }
 
@@ -390,10 +391,32 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                     onRetry: () => ref
                         .read(refinedTranscriptServiceProvider)
                         .retryWindow(item.id),
+                    onLongPress: isThisOneRecording
+                        ? null
+                        : () => showWordFixSheet(
+                              context,
+                              meetingId: widget.meetingId,
+                              text: item.content?.trim() ?? '',
+                              original: item.rawContent,
+                              onRestore: () => ref
+                                  .read(appDatabaseProvider)
+                                  .refinedSegmentsDao
+                                  .restoreWindow(item.id),
+                            ),
                   ),
                 TranscriptSegment() => TranscriptSegmentTile(
                     segment: item,
                     onRetry: () => _retry(item),
+                    onLongPress: () => showWordFixSheet(
+                      context,
+                      meetingId: widget.meetingId,
+                      text: item.content ?? '',
+                      original: item.rawContent,
+                      onRestore: () => ref
+                          .read(appDatabaseProvider)
+                          .transcriptSegmentsDao
+                          .restoreSegment(item.id),
+                    ),
                   ),
                 _ => const SizedBox.shrink(),
               },

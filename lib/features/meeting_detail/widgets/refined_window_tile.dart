@@ -12,10 +12,14 @@ class RefinedWindowTile extends StatelessWidget {
     super.key,
     required this.window,
     required this.onRetry,
+    this.onLongPress,
   });
 
   final RefinedSegment window;
   final VoidCallback onRetry;
+
+  /// Opens the word fix sheet; see [TranscriptSegmentTile.onLongPress].
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -63,10 +67,25 @@ class RefinedWindowTile extends StatelessWidget {
                 ),
               ),
             ),
-          ] else
+          ] else if (onLongPress == null)
             SelectableText(
               window.content?.trim() ?? '',
               style: theme.textTheme.bodyLarge,
+            )
+          else
+            Semantics(
+              onLongPressHint: 'Opravit slovo',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: onLongPress,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    window.content?.trim() ?? '',
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ),
+              ),
             ),
         ],
       ),
