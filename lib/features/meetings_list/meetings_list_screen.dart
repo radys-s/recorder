@@ -19,12 +19,15 @@ import '../../data/db/daos/meetings_dao.dart';
 import '../../data/db/daos/subjects_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../settings/settings_screen.dart';
+import '../subjects/subject_actions.dart';
+import '../subjects/subject_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
 import '../subjects/timetable.dart';
 import '../subjects/widgets/lesson_sheet.dart';
 import '../subjects/widgets/subject_badge.dart';
 import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
+import 'widgets/onboarding_card.dart';
 import '../../core/pending_deletions.dart';
 
 /// Home screen: a big start card, then every recorded meeting, newest first.
@@ -44,6 +47,11 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   /// A second tap on the start card while the first is still opening the
   /// microphone would otherwise push the meeting screen twice.
   bool _starting = false;
+
+  /// Set once the checklist has been seen unfinished, so finishing it during
+  /// this visit leaves a „Hotovo" card to close instead of it vanishing, while
+  /// someone who set everything up long ago never sees it at all.
+  bool _onboardingActive = false;
 
   Future<void> _startRecording() async {
     if (_starting) return;
@@ -73,13 +81,69 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (id != null) Navigator.of(context).push(MeetingDetailScreen.route(id));
   }
 
-  void _openSettings() => Navigator.of(context)
-      .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+  Future<void> _openSettings() async {
+    await Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+    if (!mounted) return;
+    ref
+      ..invalidate(hasApiKeyProvider)
+      ..invalidate(hasGeminiKeyProvider);
+  }
+
+  Future<void> _onboardingStep(OnboardingStep step) async {
+    switch (step) {
+      case OnboardingStep.groqKey:
+      case OnboardingStep.geminiKey:
+        await _openSettings();
+      case OnboardingStep.subject:
+        await createSubjectFlow(context, ref);
+      case OnboardingStep.timetable:
+        final subjects = ref.read(subjectsProvider).valueOrNull ?? const [];
+        if (subjects.isEmpty) {
+          final id = await createSubjectFlow(context, ref);
+          if (id == null || !mounted) return;
+          await Navigator.of(context)
+              .push(SubjectDetailScreen.route(id, initialTab: 2));
+        } else {
+          await Navigator.of(context).push(
+            SubjectDetailScreen.route(subjects.first.subject.id, initialTab: 2),
+          );
+        }
+    }
+  }
+
+  /// The checklist, or null when it should not show.
+  List<OnboardingItem>? _onboarding(bool? hasKey) {
+    final dismissed = ref
+        .watch(preferencesProvider)
+        .valueOrNull
+        ?.onboardingDismissed;
+    final hasGemini = ref.watch(hasGeminiKeyProvider).valueOrNull;
+    final subjects = ref.watch(subjectsProvider).valueOrNull;
+    final slots = ref.watch(allSlotsProvider).valueOrNull;
+    if (dismissed != false ||
+        hasKey == null ||
+        hasGemini == null ||
+        subjects == null ||
+        slots == null) {
+      return null;
+    }
+    final steps = onboardingSteps(
+      hasGroqKey: hasKey,
+      hasGeminiKey: hasGemini,
+      hasSubject: subjects.isNotEmpty,
+      hasTimetable: slots.isNotEmpty,
+    );
+    if (!onboardingRequiredDone(steps)) _onboardingActive = true;
+    return _onboardingActive ? steps : null;
+  }
 
   @override
   Widget build(BuildContext context) {
     final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
-    final summaries = ref.watch(meetingSummariesProvider).whenData(
+    final summaries = ref
+        .watch(meetingSummariesProvider)
+        .whenData(
           (all) => hidden.isEmpty
               ? all
               : [
@@ -93,7 +157,9 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     final recordingError = ref.watch(
       recordingControllerProvider.select((s) => s.error),
     );
-    final hasKey = ref.watch(hasApiKeyProvider).valueOrNull ?? true;
+    final keyKnown = ref.watch(hasApiKeyProvider).valueOrNull;
+    final hasKey = keyKnown ?? true;
+    final onboarding = _onboarding(keyKnown);
     // The navigation bar floats over the list; its height arrives as padding.
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
@@ -113,7 +179,18 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           // Recording works without a key — the audio is kept and queued either
           // way — but nothing will ever be transcribed, so say so before the
           // user records an hour and wonders where the text is.
-          if (!hasKey)
+          if (onboarding != null)
+            SliverToBoxAdapter(
+              child: OnboardingCard(
+                steps: onboarding,
+                onStep: _onboardingStep,
+                onClose: () => ref
+                    .read(preferencesDaoProvider)
+                    .setOnboardingDismissed(true),
+              ),
+            ),
+          // The checklist already says the key is missing.
+          if (!hasKey && onboarding == null)
             SliverToBoxAdapter(
               child: _Notice(
                 icon: Icons.key_off,

@@ -22,13 +22,22 @@ import '../../core/pending_deletions.dart';
 
 /// One subject: its cards, its recorded lessons, and its settings.
 class SubjectDetailScreen extends ConsumerStatefulWidget {
-  const SubjectDetailScreen({super.key, required this.subjectId});
+  const SubjectDetailScreen({
+    super.key,
+    required this.subjectId,
+    this.initialTab = 0,
+  });
 
   final int subjectId;
 
-  static Route<void> route(int subjectId) => MaterialPageRoute<void>(
-    builder: (_) => SubjectDetailScreen(subjectId: subjectId),
-  );
+  /// 0 Karty, 1 Hodiny, 2 Nastavení.
+  final int initialTab;
+
+  static Route<void> route(int subjectId, {int initialTab = 0}) =>
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            SubjectDetailScreen(subjectId: subjectId, initialTab: initialTab),
+      );
 
   @override
   ConsumerState<SubjectDetailScreen> createState() =>
@@ -37,8 +46,11 @@ class SubjectDetailScreen extends ConsumerStatefulWidget {
 
 class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this)
-    ..addListener(_onTab);
+  late final TabController _tabs = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex: widget.initialTab,
+  )..addListener(_onTab);
 
   void _onTab() {
     if (!_tabs.indexIsChanging) setState(() {});
