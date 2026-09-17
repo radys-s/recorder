@@ -18,17 +18,18 @@ import 'whisper_segment_filter.dart';
 /// takes effect on the very next chunk without restarting anything.
 class GroqWhisperSttProvider implements SttProvider {
   GroqWhisperSttProvider(this._apiKeyStore, {Dio? dio})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                // Generous: a 30s chunk on a bad connection still deserves a
-                // chance before we burn a retry attempt on it.
-                connectTimeout: const Duration(seconds: 20),
-                sendTimeout: const Duration(seconds: 60),
-                receiveTimeout: const Duration(seconds: 60),
-                responseType: ResponseType.json,
-              ),
-            );
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              // Generous: a 30s chunk on a bad connection still deserves a
+              // chance before we burn a retry attempt on it.
+              connectTimeout: const Duration(seconds: 20),
+              sendTimeout: const Duration(seconds: 60),
+              receiveTimeout: const Duration(seconds: 60),
+              responseType: ResponseType.json,
+            ),
+          );
 
   static const _tag = 'stt.groq';
 
@@ -36,12 +37,12 @@ class GroqWhisperSttProvider implements SttProvider {
   /// prompts start steering the output rather than just continuing it, but
   /// 200 chars was too little for a short chunk to know what sentence it is
   /// in the middle of.
-  static const _maxPromptChars = 350;
+  static const _maxPromptChars = 320;
 
-  /// Whisper reads at most 224 prompt tokens; ~600 chars of Czech stays under
-  /// it. The glossary is trimmed first, since the tail is what continuity
+  /// Whisper reads at most 224 prompt tokens; ~620 chars of Czech stays under
+  /// it. The lesson lead-in is trimmed first, since the tail is what continuity
   /// depends on.
-  static const _maxTotalPromptChars = 600;
+  static const _maxTotalPromptChars = 620;
 
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
@@ -97,7 +98,7 @@ class GroqWhisperSttProvider implements SttProvider {
     }
   }
 
-  /// The lesson's glossary first, then the tail of the previous chunk — the
+  /// The lesson's lead-in first, then the tail of the previous chunk — the
   /// tail last, because Whisper continues from the end of its prompt.
   static String? whisperPrompt({String? glossary, String? context}) {
     final trimmed = context?.trim() ?? '';
@@ -149,6 +150,7 @@ class GroqWhisperSttProvider implements SttProvider {
     return TranscriptionResult(
       text: kept,
       droppedSegments: filtered?.dropped ?? 0,
+      confidence: filtered?.confidence,
       language: data['language'] is String ? data['language'] as String : null,
       durationSeconds: duration is num ? duration.toDouble() : null,
     );
@@ -159,10 +161,16 @@ class GroqWhisperSttProvider implements SttProvider {
   SttException _classify(DioException e) {
     final failure = classifyGroqFailure(e);
     if (failure.statusCode != null) {
-      AppLog.e(_tag, 'HTTP ${failure.statusCode} from Groq: ${failure.message}');
+      AppLog.e(
+        _tag,
+        'HTTP ${failure.statusCode} from Groq: ${failure.message}',
+      );
     }
     return failure.transient
         ? SttTransientException(failure.message, statusCode: failure.statusCode)
-        : SttPermanentException(failure.message, statusCode: failure.statusCode);
+        : SttPermanentException(
+            failure.message,
+            statusCode: failure.statusCode,
+          );
   }
 }

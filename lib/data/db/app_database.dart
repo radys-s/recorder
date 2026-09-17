@@ -66,7 +66,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -74,85 +74,91 @@ class AppDatabase extends _$AppDatabase {
   /// that created the table.
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onUpgrade: (m, from, to) async {
-          if (from < 2) {
-            await m.addColumn(meetings, meetings.interrupted);
-          }
-          if (from < 3) {
-            await m.createTable(preferences);
-          }
-          if (from < 4) {
-            await m.createTable(meetingNotes);
-          }
-          if (from < 5) {
-            await m.createTable(answerCards);
-          }
-          if (from == 5) {
-            await m.addColumn(answerCards, answerCards.basis);
-          }
-          if (from < 7) {
-            if (from >= 5) await m.addColumn(answerCards, answerCards.sources);
-            if (from >= 3) {
-              await m.addColumn(preferences, preferences.webAnswersEnabled);
-            }
-          }
-          if (from < 8 && from >= 3) {
-            await m.addColumn(preferences, preferences.micSensitivity);
-          }
-          if (from < 9) {
-            await m.createTable(subjects);
-            await m.createTable(savedNotes);
-          }
-          if (from < 10) {
-            if (from == 9) {
-              await m.addColumn(subjects, subjects.rules);
-              await m.addColumn(subjects, subjects.colorIndex);
-              await m.addColumn(subjects, subjects.sortOrder);
-            }
-            await m.addColumn(meetings, meetings.subjectId);
-            await m.addColumn(meetings, meetings.rules);
-            if (from >= 5) {
-              await m.addColumn(answerCards, answerCards.detail);
-              await m.addColumn(answerCards, answerCards.cardId);
-            }
-            if (from >= 3) {
-              await m.addColumn(preferences, preferences.globalRules);
-            }
-            await m.createTable(contextCards);
-            await m.createTable(cardImages);
-            await m.createTable(meetingCards);
-            await m.createTable(timetableSlots);
-            await m.createTable(chatMessages);
-          }
-          if (from < 11 && from >= 3) {
-            // Automatic sensitivity arrived in v11; existing installs switch
-            // to it once, and a manual choice made afterwards sticks.
-            await customStatement('UPDATE preferences SET mic_sensitivity = 3');
-          }
-          if (from < 12) {
-            await m.addColumn(transcriptSegments, transcriptSegments.voicedMs);
-          }
-          if (from < 13) {
-            await m.createTable(refinedSegments);
-          }
-          if (from < 14 && from >= 4) {
-            await m.addColumn(meetingNotes, meetingNotes.cardSuggestions);
-          }
-          if (from < 15 && from >= 3) {
-            await m.addColumn(preferences, preferences.geminiModelOverride);
-          }
-          if (from < 16) {
-            await m.createTable(subjectTerms);
-            await m.addColumn(transcriptSegments, transcriptSegments.rawContent);
-            if (from >= 13) {
-              await m.addColumn(refinedSegments, refinedSegments.rawContent);
-            }
-            if (from >= 3) {
-              await m.addColumn(preferences, preferences.onboardingDismissed);
-            }
-          }
-        },
-      );
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.addColumn(meetings, meetings.interrupted);
+      }
+      if (from < 3) {
+        await m.createTable(preferences);
+      }
+      if (from < 4) {
+        await m.createTable(meetingNotes);
+      }
+      if (from < 5) {
+        await m.createTable(answerCards);
+      }
+      if (from == 5) {
+        await m.addColumn(answerCards, answerCards.basis);
+      }
+      if (from < 7) {
+        if (from >= 5) await m.addColumn(answerCards, answerCards.sources);
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.webAnswersEnabled);
+        }
+      }
+      if (from < 8 && from >= 3) {
+        await m.addColumn(preferences, preferences.micSensitivity);
+      }
+      if (from < 9) {
+        await m.createTable(subjects);
+        await m.createTable(savedNotes);
+      }
+      if (from < 10) {
+        if (from == 9) {
+          await m.addColumn(subjects, subjects.rules);
+          await m.addColumn(subjects, subjects.colorIndex);
+          await m.addColumn(subjects, subjects.sortOrder);
+        }
+        await m.addColumn(meetings, meetings.subjectId);
+        await m.addColumn(meetings, meetings.rules);
+        if (from >= 5) {
+          await m.addColumn(answerCards, answerCards.detail);
+          await m.addColumn(answerCards, answerCards.cardId);
+        }
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.globalRules);
+        }
+        await m.createTable(contextCards);
+        await m.createTable(cardImages);
+        await m.createTable(meetingCards);
+        await m.createTable(timetableSlots);
+        await m.createTable(chatMessages);
+      }
+      if (from < 11 && from >= 3) {
+        // Automatic sensitivity arrived in v11; existing installs switch
+        // to it once, and a manual choice made afterwards sticks.
+        await customStatement('UPDATE preferences SET mic_sensitivity = 3');
+      }
+      if (from < 12) {
+        await m.addColumn(transcriptSegments, transcriptSegments.voicedMs);
+      }
+      if (from < 13) {
+        await m.createTable(refinedSegments);
+      }
+      if (from < 14 && from >= 4) {
+        await m.addColumn(meetingNotes, meetingNotes.cardSuggestions);
+      }
+      if (from < 15 && from >= 3) {
+        await m.addColumn(preferences, preferences.geminiModelOverride);
+      }
+      if (from < 16) {
+        await m.createTable(subjectTerms);
+        await m.addColumn(transcriptSegments, transcriptSegments.rawContent);
+        if (from >= 13) {
+          await m.addColumn(refinedSegments, refinedSegments.rawContent);
+        }
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.onboardingDismissed);
+        }
+      }
+      if (from < 17) {
+        await m.addColumn(transcriptSegments, transcriptSegments.confidence);
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.contextCorrection);
+        }
+      }
+    },
+  );
 }
 
 /// App-wide singleton so the recording controller and queue worker (both

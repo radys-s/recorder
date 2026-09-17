@@ -10,16 +10,16 @@ enum TranscriptLanguage {
   auto;
 
   String? get code => switch (this) {
-        TranscriptLanguage.czech => 'cs',
-        TranscriptLanguage.english => 'en',
-        TranscriptLanguage.auto => null,
-      };
+    TranscriptLanguage.czech => 'cs',
+    TranscriptLanguage.english => 'en',
+    TranscriptLanguage.auto => null,
+  };
 
   String get label => switch (this) {
-        TranscriptLanguage.czech => 'Čeština',
-        TranscriptLanguage.english => 'Angličtina',
-        TranscriptLanguage.auto => 'Automaticky',
-      };
+    TranscriptLanguage.czech => 'Čeština',
+    TranscriptLanguage.english => 'Angličtina',
+    TranscriptLanguage.auto => 'Automaticky',
+  };
 }
 
 /// How much of the meeting the AI notes should cover.
@@ -37,31 +37,29 @@ enum NotesDepth {
   static const ordered = [keywords, brief, standard, detailed, full];
 
   String get label => switch (this) {
-        NotesDepth.keywords => 'Heslovitě',
-        NotesDepth.brief => 'Jen to hlavní',
-        NotesDepth.standard => 'Vyvážené',
-        NotesDepth.detailed => 'Podrobné',
-        NotesDepth.full => 'Kompletní',
-      };
+    NotesDepth.keywords => 'Heslovitě',
+    NotesDepth.brief => 'Jen to hlavní',
+    NotesDepth.standard => 'Vyvážené',
+    NotesDepth.detailed => 'Podrobné',
+    NotesDepth.full => 'Kompletní',
+  };
 
   String get description => switch (this) {
-        NotesDepth.keywords => 'Pár hesel: rozhodnutí, úkoly, termíny.',
-        NotesDepth.brief => 'Krátký seznam toho, co padlo a kdo co udělá.',
-        NotesDepth.standard =>
-          'Shrnutí, probírané body, rozhodnutí a úkoly.',
-        NotesDepth.detailed =>
-          'Každé téma zvlášť s hlavními argumenty a čísly.',
-        NotesDepth.full => 'Téměř vše, co zaznělo, včetně námitek a příkladů.',
-      };
+    NotesDepth.keywords => 'Pár hesel: rozhodnutí, úkoly, termíny.',
+    NotesDepth.brief => 'Krátký seznam toho, co padlo a kdo co udělá.',
+    NotesDepth.standard => 'Shrnutí, probírané body, rozhodnutí a úkoly.',
+    NotesDepth.detailed => 'Každé téma zvlášť s hlavními argumenty a čísly.',
+    NotesDepth.full => 'Téměř vše, co zaznělo, včetně námitek a příkladů.',
+  };
 
   /// The same depth described for výpisky from a lesson.
   String get lessonDescription => switch (this) {
-        NotesDepth.keywords => 'Pár hesel s krátkou definicí.',
-        NotesDepth.brief => 'Téma a nejdůležitější body.',
-        NotesDepth.standard => 'Pojmy, příklady a co může být v testu.',
-        NotesDepth.detailed => 'Každé podtéma zvlášť, s pojmy a souvislostmi.',
-        NotesDepth.full => 'Všechno z hodiny, nic nevynecháno.',
-      };
+    NotesDepth.keywords => 'Pár hesel s krátkou definicí.',
+    NotesDepth.brief => 'Téma a nejdůležitější body.',
+    NotesDepth.standard => 'Pojmy, příklady a co může být v testu.',
+    NotesDepth.detailed => 'Každé podtéma zvlášť, s pojmy a souvislostmi.',
+    NotesDepth.full => 'Všechno z hodiny, nic nevynecháno.',
+  };
 }
 
 /// How eagerly quiet audio is taken for speech.
@@ -79,11 +77,11 @@ enum MicSensitivity {
   static const ordered = [auto, low, medium, high];
 
   String get label => switch (this) {
-        MicSensitivity.low => 'Málo',
-        MicSensitivity.medium => 'Středně',
-        MicSensitivity.high => 'Hodně',
-        MicSensitivity.auto => 'Automaticky',
-      };
+    MicSensitivity.low => 'Málo',
+    MicSensitivity.medium => 'Středně',
+    MicSensitivity.high => 'Hodně',
+    MicSensitivity.auto => 'Automaticky',
+  };
 }
 
 /// App settings that have to survive a restart but are not secrets.
@@ -128,6 +126,10 @@ class Preferences extends Table {
   /// The first-run guide was closed by the user.
   BoolColumn get onboardingDismissed =>
       boolean().withDefault(const Constant(false))();
+
+  /// Lesson transcripts get a second look that fixes misheard subject terms.
+  BoolColumn get contextCorrection =>
+      boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};

@@ -17,6 +17,7 @@ import '../data/db/tables/transcript_segments_table.dart';
 import '../data/db/tables/upload_queue_table.dart';
 import 'audio_capture_service.dart';
 import 'foreground_recording_service.dart';
+import 'high_pass.dart';
 import 'pcm_audio_source.dart';
 import 'pcm_chunker.dart';
 import 'pcm_gain.dart';
@@ -85,6 +86,9 @@ class RecordingController extends Notifier<RecordingState> {
   final _foregroundService = const ForegroundRecordingService();
   final _meter = PcmLevelMeter();
 
+  /// Strips rumble and DC offset before anything measures or stores audio.
+  final _highPass = HighPassFilter();
+
   /// Current RMS/peak, updated far more often than [state]. Listen to this
   /// alone for a level meter so the rest of the UI stays still.
   final level = ValueNotifier<({double rms, double peak})>((rms: 0, peak: 0));
@@ -98,6 +102,7 @@ class RecordingController extends Notifier<RecordingState> {
   Timer? _levelTimer;
   PcmChunker? _chunker;
   String? _sessionDir;
+
   /// Kept beside [_sessionDir] so the database rows can name the chunk
   /// relative to it. See [toStoredPath] for why they must.
   String? _docsPath;
@@ -160,7 +165,10 @@ class RecordingController extends Notifier<RecordingState> {
       );
       if (!serviceStarted) {
         // Not fatal — capture works, it is just killable in the background.
-        AppLog.e(_tag, 'foreground service did not start; capture is unprotected');
+        AppLog.e(
+          _tag,
+          'foreground service did not start; capture is unprotected',
+        );
       }
 
       final startedAt = DateTime.now();
@@ -175,7 +183,9 @@ class RecordingController extends Notifier<RecordingState> {
       if (subjectId != null && cardIds.isNotEmpty) {
         await _db.subjectsDao.pinCards(meetingId, cardIds);
       }
-      if (rules != null) await _db.subjectsDao.setMeetingRules(meetingId, rules);
+      if (rules != null) {
+        await _db.subjectsDao.setMeetingRules(meetingId, rules);
+      }
 
       final docs = await getApplicationDocumentsDirectory();
       _docsPath = docs.path;
@@ -197,16 +207,21 @@ class RecordingController extends Notifier<RecordingState> {
         onFrameLevel: _onFrameLevel,
         minDuration: fast ? kFastChunkMinDuration : kChunkMinDuration,
         targetDuration: fast ? kFastChunkTargetDuration : kChunkTargetDuration,
-        hardCapDuration:
-            fast ? kFastChunkHardCapDuration : kChunkHardCapDuration,
+        hardCapDuration: fast
+            ? kFastChunkHardCapDuration
+            : kChunkHardCapDuration,
       );
-      AppLog.d(_tag, 'chunk profile: ${fast ? 'fast (live answers)' : 'normal'}');
+      AppLog.d(
+        _tag,
+        'chunk profile: ${fast ? 'fast (live answers)' : 'normal'}',
+      );
       _applySensitivity(prefs.micSensitivity);
       _prefsSubscription = ref.listen(preferencesProvider, (_, next) {
         final sensitivity = next.valueOrNull?.micSensitivity;
         if (sensitivity != null) _applySensitivity(sensitivity);
       });
       _meter.reset();
+      _highPass.reset();
       _totalBytes = 0;
 
       _subscription = stream.listen(
@@ -387,7 +402,8 @@ class RecordingController extends Notifier<RecordingState> {
       ..silenceRmsThreshold = _profile.silenceRmsThreshold;
   }
 
-  void _onData(Uint8List bytes) {
+  void _onData(Uint8List raw) {
+    final bytes = _highPass.process(raw);
     _meter.addBytes(bytes);
     _totalBytes += bytes.length;
     _chunker?.addBytes(bytes);
@@ -404,8 +420,13 @@ class RecordingController extends Notifier<RecordingState> {
     state = state.copyWith(totalBytes: _totalBytes);
     // The profile is captured now: the thresholds that measured this chunk
     // are the ones that should judge it.
-    final pending =
-        _persistChunk(chunk, _meetingId, _sessionDir, _docsPath, _profile);
+    final pending = _persistChunk(
+      chunk,
+      _meetingId,
+      _sessionDir,
+      _docsPath,
+      _profile,
+    );
     _persisting.add(pending);
     unawaited(pending.whenComplete(() => _persisting.remove(pending)));
   }
@@ -432,7 +453,8 @@ class RecordingController extends Notifier<RecordingState> {
       final tooShort = chunk.duration < kMinTranscribableDuration;
       // Room tone gets the same treatment: nothing in it for Whisper to
       // transcribe, and plenty for it to invent. See [kMinVoicedDuration].
-      final noSpeech = chunk.voicedMs < profile.minVoicedDuration.inMilliseconds;
+      final noSpeech =
+          chunk.voicedMs < profile.minVoicedDuration.inMilliseconds;
       final skip = tooShort || noSpeech;
 
       // Only audio that is going to Whisper is worth raising. The skipped
@@ -518,4 +540,6 @@ class RecordingController extends Notifier<RecordingState> {
 }
 
 final recordingControllerProvider =
-    NotifierProvider<RecordingController, RecordingState>(RecordingController.new);
+    NotifierProvider<RecordingController, RecordingState>(
+      RecordingController.new,
+    );

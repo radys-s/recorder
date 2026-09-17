@@ -74,6 +74,8 @@ Future<({int lesson, int? recording})> seedDemo(
         rawContent: Value(
           i == 4 ? 'Prosko pracoval u knížete jako myslivec.' : null,
         ),
+        // One chunk the recognizer barely believed, shown greyed.
+        confidence: Value(i == 1 ? -1.1 : -0.3),
         status: SegmentStatus.transcribed,
         localAudioPath: 'recordings/meeting_$lesson/chunk_$i.wav',
         createdAt: today.add(Duration(hours: 8, seconds: i * 20)),

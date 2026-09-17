@@ -55,6 +55,14 @@ const String kGroqChatUrl = 'https://api.groq.com/openai/v1/chat/completions';
 const String kGroqNotesModel = 'openai/gpt-oss-120b';
 const String kGroqAnswerModel = 'openai/gpt-oss-120b';
 
+/// Fixes misheard words in a lesson transcript, once per chunk. The small
+/// model has its own rate limit, so this never eats the answers' budget; a
+/// 404 moves the corrector to [kGroqAnswerModel].
+const String kGroqCorrectionModel = 'openai/gpt-oss-20b';
+
+/// How long a transcript waits for its correction before it is used as heard.
+const Duration kCorrectionTimeout = Duration(seconds: 5);
+
 /// An hour of speech is roughly 30-40k characters, which fits in one call.
 /// Past this the transcript is summarised in windows and the window summaries
 /// merged in a second pass, so a two-hour meeting degrades rather than fails.

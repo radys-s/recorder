@@ -11,8 +11,11 @@ import 'package:recorder/data/db/daos/upload_queue_dao.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 import 'package:recorder/data/db/tables/upload_queue_table.dart';
+import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/queue/transcription_queue_worker.dart';
+import 'package:recorder/stt/lesson_vocabulary.dart';
 import 'package:recorder/stt/stt_provider.dart';
+import 'package:recorder/stt/transcript_corrector.dart';
 
 /// An in-memory queue table with the same due-row rule as the real DAO.
 class _Queue implements UploadQueueDao {
@@ -29,13 +32,13 @@ class _Queue implements UploadQueueDao {
 
   @override
   Future<List<UploadQueueData>> dueRows(DateTime now) async => [
-        for (final r in rows)
-          if (r.status == QueueStatus.pending ||
-              (r.status == QueueStatus.failedRetryable &&
-                  r.nextRetryAt != null &&
-                  !r.nextRetryAt!.isAfter(now)))
-            r,
-      ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    for (final r in rows)
+      if (r.status == QueueStatus.pending ||
+          (r.status == QueueStatus.failedRetryable &&
+              r.nextRetryAt != null &&
+              !r.nextRetryAt!.isAfter(now)))
+        r,
+  ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
   @override
   Stream<int> watchOutstandingCount() => outstanding.stream;
@@ -79,25 +82,24 @@ class _Queue implements UploadQueueDao {
     int attemptCount,
     DateTime nextRetryAt,
     String error,
-  ) async =>
-      _change(
-        id,
-        (x) => x.copyWith(
-          status: QueueStatus.failedRetryable,
-          attemptCount: attemptCount,
-          nextRetryAt: Value(nextRetryAt),
-          lastError: Value(error),
-        ),
-      );
+  ) async => _change(
+    id,
+    (x) => x.copyWith(
+      status: QueueStatus.failedRetryable,
+      attemptCount: attemptCount,
+      nextRetryAt: Value(nextRetryAt),
+      lastError: Value(error),
+    ),
+  );
 
   @override
   Future<void> markFailedPermanent(int id, String error) async => _change(
-        id,
-        (x) => x.copyWith(
-          status: QueueStatus.failedPermanent,
-          lastError: Value(error),
-        ),
-      );
+    id,
+    (x) => x.copyWith(
+      status: QueueStatus.failedPermanent,
+      lastError: Value(error),
+    ),
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -114,16 +116,38 @@ class _Segments implements TranscriptSegmentsDao {
   Future<String?> previousTranscript(int meetingId, int sequence) async {
     final earlier = [
       for (final s in byId.values)
-        if (s.meetingId == meetingId && s.sequence < sequence && s.content != null)
+        if (s.meetingId == meetingId &&
+            s.sequence < sequence &&
+            s.content != null)
           s,
     ]..sort((a, b) => a.sequence.compareTo(b.sequence));
     return earlier.isEmpty ? null : earlier.last.content;
   }
 
   @override
-  Future<void> updateSegmentText(int id, String text, SegmentStatus status) async {
-    byId[id] = byId[id]!.copyWith(content: Value(text), status: status);
+  Future<void> updateSegmentText(
+    int id,
+    String text,
+    SegmentStatus status, {
+    double? confidence,
+    String? rawContent,
+  }) async {
+    byId[id] = byId[id]!.copyWith(
+      content: Value(text),
+      status: status,
+      confidence: Value(confidence),
+      rawContent: rawContent == null ? const Value.absent() : Value(rawContent),
+    );
     (statusLog[id] ??= []).add(status);
+  }
+
+  @override
+  Future<void> correctSegment(int id, String text) async {
+    final row = byId[id]!;
+    byId[id] = row.copyWith(
+      content: Value(text),
+      rawContent: Value(row.rawContent ?? row.content),
+    );
   }
 
   @override
@@ -143,14 +167,15 @@ class _Prefs implements PreferencesDao {
 
   @override
   Future<Preference> current() async => Preference(
-        id: 0,
-        transcriptLanguage: language,
-        notesDepth: NotesDepth.standard,
-        liveAnswersEnabled: true,
-        webAnswersEnabled: false,
-        micSensitivity: sensitivity,
-        onboardingDismissed: false,
-      );
+    id: 0,
+    transcriptLanguage: language,
+    notesDepth: NotesDepth.standard,
+    liveAnswersEnabled: true,
+    webAnswersEnabled: false,
+    micSensitivity: sensitivity,
+    onboardingDismissed: false,
+    contextCorrection: true,
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -200,6 +225,26 @@ class _Connectivity implements Connectivity {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Answers the corrector with a fixed text, or fails.
+class _Llm extends LlmProvider {
+  _Llm(this.text, {this.throwing = false});
+  final String? text;
+  final bool throwing;
+
+  @override
+  Future<LlmCompletion> completeDetailed({
+    required String model,
+    required List<LlmMessage> messages,
+    double temperature = 0.2,
+    int? maxTokens,
+    bool jsonMode = false,
+    Duration? timeout,
+  }) async {
+    if (throwing) throw const AiTransientException('rate limited');
+    return LlmCompletion(content: text == null ? '{}' : '{"text": "$text"}');
+  }
+}
+
 /// Absolute, so `resolveStoredPath` never asks the platform for a directory.
 String _path(int sequence) =>
     '${Directory.systemTemp.path}${Platform.pathSeparator}chunk_$sequence.wav';
@@ -210,7 +255,9 @@ class _World {
     TranscriptLanguage language = TranscriptLanguage.czech,
     MicSensitivity sensitivity = MicSensitivity.medium,
     void Function(TranscriptSegment segment, String text)? onTranscribed,
-    Future<String?> Function(int meetingId)? glossaryFor,
+    Future<LessonListening?> Function(int meetingId)? listeningFor,
+    TranscriptCorrector? corrector,
+    Future<void> Function(Set<int> termIds)? onTermsUsed,
   }) : stt = _Stt(respond) {
     worker = TranscriptionQueueWorker(
       queue,
@@ -219,7 +266,9 @@ class _World {
       stt,
       connectivity: connectivity,
       onTranscribed: onTranscribed,
-      glossaryFor: glossaryFor,
+      listeningFor: listeningFor,
+      corrector: corrector,
+      onTermsUsed: onTermsUsed,
       // Only the events under test wake the worker, never the clock.
       tick: const Duration(hours: 1),
     );
@@ -242,7 +291,9 @@ class _World {
       startMs: sequence * 8000,
       endMs: (sequence + 1) * 8000,
       content: content,
-      status: content == null ? SegmentStatus.pending : SegmentStatus.transcribed,
+      status: content == null
+          ? SegmentStatus.pending
+          : SegmentStatus.transcribed,
       localAudioPath: _path(sequence),
       createdAt: DateTime(2026, 9, 14, 9, 0, sequence),
     );
@@ -255,17 +306,19 @@ class _World {
     DateTime? nextRetryAt,
   }) {
     addSegment(sequence);
-    queue.rows.add(UploadQueueData(
-      id: rowId(sequence),
-      segmentId: segmentId(sequence),
-      meetingId: 3,
-      localFilePath: _path(sequence),
-      status: status,
-      attemptCount: attemptCount,
-      nextRetryAt: nextRetryAt,
-      createdAt: DateTime(2026, 9, 14, 9, 0, sequence),
-      updatedAt: DateTime(2026, 9, 14, 9, 0, sequence),
-    ));
+    queue.rows.add(
+      UploadQueueData(
+        id: rowId(sequence),
+        segmentId: segmentId(sequence),
+        meetingId: 3,
+        localFilePath: _path(sequence),
+        status: status,
+        attemptCount: attemptCount,
+        nextRetryAt: nextRetryAt,
+        createdAt: DateTime(2026, 9, 14, 9, 0, sequence),
+        updatedAt: DateTime(2026, 9, 14, 9, 0, sequence),
+      ),
+    );
   }
 
   UploadQueueData row(int sequence) => queue.byId(rowId(sequence));
@@ -293,59 +346,65 @@ Future<void> _settle() async {
 }
 
 void main() {
-  test('transcribes a row with the context and settings of the moment',
-      () async {
-    final transcribed = <(int, String)>[];
-    final world = _World(
-      (_) => _text('  A tady pokračujeme dál.  '),
-      language: TranscriptLanguage.english,
-      sensitivity: MicSensitivity.high,
-      onTranscribed: (s, text) => transcribed.add((s.id, text)),
-    );
-    world.addSegment(0, content: 'Předchozí věta.');
-    world.enqueue(1);
+  test(
+    'transcribes a row with the context and settings of the moment',
+    () async {
+      final transcribed = <(int, String)>[];
+      final world = _World(
+        (_) => _text('  A tady pokračujeme dál.  '),
+        language: TranscriptLanguage.english,
+        sensitivity: MicSensitivity.high,
+        onTranscribed: (s, text) => transcribed.add((s.id, text)),
+      );
+      world.addSegment(0, content: 'Předchozí věta.');
+      world.enqueue(1);
 
-    await world.worker.start();
-    await _until(() => world.row(1).status == QueueStatus.succeeded);
-    await world.worker.stop();
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
 
-    final call = world.stt.calls.single;
-    expect(call.path, _path(1));
-    expect(call.prompt, 'Předchozí věta.');
-    expect(call.language, 'en');
-    expect(call.sensitivity, MicSensitivity.high);
+      final call = world.stt.calls.single;
+      expect(call.path, _path(1));
+      expect(call.prompt, 'Předchozí věta.');
+      expect(call.language, 'en');
+      expect(call.sensitivity, MicSensitivity.high);
 
-    expect(world.segment(1).content, 'A tady pokračujeme dál.');
-    expect(world.segment(1).status, SegmentStatus.transcribed);
-    expect(world.segments.statusLog[world.segmentId(1)],
-        [SegmentStatus.uploading, SegmentStatus.transcribed]);
-    expect(transcribed, [(world.segmentId(1), 'A tady pokračujeme dál.')]);
-  });
+      expect(world.segment(1).content, 'A tady pokračujeme dál.');
+      expect(world.segment(1).status, SegmentStatus.transcribed);
+      expect(world.segments.statusLog[world.segmentId(1)], [
+        SegmentStatus.uploading,
+        SegmentStatus.transcribed,
+      ]);
+      expect(transcribed, [(world.segmentId(1), 'A tady pokračujeme dál.')]);
+    },
+  );
 
-  test('the lesson glossary goes to Whisper with the meeting it belongs to',
-      () async {
-    final asked = <int>[];
-    final world = _World(
-      (_) => _text('Babička jde s dětmi na procházku.'),
-      glossaryFor: (meetingId) async {
-        asked.add(meetingId);
-        return 'Babička, Viktorka, Proško';
-      },
-    );
-    world.enqueue(1);
-    await world.worker.start();
-    await _until(() => world.row(1).status == QueueStatus.succeeded);
-    await world.worker.stop();
+  test(
+    'the lesson glossary goes to Whisper with the meeting it belongs to',
+    () async {
+      final asked = <int>[];
+      final world = _World(
+        (_) => _text('Babička jde s dětmi na procházku.'),
+        listeningFor: (meetingId) async {
+          asked.add(meetingId);
+          return const LessonListening(leadIn: 'Babička, Viktorka, Proško');
+        },
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
 
-    expect(asked, [3]);
-    expect(world.stt.glossaries.single, 'Babička, Viktorka, Proško');
-    expect(world.segment(1).content, 'Babička jde s dětmi na procházku.');
-  });
+      expect(asked, [3]);
+      expect(world.stt.glossaries.single, 'Babička, Viktorka, Proško');
+      expect(world.segment(1).content, 'Babička jde s dětmi na procházku.');
+    },
+  );
 
   test('a failing glossary lookup still transcribes', () async {
     final world = _World(
       (_) => _text('Dobrý den.'),
-      glossaryFor: (_) async => throw StateError('db closed'),
+      listeningFor: (_) async => throw StateError('db closed'),
     );
     world.enqueue(1);
     await world.worker.start();
@@ -353,6 +412,100 @@ void main() {
     await world.worker.stop();
     expect(world.stt.glossaries.single, isNull);
     expect(world.segment(1).content, 'Dobrý den.');
+  });
+
+  group('listening to the lesson', () {
+    const lesson = LessonListening(
+      subjectName: 'Čeština',
+      leadIn: 'Hodina: Čeština.',
+      corrections: [(heard: 'prosko', term: 'Proško')],
+      correctionIds: [7],
+      terms: [(term: 'Proško', id: 7), (term: 'Viktorka', id: 8)],
+    );
+
+    Future<(_World, List<String>, Set<int>)> run(
+      TranscriptionResult result, {
+      String? corrected,
+      bool throwing = false,
+    }) async {
+      final transcribed = <String>[];
+      final used = <int>{};
+      final llm = _Llm(corrected, throwing: throwing);
+      final world = _World(
+        (_) => result,
+        onTranscribed: (_, text) => transcribed.add(text),
+        listeningFor: (_) async => lesson,
+        corrector: TranscriptCorrector(llm),
+        onTermsUsed: (ids) async => used.addAll(ids),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.settle();
+      await world.worker.stop();
+      return (world, transcribed, used);
+    }
+
+    test(
+      'a word the student fixed before is fixed again, original kept',
+      () async {
+        final (world, transcribed, used) = await run(
+          const TranscriptionResult(text: 'Pak přišel prosko k mlýnu.'),
+        );
+        expect(world.segment(1).content, 'Pak přišel Proško k mlýnu.');
+        expect(world.segment(1).rawContent, 'Pak přišel prosko k mlýnu.');
+        expect(transcribed, ['Pak přišel Proško k mlýnu.']);
+        expect(used, {7});
+      },
+    );
+
+    test(
+      'an accepted AI correction replaces the text before answers see it',
+      () async {
+        final (world, transcribed, used) = await run(
+          const TranscriptionResult(text: 'A viktorko zpívala u vody.'),
+          corrected: 'A Viktorka zpívala u vody.',
+        );
+        expect(world.segment(1).content, 'A Viktorka zpívala u vody.');
+        expect(world.segment(1).rawContent, 'A viktorko zpívala u vody.');
+        expect(transcribed, ['A Viktorka zpívala u vody.']);
+        expect(used, {8});
+      },
+    );
+
+    test('a rewrite is rejected and the heard text stands', () async {
+      final (world, transcribed, _) = await run(
+        const TranscriptionResult(text: 'A viktorko zpívala u vody.'),
+        corrected: 'Viktorka byla postava, která ráda zpívala u potoka.',
+      );
+      expect(world.segment(1).content, 'A viktorko zpívala u vody.');
+      expect(world.segment(1).rawContent, isNull);
+      expect(transcribed, ['A viktorko zpívala u vody.']);
+    });
+
+    test('a failing corrector never costs the transcript', () async {
+      final (world, transcribed, _) = await run(
+        const TranscriptionResult(text: 'A viktorko zpívala u vody.'),
+        throwing: true,
+      );
+      expect(world.segment(1).content, 'A viktorko zpívala u vody.');
+      expect(transcribed, hasLength(1));
+    });
+
+    test(
+      'confidence is stored, and a very doubtful chunk is not answered',
+      () async {
+        final (world, transcribed, _) = await run(
+          const TranscriptionResult(
+            text: 'něco jako by říkala',
+            confidence: -1.6,
+          ),
+        );
+        expect(world.segment(1).confidence, -1.6);
+        expect(world.segment(1).content, 'něco jako by říkala');
+        expect(transcribed, isEmpty);
+      },
+    );
   });
 
   group('text that nobody said', () {
@@ -365,31 +518,39 @@ void main() {
       final world = _World(
         (_) => _text(sttText),
         onTranscribed: (_, text) => transcribed.add(text),
-        glossaryFor: glossary == null ? null : (_) async => glossary,
+        listeningFor: glossary == null
+            ? null
+            : (_) async => LessonListening(leadIn: glossary),
       );
       if (previous != null) world.addSegment(0, content: previous);
       world.enqueue(1);
       await world.worker.start();
       await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.settle();
       await world.worker.stop();
       return (world, transcribed);
     }
 
-    test('a whole subtitle credit leaves the segment empty and silent',
-        () async {
-      final (world, transcribed) = await run('Titulky vytvořil Jan Novák');
-      expect(world.segment(1).content, isNull);
-      expect(world.segment(1).status, SegmentStatus.transcribed);
-      expect(transcribed, isEmpty);
-    });
+    test(
+      'a whole subtitle credit leaves the segment empty and silent',
+      () async {
+        final (world, transcribed) = await run('Titulky vytvořil Jan Novák');
+        expect(world.segment(1).content, isNull);
+        expect(world.segment(1).status, SegmentStatus.transcribed);
+        expect(transcribed, isEmpty);
+      },
+    );
 
-    test('a trailing sign-off is cut, and the rest goes on to live answers',
-        () async {
-      final (world, transcribed) =
-          await run('Tak to je všechno. Děkuji za pozornost.');
-      expect(world.segment(1).content, 'Tak to je všechno.');
-      expect(transcribed, ['Tak to je všechno.']);
-    });
+    test(
+      'a trailing sign-off is cut, and the rest goes on to live answers',
+      () async {
+        final (world, transcribed) = await run(
+          'Tak to je všechno. Děkuji za pozornost.',
+        );
+        expect(world.segment(1).content, 'Tak to je všechno.');
+        expect(transcribed, ['Tak to je všechno.']);
+      },
+    );
 
     test('an echo of the glossary is dropped', () async {
       final (world, transcribed) = await run(
@@ -413,7 +574,8 @@ void main() {
   group('failures', () {
     test('a transient one goes back in line with a backoff', () async {
       final world = _World(
-        (_) => throw const SttTransientException('bad gateway', statusCode: 503),
+        (_) =>
+            throw const SttTransientException('bad gateway', statusCode: 503),
       );
       world.enqueue(1);
       final before = DateTime.now();
@@ -432,9 +594,7 @@ void main() {
     });
 
     test('the last allowed attempt parks the row', () async {
-      final world = _World(
-        (_) => throw const SttTransientException('timeout'),
-      );
+      final world = _World((_) => throw const SttTransientException('timeout'));
       world.enqueue(
         1,
         status: QueueStatus.failedRetryable,

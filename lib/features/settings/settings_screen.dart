@@ -91,7 +91,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SectionHeader(
             first: true,
             title: 'Groq API klíč',
-            description: 'Uložený jen na tomhle zařízení, v systémovém '
+            description:
+                'Uložený jen na tomhle zařízení, v systémovém '
                 'úložišti klíčů. Odesílá se do Groqu a nikam jinam.',
           ),
           Card(
@@ -140,7 +141,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(width: Gap.md),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _busy || masked.valueOrNull == null ? null : _clear,
+                  onPressed: _busy || masked.valueOrNull == null
+                      ? null
+                      : _clear,
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Smazat'),
                 ),
@@ -206,50 +209,50 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
   }
 
   Future<void> _save() => _run(() async {
-        final value = _controller.text.trim();
-        if (value.isEmpty) {
-          _notify('Nejdřív zadej klíč.');
-          return;
-        }
-        try {
-          await ref.read(geminiKeyStoreProvider).write(value);
-          _controller.clear();
-          _invalidate();
-          _notify('Gemini klíč uložen.');
-        } catch (e) {
-          _notify('Klíč se nepodařilo uložit: $e');
-        }
-      });
+    final value = _controller.text.trim();
+    if (value.isEmpty) {
+      _notify('Nejdřív zadej klíč.');
+      return;
+    }
+    try {
+      await ref.read(geminiKeyStoreProvider).write(value);
+      _controller.clear();
+      _invalidate();
+      _notify('Gemini klíč uložen.');
+    } catch (e) {
+      _notify('Klíč se nepodařilo uložit: $e');
+    }
+  });
 
   Future<void> _clear() => _run(() async {
-        try {
-          await ref.read(geminiKeyStoreProvider).delete();
-          _invalidate();
-          _notify('Gemini klíč smazán.');
-        } catch (e) {
-          _notify('Klíč se nepodařilo smazat: $e');
-        }
-      });
+    try {
+      await ref.read(geminiKeyStoreProvider).delete();
+      _invalidate();
+      _notify('Gemini klíč smazán.');
+    } catch (e) {
+      _notify('Klíč se nepodařilo smazat: $e');
+    }
+  });
 
   /// A real test: models, the ones picked, one plain and one search call.
   Future<void> _verify() => _run(() async {
-        final keys = ref.read(geminiKeyStoreProvider);
-        final prefs = ref.read(preferencesDaoProvider);
-        final resolver = ref.read(geminiModelResolverProvider)..reset();
-        final report = await checkGeminiKey(
-          listModels: () => listGeminiModels(keys),
-          gemini: ref.read(geminiProvider),
-          resolver: resolver,
-          override: (await prefs.current()).geminiModelOverride,
-        );
-        if (!mounted) return;
-        setState(() => _report = report);
-        final pick = await showDialog<bool>(
-          context: context,
-          builder: (context) => _GeminiReportDialog(report: report),
-        );
-        if (pick == true && mounted) await _pickModel(report.selectable);
-      });
+    final keys = ref.read(geminiKeyStoreProvider);
+    final prefs = ref.read(preferencesDaoProvider);
+    final resolver = ref.read(geminiModelResolverProvider)..reset();
+    final report = await checkGeminiKey(
+      listModels: () => listGeminiModels(keys),
+      gemini: ref.read(geminiProvider),
+      resolver: resolver,
+      override: (await prefs.current()).geminiModelOverride,
+    );
+    if (!mounted) return;
+    setState(() => _report = report);
+    final pick = await showDialog<bool>(
+      context: context,
+      builder: (context) => _GeminiReportDialog(report: report),
+    );
+    if (pick == true && mounted) await _pickModel(report.selectable);
+  });
 
   Future<void> _pickModel(List<String> ids) async {
     final prefs = ref.read(preferencesDaoProvider);
@@ -264,18 +267,22 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
           shrinkWrap: true,
           children: [
             ListTile(
-              leading: Icon(current == null
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked),
+              leading: Icon(
+                current == null
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+              ),
               title: const Text('Automaticky'),
               subtitle: const Text('Aplikace vybere nejnovější Flash.'),
               onTap: () => Navigator.pop(context, ''),
             ),
             for (final id in ids)
               ListTile(
-                leading: Icon(id == current
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked),
+                leading: Icon(
+                  id == current
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                ),
                 title: Text(id),
                 onTap: () => Navigator.pop(context, id),
               ),
@@ -287,9 +294,11 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
     await prefs.setGeminiModelOverride(chosen);
     ref.read(geminiModelResolverProvider).reset();
     if (mounted) setState(() => _report = null);
-    _notify(chosen.isEmpty
-        ? 'Model se vybírá automaticky. Ověř klíč znovu.'
-        : 'Použije se $chosen. Ověř klíč znovu.');
+    _notify(
+      chosen.isEmpty
+          ? 'Model se vybírá automaticky. Ověř klíč znovu.'
+          : 'Použije se $chosen. Ověř klíč znovu.',
+    );
   }
 
   @override
@@ -301,7 +310,8 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       children: [
         const SectionHeader(
           title: 'Google Gemini',
-          description: 'Nepovinné. Umí fotky, dohledávání, shrnutí karet a '
+          description:
+              'Nepovinné. Umí fotky, dohledávání, shrnutí karet a '
               'odpovídá na otázky z chatu s větším kontextem. Bez klíče vše '
               'běží přes Groq.',
         ),
@@ -315,8 +325,9 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
                   : switch (_report) {
                       final r? when r.works && r.models != null =>
                         'Připojeno · ${r.models!.main}',
-                      final r? when !r.works => 'Ověření selhalo — klepni na '
-                          'Ověřit klíč pro detail.',
+                      final r? when !r.works =>
+                        'Ověření selhalo — klepni na '
+                            'Ověřit klíč pro detail.',
                       _ => 'Uložením nového klíče tenhle přepíšeš.',
                     },
             ),
@@ -327,9 +338,8 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
           'Bezplatná verze Gemini může vstupy použít ke zlepšování služeb '
           'Googlu. Posílají se jen fotky, dohledávání, karty a otázky z chatu '
           '— nikdy průběžný přepis.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: Gap.lg),
         TextField(
@@ -389,7 +399,9 @@ class _GeminiReportDialog extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     return AlertDialog(
-      icon: Icon(report.works ? Icons.check_circle_outline : Icons.error_outline),
+      icon: Icon(
+        report.works ? Icons.check_circle_outline : Icons.error_outline,
+      ),
       title: Text(report.works ? 'Gemini funguje' : 'Gemini nefunguje'),
       content: SizedBox(
         width: double.maxFinite,
@@ -465,7 +477,8 @@ class _LanguageSection extends ConsumerWidget {
       children: [
         const SectionHeader(
           title: 'Jazyk přepisu',
-          description: 'Napevno zvolený jazyk drží přepis pohromadě. '
+          description:
+              'Napevno zvolený jazyk drží přepis pohromadě. '
               'Automaticky ho hádá Whisper znovu u každého úseku, takže se '
               'uprostřed schůzky může přepnout jinam.',
         ),
@@ -479,8 +492,8 @@ class _LanguageSection extends ConsumerWidget {
           selected: {selected ?? TranscriptLanguage.czech},
           onSelectionChanged: prefs.hasValue
               ? (set) => ref
-                  .read(preferencesDaoProvider)
-                  .setTranscriptLanguage(set.first)
+                    .read(preferencesDaoProvider)
+                    .setTranscriptLanguage(set.first)
               : null,
         ),
       ],
@@ -512,6 +525,21 @@ class _SensitivitySection extends ConsumerWidget {
         ),
         children: [
           _manualSensitivity(ref, ready: prefs.hasValue, selected: selected),
+          const SizedBox(height: Gap.md),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Opravovat přepis podle předmětu'),
+            subtitle: const Text(
+              'V hodině s předmětem AI opraví špatně slyšená jména a pojmy '
+              'podle slovníku a karet. Nic nepřepisuje jinak — původní znění '
+              'uvidíš po podržení prstu na textu.',
+            ),
+            value: prefs.valueOrNull?.contextCorrection ?? true,
+            onChanged: prefs.hasValue
+                ? (v) =>
+                      ref.read(preferencesDaoProvider).setContextCorrection(v)
+                : null,
+          ),
         ],
       ),
     );
@@ -527,7 +555,8 @@ class _SensitivitySection extends ConsumerWidget {
       children: [
         const SectionHeader(
           title: 'Citlivost poslechu',
-          description: 'Automaticky si na začátku nahrávání změří místnost a '
+          description:
+              'Automaticky si na začátku nahrávání změří místnost a '
               'průběžně se jí přizpůsobuje. Hodně zachytí i tichou schůzku '
               'nebo vzdáleného mluvčího, jen občas přepíše i šum. Málo se hodí '
               'do hlučné místnosti. Změna platí hned, i během nahrávání.',
@@ -542,8 +571,8 @@ class _SensitivitySection extends ConsumerWidget {
                 selected: value == (selected ?? MicSensitivity.auto),
                 onSelected: ready
                     ? (_) => ref
-                        .read(preferencesDaoProvider)
-                        .setMicSensitivity(value)
+                          .read(preferencesDaoProvider)
+                          .setMicSensitivity(value)
                     : null,
               ),
           ],
@@ -570,7 +599,8 @@ class _LiveAnswersSection extends ConsumerWidget {
       children: [
         const SectionHeader(
           title: 'Živé odpovědi',
-          description: 'Když někdo na schůzce položí otázku, aplikace k ní '
+          description:
+              'Když někdo na schůzce položí otázku, aplikace k ní '
               'během nahrávání ukáže odpověď. Nikdy nemluví ani nevyrušuje '
               '— čtení je na tobě.',
         ),
@@ -578,8 +608,9 @@ class _LiveAnswersSection extends ConsumerWidget {
           contentPadding: EdgeInsets.zero,
           value: enabled,
           onChanged: prefs.hasValue
-              ? (value) =>
-                  ref.read(preferencesDaoProvider).setLiveAnswersEnabled(value)
+              ? (value) => ref
+                    .read(preferencesDaoProvider)
+                    .setLiveAnswersEnabled(value)
               : null,
           title: const Text('Odpovídat na otázky'),
           subtitle: const Text(
@@ -596,7 +627,7 @@ class _LiveAnswersSection extends ConsumerWidget {
           value: web,
           onChanged: prefs.hasValue && enabled
               ? (value) =>
-                  ref.read(preferencesDaoProvider).setWebAnswersEnabled(value)
+                    ref.read(preferencesDaoProvider).setWebAnswersEnabled(value)
               : null,
           title: const Text('Hledat i na internetu'),
           subtitle: const Text(
@@ -657,7 +688,8 @@ class _GlobalRulesSectionState extends ConsumerState<_GlobalRulesSection> {
       children: [
         const SectionHeader(
           title: 'Pravidla pro AI',
-          description: 'Platí pro všechny odpovědi. Pravidla předmětu a to, '
+          description:
+              'Platí pro všechny odpovědi. Pravidla předmětu a to, '
               'co napíšeš do chatu během hodiny, mají přednost.',
         ),
         TextField(
@@ -701,15 +733,17 @@ class _DiagnosticsSection extends ConsumerWidget {
     // Switching the source mid-recording would leave stop() holding a
     // different object than start() opened, so the toggles are locked while
     // a recording is running.
-    final recording =
-        ref.watch(recordingControllerProvider.select((s) => s.isRecording));
+    final recording = ref.watch(
+      recordingControllerProvider.select((s) => s.isRecording),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SectionHeader(
           title: 'Diagnostika',
-          description: 'Jen ve vývojářském buildu. Emulátorový mikrofon '
+          description:
+              'Jen ve vývojářském buildu. Emulátorový mikrofon '
               'dodává jen ticho, takže se pipeline testuje přehráváním WAV '
               'souboru.',
         ),
@@ -742,8 +776,10 @@ class _DiagnosticsSection extends ConsumerWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.travel_explore_outlined),
           title: const Text('Zkouška webové odpovědi'),
-          subtitle: const Text('Projede varianty požadavku a ukáže, '
-              'která u Groqu projde.'),
+          subtitle: const Text(
+            'Projede varianty požadavku a ukáže, '
+            'která u Groqu projde.',
+          ),
           onTap: () => _probeWebAnswers(context, ref),
         ),
         ListTile(
@@ -773,8 +809,7 @@ class _DiagnosticsSection extends ConsumerWidget {
         const SnackBar(content: Text('Zkouším varianty, viz log…')),
       );
 
-    final lines =
-        await WebAnswerProbe(ref.read(llmProvider)).run();
+    final lines = await WebAnswerProbe(ref.read(llmProvider)).run();
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,

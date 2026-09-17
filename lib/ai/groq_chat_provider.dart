@@ -14,23 +14,28 @@ import 'llm_provider.dart';
 // `extends`, not `implements`: [LlmProvider.complete] carries a default body
 // that unwraps [LlmProvider.completeDetailed], and only a subclass inherits it.
 class GroqChatProvider extends LlmProvider {
-  GroqChatProvider(this._apiKeyStore, {Dio? dio})
-      : _dio = dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 20),
-                sendTimeout: const Duration(seconds: 60),
-                // A full write-up of an hour-long meeting is a long generation;
-                // individual calls shorten this via `timeout`.
-                receiveTimeout: const Duration(seconds: 120),
-                responseType: ResponseType.json,
-              ),
-            );
+  GroqChatProvider(this._apiKeyStore, {Dio? dio, this.reasoningEffort})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 20),
+              sendTimeout: const Duration(seconds: 60),
+              // A full write-up of an hour-long meeting is a long generation;
+              // individual calls shorten this via `timeout`.
+              receiveTimeout: const Duration(seconds: 120),
+              responseType: ResponseType.json,
+            ),
+          );
 
   static const _tag = 'ai.groq.chat';
 
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
+
+  /// `reasoning_effort` for the gpt-oss models; null leaves Groq's default.
+  /// Low keeps a small, frequent call from spending its budget thinking.
+  final String? reasoningEffort;
 
   @override
   Future<LlmCompletion> completeDetailed({
@@ -56,6 +61,7 @@ class GroqChatProvider extends LlmProvider {
           'messages': [for (final m in messages) m.toJson()],
           'temperature': temperature,
           'max_tokens': ?maxTokens,
+          'reasoning_effort': ?reasoningEffort,
           if (jsonMode) 'response_format': {'type': 'json_object'},
         },
         options: Options(
@@ -104,7 +110,10 @@ class GroqChatProvider extends LlmProvider {
   AiException _classify(DioException e) {
     final failure = classifyGroqFailure(e);
     if (failure.statusCode != null) {
-      AppLog.e(_tag, 'HTTP ${failure.statusCode} from Groq: ${failure.message}');
+      AppLog.e(
+        _tag,
+        'HTTP ${failure.statusCode} from Groq: ${failure.message}',
+      );
       // Groq's own envelope names the real cause — which model, which ceiling,
       // how many tokens over. A gateway's bare reason phrase names none of it,
       // and telling the two apart is the difference between "raise a limit"

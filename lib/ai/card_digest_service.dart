@@ -1,6 +1,7 @@
 import '../core/constants.dart';
 import '../core/logging.dart';
 import '../data/db/daos/subjects_dao.dart';
+import '../data/db/tables/subject_terms_table.dart';
 import 'json_extract.dart';
 import 'llm_provider.dart';
 
@@ -93,8 +94,19 @@ class CardDigestService {
         summary: parsed.summary,
         keywords: parsed.keywords,
       );
-      AppLog.d(_tag,
-          'card $cardId digested on ${useGemini ? 'Gemini' : 'Groq'}: $written');
+      AppLog.d(
+        _tag,
+        'card $cardId digested on ${useGemini ? 'Gemini' : 'Groq'}: $written',
+      );
+      if (written && parsed.keywords.isNotEmpty) {
+        // The card's names become the subject's vocabulary, so transcription
+        // spells them right even in lessons that do not pin this card.
+        await _cards.addTerms(
+          card.subjectId,
+          parsed.keywords.split(','),
+          TermSource.card,
+        );
+      }
       return written;
     } catch (e, st) {
       AppLog.e(_tag, 'card $cardId: digest failed', e, st);
@@ -141,10 +153,13 @@ CardDigest? parseCardDigest(String raw) {
 
   final rawKeywords = decoded['keywords'];
   final candidates = rawKeywords is List
-      ? [for (final k in rawKeywords) if (k is String) k]
+      ? [
+          for (final k in rawKeywords)
+            if (k is String) k,
+        ]
       : rawKeywords is String
-          ? rawKeywords.split(',')
-          : const <String>[];
+      ? rawKeywords.split(',')
+      : const <String>[];
 
   final seen = <String>{};
   final keywords = <String>[];

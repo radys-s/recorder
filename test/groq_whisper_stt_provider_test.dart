@@ -110,7 +110,7 @@ void main() {
     final prompt = RegExp(r'name="prompt"\r\n\r\n(.*?)\r\n')
         .firstMatch(adapter.lastBody)!
         .group(1)!;
-    expect(prompt, hasLength(350));
+    expect(prompt, hasLength(320));
     expect(prompt, endsWith('KONEC'));
   });
 

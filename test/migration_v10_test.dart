@@ -5,6 +5,7 @@ import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/data/db/tables/refined_segments_table.dart';
+import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 
 /// The v9 schema exactly as a v9 build created it, so the upgrade runs against
 /// what is really on the user's phone rather than against today's tables.
@@ -129,6 +130,18 @@ void main() {
     );
     await db.preferencesDao.setOnboardingDismissed(true);
     expect((await db.preferencesDao.current()).onboardingDismissed, isTrue);
+    // v17 adds segment confidence and the context correction switch.
+    expect((await db.preferencesDao.current()).contextCorrection, isTrue);
+    await db.transcriptSegmentsDao.updateSegmentText(
+      v16Segment.id,
+      'Máj',
+      SegmentStatus.transcribed,
+      confidence: -0.4,
+    );
+    expect(
+      (await db.transcriptSegmentsDao.segmentById(v16Segment.id))!.confidence,
+      -0.4,
+    );
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

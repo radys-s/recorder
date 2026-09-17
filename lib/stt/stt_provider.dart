@@ -9,7 +9,12 @@ class TranscriptionResult {
     this.language,
     this.durationSeconds,
     this.droppedSegments = 0,
+    this.confidence,
   });
+
+  /// How sure Whisper was, as a mean `avg_logprob`; see
+  /// `filterWhisperSegments`. Null when the provider does not say.
+  final double? confidence;
 
   final String text;
 

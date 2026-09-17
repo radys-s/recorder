@@ -6,6 +6,7 @@ import '../../../core/spacing.dart';
 import '../../../core/theme.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/db/tables/transcript_segments_table.dart';
+import '../../../stt/whisper_segment_filter.dart';
 
 /// One chunk of the transcript.
 ///
@@ -100,10 +101,7 @@ class TranscriptSegmentTile extends StatelessWidget {
                 ),
               ),
             ),
-            child: KeyedSubtree(
-              key: ValueKey(_bodyKey),
-              child: _body(theme),
-            ),
+            child: KeyedSubtree(key: ValueKey(_bodyKey), child: _body(theme)),
           ),
         ],
       ),
@@ -124,9 +122,19 @@ class TranscriptSegmentTile extends StatelessWidget {
       return _FailedBody(onRetry: onRetry);
     }
     if (segment.content != null) {
-      return onLongPress == null
-          ? SelectableText(segment.content!, style: theme.textTheme.bodyLarge)
-          : Text(segment.content!, style: theme.textTheme.bodyLarge);
+      // Words the recognizer barely believed are shown, but quieter, so the
+      // student knows to check them rather than learn them.
+      final uncertain = isLowConfidence(segment.confidence);
+      final style = uncertain
+          ? theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            )
+          : theme.textTheme.bodyLarge;
+      final text = onLongPress == null
+          ? SelectableText(segment.content!, style: style)
+          : Text(segment.content!, style: style);
+      if (!uncertain) return text;
+      return Semantics(label: 'nejisté', container: true, child: text);
     }
     return Text(
       segment.status == SegmentStatus.uploading

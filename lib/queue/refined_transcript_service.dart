@@ -13,12 +13,17 @@ import '../data/db/tables/refined_segments_table.dart';
 import '../stt/refined_transcriber.dart';
 import '../stt/refined_transcript.dart';
 import '../stt/stt_provider.dart';
+import '../stt/term_corrections.dart';
 
 /// Lesson facts a window's request is told.
 typedef RefinedLessonInfo = ({
   String? subjectName,
   List<String> cardTitles,
   String? glossary,
+  List<String> terms,
+  List<String> slideTexts,
+  List<String> contextMessages,
+  List<TermCorrection> corrections,
 });
 
 /// The second transcription pass, run after a recording ends.
@@ -81,13 +86,14 @@ class RefinedTranscriptService {
   /// earlier refined text, which is what „Přepsat znovu" means.
   Future<void> refine(int meetingId) async {
     try {
-      final meeting = await (_db.select(_db.meetings)
-            ..where((t) => t.id.equals(meetingId)))
-          .getSingleOrNull();
+      final meeting = await (_db.select(
+        _db.meetings,
+      )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
       if (meeting == null || meeting.endedAt == null) return;
 
-      final segments =
-          await _db.transcriptSegmentsDao.segmentsForMeeting(meetingId);
+      final segments = await _db.transcriptSegmentsDao.segmentsForMeeting(
+        meetingId,
+      );
       final gemini = await hasGeminiKey();
       final engine = gemini ? RefinedEngine.gemini : RefinedEngine.whisper;
       final plans = planWindows(
@@ -98,8 +104,10 @@ class RefinedTranscriptService {
         for (final w in plans)
           (startMs: w.startMs, endMs: w.endMs, engine: engine),
       ]);
-      AppLog.d(_tag,
-          'meeting $meetingId: ${plans.length} window(s) via ${engine.name}');
+      AppLog.d(
+        _tag,
+        'meeting $meetingId: ${plans.length} window(s) via ${engine.name}',
+      );
       if (plans.isEmpty) return;
       _enqueue(meetingId);
       await _kick();
@@ -145,8 +153,9 @@ class RefinedTranscriptService {
     // Re-read after every window: a retry or a re-plan changes what is left.
     while (true) {
       final windows = await _db.refinedSegmentsDao.windows(meetingId);
-      final next =
-          windows.where((w) => w.status == RefinedStatus.pending).firstOrNull;
+      final next = windows
+          .where((w) => w.status == RefinedStatus.pending)
+          .firstOrNull;
       if (next == null) return;
       await _processWindow(next, windows);
     }
@@ -161,8 +170,9 @@ class RefinedTranscriptService {
 
     File? wav;
     try {
-      final segments =
-          await _db.transcriptSegmentsDao.segmentsForMeeting(window.meetingId);
+      final segments = await _db.transcriptSegmentsDao.segmentsForMeeting(
+        window.meetingId,
+      );
       final chunks = chunksIn(segments, window.startMs, window.endMs);
       final voiced = chunks.any((s) => s.voicedMs == null)
           ? null
@@ -174,8 +184,12 @@ class RefinedTranscriptService {
       }
 
       final dir = await tempDir();
-      wav = File(p.join(dir.path,
-          'refined_${window.meetingId}_${window.windowIndex}_${DateTime.now().microsecondsSinceEpoch}.wav'));
+      wav = File(
+        p.join(
+          dir.path,
+          'refined_${window.meetingId}_${window.windowIndex}_${DateTime.now().microsecondsSinceEpoch}.wav',
+        ),
+      );
       final joined = await concatWavFiles(
         inputs: [for (final c in chunks) await resolvePath(c.localAudioPath)],
         outputPath: wav.path,
@@ -198,11 +212,16 @@ class RefinedTranscriptService {
           voicedMs: voiced,
           durationMs: window.endMs - window.startMs,
         );
-        final text = outcome.text;
+        var text = outcome.text;
         if (text != null) {
+          if (text.isNotEmpty && context.corrections.isNotEmpty) {
+            text = applyTermCorrections(text, context.corrections).text;
+          }
           await dao.markReady(window.id, text, engine);
-          AppLog.d(_tag,
-              'window ${window.id}: ready via ${engine.name} (${text.length} chars)');
+          AppLog.d(
+            _tag,
+            'window ${window.id}: ready via ${engine.name} (${text.length} chars)',
+          );
           return;
         }
         errors.add(outcome.error ?? '');
@@ -235,11 +254,11 @@ class RefinedTranscriptService {
         final text = switch (engine) {
           RefinedEngine.gemini => await _transcriber.viaGemini(wav, context),
           RefinedEngine.whisper => await _transcriber.viaWhisper(
-              wav,
-              context,
-              voicedMs: voicedMs,
-              durationMs: durationMs,
-            ),
+            wav,
+            context,
+            voicedMs: voicedMs,
+            durationMs: durationMs,
+          ),
         };
         return (text: text, error: null);
       } on AiPermanentException catch (e) {
@@ -264,10 +283,12 @@ class RefinedTranscriptService {
     List<RefinedSegment> all,
   ) async {
     final previous = all
-        .where((w) =>
-            w.windowIndex < window.windowIndex &&
-            w.status == RefinedStatus.ready &&
-            (w.content?.trim().isNotEmpty ?? false))
+        .where(
+          (w) =>
+              w.windowIndex < window.windowIndex &&
+              w.status == RefinedStatus.ready &&
+              (w.content?.trim().isNotEmpty ?? false),
+        )
         .lastOrNull;
     final prefs = await _db.preferencesDao.current();
     RefinedLessonInfo? info;
@@ -280,6 +301,10 @@ class RefinedTranscriptService {
       subjectName: info?.subjectName,
       cardTitles: info?.cardTitles ?? const [],
       glossary: info?.glossary,
+      terms: info?.terms ?? const [],
+      slideTexts: info?.slideTexts ?? const [],
+      contextMessages: info?.contextMessages ?? const [],
+      corrections: info?.corrections ?? const [],
       previousText: previous?.content,
       languageCode: prefs.transcriptLanguage.code,
       sensitivity: prefs.micSensitivity,

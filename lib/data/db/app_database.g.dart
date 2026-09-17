@@ -590,6 +590,17 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _confidenceMeta = const VerificationMeta(
+    'confidence',
+  );
+  @override
+  late final GeneratedColumn<double> confidence = GeneratedColumn<double>(
+    'confidence',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -603,6 +614,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     createdAt,
     voicedMs,
     rawContent,
+    confidence,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -688,6 +700,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         rawContent.isAcceptableOrUnknown(data['raw_content']!, _rawContentMeta),
       );
     }
+    if (data.containsKey('confidence')) {
+      context.handle(
+        _confidenceMeta,
+        confidence.isAcceptableOrUnknown(data['confidence']!, _confidenceMeta),
+      );
+    }
     return context;
   }
 
@@ -743,6 +761,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.string,
         data['${effectivePrefix}raw_content'],
       ),
+      confidence: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}confidence'],
+      ),
     );
   }
 
@@ -775,6 +797,10 @@ class TranscriptSegment extends DataClass
   /// What was heard before the user or the AI changed [content]; null while
   /// the text is untouched.
   final String? rawContent;
+
+  /// How sure Whisper was: the duration-weighted mean `avg_logprob` of the
+  /// segments it kept. Null when it reported none, or for rows before v17.
+  final double? confidence;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -787,6 +813,7 @@ class TranscriptSegment extends DataClass
     required this.createdAt,
     this.voicedMs,
     this.rawContent,
+    this.confidence,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -812,6 +839,9 @@ class TranscriptSegment extends DataClass
     if (!nullToAbsent || rawContent != null) {
       map['raw_content'] = Variable<String>(rawContent);
     }
+    if (!nullToAbsent || confidence != null) {
+      map['confidence'] = Variable<double>(confidence);
+    }
     return map;
   }
 
@@ -834,6 +864,9 @@ class TranscriptSegment extends DataClass
       rawContent: rawContent == null && nullToAbsent
           ? const Value.absent()
           : Value(rawContent),
+      confidence: confidence == null && nullToAbsent
+          ? const Value.absent()
+          : Value(confidence),
     );
   }
 
@@ -856,6 +889,7 @@ class TranscriptSegment extends DataClass
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       voicedMs: serializer.fromJson<int?>(json['voicedMs']),
       rawContent: serializer.fromJson<String?>(json['rawContent']),
+      confidence: serializer.fromJson<double?>(json['confidence']),
     );
   }
   @override
@@ -875,6 +909,7 @@ class TranscriptSegment extends DataClass
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'voicedMs': serializer.toJson<int?>(voicedMs),
       'rawContent': serializer.toJson<String?>(rawContent),
+      'confidence': serializer.toJson<double?>(confidence),
     };
   }
 
@@ -890,6 +925,7 @@ class TranscriptSegment extends DataClass
     DateTime? createdAt,
     Value<int?> voicedMs = const Value.absent(),
     Value<String?> rawContent = const Value.absent(),
+    Value<double?> confidence = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -902,6 +938,7 @@ class TranscriptSegment extends DataClass
     createdAt: createdAt ?? this.createdAt,
     voicedMs: voicedMs.present ? voicedMs.value : this.voicedMs,
     rawContent: rawContent.present ? rawContent.value : this.rawContent,
+    confidence: confidence.present ? confidence.value : this.confidence,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -920,6 +957,9 @@ class TranscriptSegment extends DataClass
       rawContent: data.rawContent.present
           ? data.rawContent.value
           : this.rawContent,
+      confidence: data.confidence.present
+          ? data.confidence.value
+          : this.confidence,
     );
   }
 
@@ -936,7 +976,8 @@ class TranscriptSegment extends DataClass
           ..write('localAudioPath: $localAudioPath, ')
           ..write('createdAt: $createdAt, ')
           ..write('voicedMs: $voicedMs, ')
-          ..write('rawContent: $rawContent')
+          ..write('rawContent: $rawContent, ')
+          ..write('confidence: $confidence')
           ..write(')'))
         .toString();
   }
@@ -954,6 +995,7 @@ class TranscriptSegment extends DataClass
     createdAt,
     voicedMs,
     rawContent,
+    confidence,
   );
   @override
   bool operator ==(Object other) =>
@@ -969,7 +1011,8 @@ class TranscriptSegment extends DataClass
           other.localAudioPath == this.localAudioPath &&
           other.createdAt == this.createdAt &&
           other.voicedMs == this.voicedMs &&
-          other.rawContent == this.rawContent);
+          other.rawContent == this.rawContent &&
+          other.confidence == this.confidence);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -984,6 +1027,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<DateTime> createdAt;
   final Value<int?> voicedMs;
   final Value<String?> rawContent;
+  final Value<double?> confidence;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -996,6 +1040,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.createdAt = const Value.absent(),
     this.voicedMs = const Value.absent(),
     this.rawContent = const Value.absent(),
+    this.confidence = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -1009,6 +1054,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required DateTime createdAt,
     this.voicedMs = const Value.absent(),
     this.rawContent = const Value.absent(),
+    this.confidence = const Value.absent(),
   }) : meetingId = Value(meetingId),
        sequence = Value(sequence),
        startMs = Value(startMs),
@@ -1028,6 +1074,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<DateTime>? createdAt,
     Expression<int>? voicedMs,
     Expression<String>? rawContent,
+    Expression<double>? confidence,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1041,6 +1088,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (createdAt != null) 'created_at': createdAt,
       if (voicedMs != null) 'voiced_ms': voicedMs,
       if (rawContent != null) 'raw_content': rawContent,
+      if (confidence != null) 'confidence': confidence,
     });
   }
 
@@ -1056,6 +1104,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<DateTime>? createdAt,
     Value<int?>? voicedMs,
     Value<String?>? rawContent,
+    Value<double?>? confidence,
   }) {
     return TranscriptSegmentsCompanion(
       id: id ?? this.id,
@@ -1069,6 +1118,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       createdAt: createdAt ?? this.createdAt,
       voicedMs: voicedMs ?? this.voicedMs,
       rawContent: rawContent ?? this.rawContent,
+      confidence: confidence ?? this.confidence,
     );
   }
 
@@ -1110,6 +1160,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (rawContent.present) {
       map['raw_content'] = Variable<String>(rawContent.value);
     }
+    if (confidence.present) {
+      map['confidence'] = Variable<double>(confidence.value);
+    }
     return map;
   }
 
@@ -1126,7 +1179,8 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('localAudioPath: $localAudioPath, ')
           ..write('createdAt: $createdAt, ')
           ..write('voicedMs: $voicedMs, ')
-          ..write('rawContent: $rawContent')
+          ..write('rawContent: $rawContent, ')
+          ..write('confidence: $confidence')
           ..write(')'))
         .toString();
   }
@@ -1864,6 +1918,21 @@ class $PreferencesTable extends Preferences
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _contextCorrectionMeta = const VerificationMeta(
+    'contextCorrection',
+  );
+  @override
+  late final GeneratedColumn<bool> contextCorrection = GeneratedColumn<bool>(
+    'context_correction',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("context_correction" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1875,6 +1944,7 @@ class $PreferencesTable extends Preferences
     globalRules,
     geminiModelOverride,
     onboardingDismissed,
+    contextCorrection,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1936,6 +2006,15 @@ class $PreferencesTable extends Preferences
         ),
       );
     }
+    if (data.containsKey('context_correction')) {
+      context.handle(
+        _contextCorrectionMeta,
+        contextCorrection.isAcceptableOrUnknown(
+          data['context_correction']!,
+          _contextCorrectionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1988,6 +2067,10 @@ class $PreferencesTable extends Preferences
         DriftSqlType.bool,
         data['${effectivePrefix}onboarding_dismissed'],
       )!,
+      contextCorrection: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}context_correction'],
+      )!,
     );
   }
 
@@ -2036,6 +2119,9 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// The first-run guide was closed by the user.
   final bool onboardingDismissed;
+
+  /// Lesson transcripts get a second look that fixes misheard subject terms.
+  final bool contextCorrection;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2046,6 +2132,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.globalRules,
     this.geminiModelOverride,
     required this.onboardingDismissed,
+    required this.contextCorrection,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2077,6 +2164,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       map['gemini_model_override'] = Variable<String>(geminiModelOverride);
     }
     map['onboarding_dismissed'] = Variable<bool>(onboardingDismissed);
+    map['context_correction'] = Variable<bool>(contextCorrection);
     return map;
   }
 
@@ -2095,6 +2183,7 @@ class Preference extends DataClass implements Insertable<Preference> {
           ? const Value.absent()
           : Value(geminiModelOverride),
       onboardingDismissed: Value(onboardingDismissed),
+      contextCorrection: Value(contextCorrection),
     );
   }
 
@@ -2122,6 +2211,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       onboardingDismissed: serializer.fromJson<bool>(
         json['onboardingDismissed'],
       ),
+      contextCorrection: serializer.fromJson<bool>(json['contextCorrection']),
     );
   }
   @override
@@ -2145,6 +2235,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       'globalRules': serializer.toJson<String?>(globalRules),
       'geminiModelOverride': serializer.toJson<String?>(geminiModelOverride),
       'onboardingDismissed': serializer.toJson<bool>(onboardingDismissed),
+      'contextCorrection': serializer.toJson<bool>(contextCorrection),
     };
   }
 
@@ -2158,6 +2249,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<String?> globalRules = const Value.absent(),
     Value<String?> geminiModelOverride = const Value.absent(),
     bool? onboardingDismissed,
+    bool? contextCorrection,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2170,6 +2262,7 @@ class Preference extends DataClass implements Insertable<Preference> {
         ? geminiModelOverride.value
         : this.geminiModelOverride,
     onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
+    contextCorrection: contextCorrection ?? this.contextCorrection,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2198,6 +2291,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       onboardingDismissed: data.onboardingDismissed.present
           ? data.onboardingDismissed.value
           : this.onboardingDismissed,
+      contextCorrection: data.contextCorrection.present
+          ? data.contextCorrection.value
+          : this.contextCorrection,
     );
   }
 
@@ -2212,7 +2308,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('micSensitivity: $micSensitivity, ')
           ..write('globalRules: $globalRules, ')
           ..write('geminiModelOverride: $geminiModelOverride, ')
-          ..write('onboardingDismissed: $onboardingDismissed')
+          ..write('onboardingDismissed: $onboardingDismissed, ')
+          ..write('contextCorrection: $contextCorrection')
           ..write(')'))
         .toString();
   }
@@ -2228,6 +2325,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     globalRules,
     geminiModelOverride,
     onboardingDismissed,
+    contextCorrection,
   );
   @override
   bool operator ==(Object other) =>
@@ -2241,7 +2339,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.micSensitivity == this.micSensitivity &&
           other.globalRules == this.globalRules &&
           other.geminiModelOverride == this.geminiModelOverride &&
-          other.onboardingDismissed == this.onboardingDismissed);
+          other.onboardingDismissed == this.onboardingDismissed &&
+          other.contextCorrection == this.contextCorrection);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2254,6 +2353,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<String?> globalRules;
   final Value<String?> geminiModelOverride;
   final Value<bool> onboardingDismissed;
+  final Value<bool> contextCorrection;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2264,6 +2364,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.globalRules = const Value.absent(),
     this.geminiModelOverride = const Value.absent(),
     this.onboardingDismissed = const Value.absent(),
+    this.contextCorrection = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2275,6 +2376,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.globalRules = const Value.absent(),
     this.geminiModelOverride = const Value.absent(),
     this.onboardingDismissed = const Value.absent(),
+    this.contextCorrection = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2286,6 +2388,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<String>? globalRules,
     Expression<String>? geminiModelOverride,
     Expression<bool>? onboardingDismissed,
+    Expression<bool>? contextCorrection,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2300,6 +2403,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
         'gemini_model_override': geminiModelOverride,
       if (onboardingDismissed != null)
         'onboarding_dismissed': onboardingDismissed,
+      if (contextCorrection != null) 'context_correction': contextCorrection,
     });
   }
 
@@ -2313,6 +2417,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<String?>? globalRules,
     Value<String?>? geminiModelOverride,
     Value<bool>? onboardingDismissed,
+    Value<bool>? contextCorrection,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2324,6 +2429,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       globalRules: globalRules ?? this.globalRules,
       geminiModelOverride: geminiModelOverride ?? this.geminiModelOverride,
       onboardingDismissed: onboardingDismissed ?? this.onboardingDismissed,
+      contextCorrection: contextCorrection ?? this.contextCorrection,
     );
   }
 
@@ -2367,6 +2473,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (onboardingDismissed.present) {
       map['onboarding_dismissed'] = Variable<bool>(onboardingDismissed.value);
     }
+    if (contextCorrection.present) {
+      map['context_correction'] = Variable<bool>(contextCorrection.value);
+    }
     return map;
   }
 
@@ -2381,7 +2490,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('micSensitivity: $micSensitivity, ')
           ..write('globalRules: $globalRules, ')
           ..write('geminiModelOverride: $geminiModelOverride, ')
-          ..write('onboardingDismissed: $onboardingDismissed')
+          ..write('onboardingDismissed: $onboardingDismissed, ')
+          ..write('contextCorrection: $contextCorrection')
           ..write(')'))
         .toString();
   }
@@ -8334,6 +8444,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required DateTime createdAt,
       Value<int?> voicedMs,
       Value<String?> rawContent,
+      Value<double?> confidence,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -8348,6 +8459,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<int?> voicedMs,
       Value<String?> rawContent,
+      Value<double?> confidence,
     });
 
 class $$TranscriptSegmentsTableFilterComposer
@@ -8412,6 +8524,11 @@ class $$TranscriptSegmentsTableFilterComposer
 
   ColumnFilters<String> get rawContent => $composableBuilder(
     column: $table.rawContent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get confidence => $composableBuilder(
+    column: $table.confidence,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8479,6 +8596,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     column: $table.rawContent,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get confidence => $composableBuilder(
+    column: $table.confidence,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TranscriptSegmentsTableAnnotationComposer
@@ -8524,6 +8646,11 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<String> get rawContent => $composableBuilder(
     column: $table.rawContent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get confidence => $composableBuilder(
+    column: $table.confidence,
     builder: (column) => column,
   );
 }
@@ -8579,6 +8706,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int?> voicedMs = const Value.absent(),
                 Value<String?> rawContent = const Value.absent(),
+                Value<double?> confidence = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -8591,6 +8719,7 @@ class $$TranscriptSegmentsTableTableManager
                 createdAt: createdAt,
                 voicedMs: voicedMs,
                 rawContent: rawContent,
+                confidence: confidence,
               ),
           createCompanionCallback:
               ({
@@ -8605,6 +8734,7 @@ class $$TranscriptSegmentsTableTableManager
                 required DateTime createdAt,
                 Value<int?> voicedMs = const Value.absent(),
                 Value<String?> rawContent = const Value.absent(),
+                Value<double?> confidence = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -8617,6 +8747,7 @@ class $$TranscriptSegmentsTableTableManager
                 createdAt: createdAt,
                 voicedMs: voicedMs,
                 rawContent: rawContent,
+                confidence: confidence,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -8974,6 +9105,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<String?> globalRules,
       Value<String?> geminiModelOverride,
       Value<bool> onboardingDismissed,
+      Value<bool> contextCorrection,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -8986,6 +9118,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<String?> globalRules,
       Value<String?> geminiModelOverride,
       Value<bool> onboardingDismissed,
+      Value<bool> contextCorrection,
     });
 
 class $$PreferencesTableFilterComposer
@@ -9044,6 +9177,11 @@ class $$PreferencesTableFilterComposer
     column: $table.onboardingDismissed,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get contextCorrection => $composableBuilder(
+    column: $table.contextCorrection,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -9097,6 +9235,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<bool> get onboardingDismissed => $composableBuilder(
     column: $table.onboardingDismissed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get contextCorrection => $composableBuilder(
+    column: $table.contextCorrection,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -9155,6 +9298,11 @@ class $$PreferencesTableAnnotationComposer
     column: $table.onboardingDismissed,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get contextCorrection => $composableBuilder(
+    column: $table.contextCorrection,
+    builder: (column) => column,
+  );
 }
 
 class $$PreferencesTableTableManager
@@ -9198,6 +9346,7 @@ class $$PreferencesTableTableManager
                 Value<String?> globalRules = const Value.absent(),
                 Value<String?> geminiModelOverride = const Value.absent(),
                 Value<bool> onboardingDismissed = const Value.absent(),
+                Value<bool> contextCorrection = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -9208,6 +9357,7 @@ class $$PreferencesTableTableManager
                 globalRules: globalRules,
                 geminiModelOverride: geminiModelOverride,
                 onboardingDismissed: onboardingDismissed,
+                contextCorrection: contextCorrection,
               ),
           createCompanionCallback:
               ({
@@ -9221,6 +9371,7 @@ class $$PreferencesTableTableManager
                 Value<String?> globalRules = const Value.absent(),
                 Value<String?> geminiModelOverride = const Value.absent(),
                 Value<bool> onboardingDismissed = const Value.absent(),
+                Value<bool> contextCorrection = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -9231,6 +9382,7 @@ class $$PreferencesTableTableManager
                 globalRules: globalRules,
                 geminiModelOverride: geminiModelOverride,
                 onboardingDismissed: onboardingDismissed,
+                contextCorrection: contextCorrection,
               ),
           withReferenceMapper: (p0) => p0
               .map(

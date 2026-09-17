@@ -30,14 +30,19 @@ import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
+import '../data/db/tables/subject_terms_table.dart';
 import '../data/card_deleter.dart';
 import '../data/secure/api_key_store.dart';
+import 'logging.dart';
 import '../queue/refined_transcript_service.dart';
 import '../queue/transcription_queue_worker.dart';
 import '../data/db/daos/refined_segments_dao.dart';
 import '../stt/groq_whisper_stt_provider.dart';
+import '../stt/lesson_vocabulary.dart';
 import '../stt/refined_transcriber.dart';
 import '../stt/stt_provider.dart';
+import '../stt/term_corrections.dart';
+import '../stt/transcript_corrector.dart';
 import 'constants.dart';
 import 'paths.dart';
 import 'photo_picker.dart';
@@ -109,7 +114,30 @@ final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
     lessonFor: ref.watch(lessonContextSourceProvider).notesInput,
     gemini: ref.watch(geminiProvider),
     hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
-    onLessonNotes: suggestions.suggest,
+    onLessonNotes: (meetingId, notes) async {
+      // The terms the notes define join the subject's vocabulary.
+      try {
+        final meeting = await (db.select(
+          db.meetings,
+        )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
+        final subjectId = meeting?.subjectId;
+        if (subjectId != null) {
+          await db.subjectsDao.addTerms(
+            subjectId,
+            keyTermsFromNotes(notes),
+            TermSource.notes,
+          );
+        }
+      } catch (e, st) {
+        AppLog.e(
+          'ai.notes',
+          'meeting $meetingId: learning terms failed',
+          e,
+          st,
+        );
+      }
+      await suggestions.suggest(meetingId, notes);
+    },
   );
 });
 
@@ -160,8 +188,10 @@ final chatMessagesDaoProvider = Provider<ChatMessagesDao>((ref) {
 });
 
 /// The lesson chat, watched, in recording order.
-final chatMessagesProvider =
-    StreamProvider.family<List<ChatMessage>, int>((ref, meetingId) {
+final chatMessagesProvider = StreamProvider.family<List<ChatMessage>, int>((
+  ref,
+  meetingId,
+) {
   return ref.watch(chatMessagesDaoProvider).watchForMeeting(meetingId);
 });
 
@@ -237,9 +267,9 @@ final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {
     readBytes: (stored) async =>
         File(await resolveStoredPath(stored)).readAsBytes(),
     subjectName: (meetingId) async {
-      final meeting = await (db.select(db.meetings)
-            ..where((t) => t.id.equals(meetingId)))
-          .getSingleOrNull();
+      final meeting = await (db.select(
+        db.meetings,
+      )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
       final subjectId = meeting?.subjectId;
       return subjectId == null
           ? null
@@ -264,6 +294,14 @@ final cardDeleterProvider = Provider<CardDeleter>((ref) {
   );
 });
 
+/// Proofreads lesson chunks against the subject's vocabulary, on the small
+/// model so it never spends the answer model's per-minute budget.
+final transcriptCorrectorProvider = Provider<TranscriptCorrector>((ref) {
+  return TranscriptCorrector(
+    GroqChatProvider(ref.watch(apiKeyStoreProvider), reasoningEffort: 'low'),
+  );
+});
+
 final sttProvider = Provider<SttProvider>((ref) {
   return GroqWhisperSttProvider(ref.watch(apiKeyStoreProvider));
 });
@@ -278,14 +316,19 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
     db.transcriptSegmentsDao,
     db.preferencesDao,
     ref.watch(sttProvider),
-    // Names from the lesson's pinned cards, so Whisper spells them right.
-    glossaryFor: (meetingId) =>
-        ref.read(lessonContextSourceProvider).glossary(meetingId),
+    // The lesson's vocabulary, so Whisper and the corrector spell it right.
+    listeningFor: (meetingId) =>
+        ref.read(lessonContextSourceProvider).listening(meetingId),
+    corrector: ref.watch(transcriptCorrectorProvider),
+    onTermsUsed: (ids) =>
+        ref.read(appDatabaseProvider).subjectsDao.bumpTermUses(ids),
     // Fired and forgotten: the worker is a pure STT queue and must not wait
     // on an LLM call, and a slow answer must never delay the next chunk's
     // transcription.
     onTranscribed: (segment, text) {
-      unawaited(ref.read(liveAnswerServiceProvider).handleSegment(segment, text));
+      unawaited(
+        ref.read(liveAnswerServiceProvider).handleSegment(segment, text),
+      );
     },
   );
   ref.onDispose(worker.stop);
@@ -299,12 +342,13 @@ final refinedSegmentsDaoProvider = Provider<RefinedSegmentsDao>((ref) {
 /// The refined windows of one meeting, in order.
 final refinedSegmentsProvider =
     StreamProvider.family<List<RefinedSegment>, int>((ref, meetingId) {
-  return ref.watch(refinedSegmentsDaoProvider).watchForMeeting(meetingId);
-});
+      return ref.watch(refinedSegmentsDaoProvider).watchForMeeting(meetingId);
+    });
 
 /// The second transcription pass after a recording. Resumed at app launch.
-final refinedTranscriptServiceProvider =
-    Provider<RefinedTranscriptService>((ref) {
+final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
+  ref,
+) {
   final db = ref.watch(appDatabaseProvider);
   final lessons = ref.watch(lessonContextSourceProvider);
   return RefinedTranscriptService(
@@ -317,14 +361,15 @@ final refinedTranscriptServiceProvider =
     resolvePath: resolveStoredPath,
     tempDir: getTemporaryDirectory,
     lessonInfo: (meetingId) async {
-      final material = await lessons.load(meetingId);
+      final l = await lessons.listening(meetingId);
       return (
-        subjectName: material.subjectName,
-        cardTitles: [
-          for (final c in material.cards)
-            if (c.pinned) c.title,
-        ],
-        glossary: await lessons.glossary(meetingId),
+        subjectName: l?.subjectName,
+        cardTitles: l?.cardTitles ?? const <String>[],
+        glossary: l?.leadIn,
+        terms: [for (final t in l?.terms ?? const <RankedTerm>[]) t.term],
+        slideTexts: l?.slideTexts ?? const <String>[],
+        contextMessages: l?.contextMessages ?? const <String>[],
+        corrections: l?.corrections ?? const <TermCorrection>[],
       );
     },
     waitForTurn: _waitUntilOnline,

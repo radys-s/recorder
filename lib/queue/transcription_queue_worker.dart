@@ -10,8 +10,12 @@ import '../data/db/daos/preferences_dao.dart';
 import '../data/db/daos/transcript_segments_dao.dart';
 import '../data/db/daos/upload_queue_dao.dart';
 import '../data/db/tables/transcript_segments_table.dart';
+import '../stt/lesson_vocabulary.dart';
 import '../stt/stt_provider.dart';
+import '../stt/term_corrections.dart';
+import '../stt/transcript_corrector.dart';
 import '../stt/transcript_sanitizer.dart';
+import '../stt/whisper_segment_filter.dart';
 import 'backoff.dart';
 
 /// Drains the upload queue, completely decoupled from recording.
@@ -38,7 +42,9 @@ class TranscriptionQueueWorker {
     this._stt, {
     Connectivity? connectivity,
     this.onTranscribed,
-    this.glossaryFor,
+    this.listeningFor,
+    this.corrector,
+    this.onTermsUsed,
     this.tick = const Duration(seconds: 5),
   }) : _connectivity = connectivity ?? Connectivity();
 
@@ -62,9 +68,22 @@ class TranscriptionQueueWorker {
   /// killing the pass.
   final void Function(TranscriptSegment segment, String text)? onTranscribed;
 
-  /// Names and terms of the lesson's pinned cards, prepended to Whisper's
-  /// prompt so it spells them right. A failure here costs only the glossary.
-  final Future<String?> Function(int meetingId)? glossaryFor;
+  /// What the lesson is about: the lead-in for Whisper's prompt, the
+  /// corrections the student taught it and the words to spell right. A
+  /// failure here costs only that help, never the chunk.
+  final Future<LessonListening?> Function(int meetingId)? listeningFor;
+
+  /// Proofreads a lesson chunk against its vocabulary after it is written.
+  final TranscriptCorrector? corrector;
+
+  /// Vocabulary rows that turned up in a transcript, to rank them higher.
+  final Future<void> Function(Set<int> termIds)? onTermsUsed;
+
+  /// Corrections still running, so tests can wait for them.
+  final Set<Future<void>> _corrections = {};
+
+  /// Resolves once every correction started so far has finished.
+  Future<void> settle() => Future.wait(_corrections.toList());
 
   StreamSubscription<int>? _queueSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -87,7 +106,10 @@ class TranscriptionQueueWorker {
 
     final reset = await _queueDao.resetStuckUploads();
     if (reset > 0) {
-      AppLog.d(_tag, 'requeued $reset row(s) stranded as uploading by a previous run');
+      AppLog.d(
+        _tag,
+        'requeued $reset row(s) stranded as uploading by a previous run',
+      );
     }
 
     _queueSub = _queueDao.watchOutstandingCount().listen((outstanding) {
@@ -173,26 +195,33 @@ class TranscriptionQueueWorker {
     AppLog.d(_tag, 'row ${row.id} (segment ${row.segmentId}) attempt $attempt');
 
     await _queueDao.markUploading(row.id);
-    await _segmentsDao.updateSegmentStatus(row.segmentId, SegmentStatus.uploading);
+    await _segmentsDao.updateSegmentStatus(
+      row.segmentId,
+      SegmentStatus.uploading,
+    );
 
     try {
       final segment = await _segmentsDao.segmentById(row.segmentId);
       final prompt = segment == null
           ? null
-          : await _segmentsDao.previousTranscript(segment.meetingId, segment.sequence);
+          : await _segmentsDao.previousTranscript(
+              segment.meetingId,
+              segment.sequence,
+            );
 
       // Read per row rather than once at start(): the user can change the
       // language mid-meeting, and the next chunk should honour it.
       final prefs = await _prefsDao.current();
 
-      String? glossary;
-      if (segment != null && glossaryFor != null) {
+      LessonListening? lesson;
+      if (segment != null && listeningFor != null) {
         try {
-          glossary = await glossaryFor!(segment.meetingId);
+          lesson = await listeningFor!(segment.meetingId);
         } catch (e, st) {
-          AppLog.e(_tag, 'glossary lookup failed', e, st);
+          AppLog.e(_tag, 'lesson vocabulary lookup failed', e, st);
         }
       }
+      final glossary = lesson?.leadIn;
 
       final result = await _stt.transcribe(
         audioFile: File(await resolveStoredPath(row.localFilePath)),
@@ -233,6 +262,20 @@ class TranscriptionQueueWorker {
         text = '';
       }
 
+      // A word the student already fixed once is fixed again, for free.
+      String? heard;
+      final used = <int>{};
+      if (lesson != null && text.isNotEmpty && lesson.corrections.isNotEmpty) {
+        final fixed = applyTermCorrections(text, lesson.corrections);
+        if (fixed.applied.isNotEmpty) {
+          heard = text;
+          text = fixed.text;
+          for (final i in fixed.applied) {
+            used.add(lesson.correctionIds[i]);
+          }
+        }
+      }
+
       if (text.isEmpty) {
         // Same path a sub-500ms tail takes: the segment stays in the timeline
         // so the sequence has no hole, it just has no text to show.
@@ -245,16 +288,26 @@ class TranscriptionQueueWorker {
           row.segmentId,
           text,
           SegmentStatus.transcribed,
+          confidence: result.confidence,
+          rawContent: heard,
         );
       }
       await _queueDao.markSucceeded(row.id);
 
       if (segment != null && text.isNotEmpty) {
-        try {
-          onTranscribed?.call(segment, text);
-        } catch (e, st) {
-          AppLog.e(_tag, 'onTranscribed callback threw', e, st);
-        }
+        final correction = _afterWrite(
+          segment,
+          text,
+          lesson: lesson,
+          previous: prompt,
+          confidence: result.confidence,
+          used: used,
+          enabled: prefs.contextCorrection,
+        );
+        _corrections.add(correction);
+        unawaited(
+          correction.whenComplete(() => _corrections.remove(correction)),
+        );
       }
 
       AppLog.d(
@@ -273,7 +326,82 @@ class TranscriptionQueueWorker {
     }
   }
 
-  Future<void> _scheduleRetry(UploadQueueData row, int attempt, String error) async {
+  /// Proofreads a lesson chunk, then hands the final text on. The transcript
+  /// is already written, so the student never waits for this; live answers
+  /// do, for at most the corrector's timeout.
+  Future<void> _afterWrite(
+    TranscriptSegment segment,
+    String text, {
+    required LessonListening? lesson,
+    required String? previous,
+    required double? confidence,
+    required Set<int> used,
+    required bool enabled,
+  }) async {
+    var finalText = text;
+    final corrector = this.corrector;
+    if (corrector != null &&
+        lesson != null &&
+        enabled &&
+        !corrector.disabled &&
+        lesson.subjectName != null &&
+        text.trim().split(RegExp(r'\s+')).length >= 3) {
+      try {
+        final corrected = await corrector
+            .correct(
+              text: text,
+              lesson: lesson,
+              previous: [?previous],
+              uncertain: isLowConfidence(confidence),
+            )
+            .timeout(corrector.timeout + const Duration(seconds: 1));
+        if (corrected != null) {
+          final current = await _segmentsDao.segmentById(segment.id);
+          // The student may have fixed it by hand in the meantime.
+          if (current?.content == text) {
+            await _segmentsDao.correctSegment(segment.id, corrected);
+            finalText = corrected;
+            AppLog.d(
+              _tag,
+              'segment ${segment.id} corrected: ${_preview(text)} -> '
+              '${_preview(corrected)}',
+            );
+          }
+        }
+      } catch (e) {
+        AppLog.d(_tag, 'segment ${segment.id} correction skipped: $e');
+      }
+    }
+
+    if (lesson != null) {
+      used.addAll(termsMentioned(finalText, lesson.terms));
+    }
+    if (used.isNotEmpty && onTermsUsed != null) {
+      try {
+        await onTermsUsed!(used);
+      } catch (e, st) {
+        AppLog.e(_tag, 'term use count failed', e, st);
+      }
+    }
+
+    // Words the recognizer barely believed are no ground for an answer
+    // nobody asked for; the student can still ask.
+    if (isVeryLowConfidence(confidence)) {
+      AppLog.d(_tag, 'segment ${segment.id}: too uncertain to answer from');
+      return;
+    }
+    try {
+      onTranscribed?.call(segment, finalText);
+    } catch (e, st) {
+      AppLog.e(_tag, 'onTranscribed callback threw', e, st);
+    }
+  }
+
+  Future<void> _scheduleRetry(
+    UploadQueueData row,
+    int attempt,
+    String error,
+  ) async {
     if (attempt >= kMaxRetryAttempts) {
       await _park(row, 'gave up after $attempt attempts: $error');
       return;
@@ -288,8 +416,14 @@ class TranscriptionQueueWorker {
     );
     // Back to pending, not failed: the UI should show this chunk as still
     // coming, because it is.
-    await _segmentsDao.updateSegmentStatus(row.segmentId, SegmentStatus.pending);
-    AppLog.d(_tag, 'row ${row.id} retry $attempt in ${delay.inSeconds}s — $error');
+    await _segmentsDao.updateSegmentStatus(
+      row.segmentId,
+      SegmentStatus.pending,
+    );
+    AppLog.d(
+      _tag,
+      'row ${row.id} retry $attempt in ${delay.inSeconds}s — $error',
+    );
   }
 
   /// Short, single-line form for the log — a transcript chunk is far too long

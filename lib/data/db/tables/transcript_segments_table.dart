@@ -24,4 +24,8 @@ class TranscriptSegments extends Table {
   /// What was heard before the user or the AI changed [content]; null while
   /// the text is untouched.
   TextColumn get rawContent => text().nullable()();
+
+  /// How sure Whisper was: the duration-weighted mean `avg_logprob` of the
+  /// segments it kept. Null when it reported none, or for rows before v17.
+  RealColumn get confidence => real().nullable()();
 }

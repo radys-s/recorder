@@ -22,13 +22,24 @@ const double kNoSpeechProbThreshold = 0.6;
 const double kLowAvgLogprobThreshold = -1.0;
 const double kMaxCompressionRatio = 2.4;
 
+/// Below this mean `avg_logprob` a transcript is shown as uncertain.
+const double kLowConfidenceLogprob = -0.9;
+
+/// Below this the transcript is too doubtful to trigger an automatic answer.
+const double kVeryLowConfidenceLogprob = -1.3;
+
 /// Result of filtering one response's segments.
 class WhisperSegmentFilterResult {
   const WhisperSegmentFilterResult({
     required this.text,
     required this.total,
     required this.dropped,
+    this.confidence,
   });
+
+  /// Duration-weighted mean `avg_logprob` of the kept segments; null when no
+  /// kept segment reported one.
+  final double? confidence;
 
   /// The kept segments' text, joined. Only meaningful when [dropped] > 0 —
   /// otherwise the response's own `text` should be used unchanged.
@@ -55,6 +66,8 @@ WhisperSegmentFilterResult? filterWhisperSegments(
 
   final kept = <String>[];
   var dropped = 0;
+  var weightedLogprob = 0.0;
+  var weight = 0.0;
 
   for (final segment in segments) {
     if (segment is! Map) return null;
@@ -74,14 +87,34 @@ WhisperSegmentFilterResult? filterWhisperSegments(
 
     final trimmed = text.trim();
     if (trimmed.isNotEmpty) kept.add(trimmed);
+    final logprob = _num(segment['avg_logprob']);
+    if (trimmed.isNotEmpty && logprob != null) {
+      final start = _num(segment['start']);
+      final end = _num(segment['end']);
+      // Without timings every segment counts the same.
+      final span = start != null && end != null && end > start
+          ? end - start
+          : 1.0;
+      weightedLogprob += logprob * span;
+      weight += span;
+    }
   }
 
   return WhisperSegmentFilterResult(
     text: kept.join(' '),
     total: segments.length,
     dropped: dropped,
+    confidence: weight > 0 ? weightedLogprob / weight : null,
   );
 }
+
+/// The transcript should be shown as uncertain.
+bool isLowConfidence(double? confidence) =>
+    confidence != null && confidence < kLowConfidenceLogprob;
+
+/// The transcript is too doubtful to answer from without being asked.
+bool isVeryLowConfidence(double? confidence) =>
+    confidence != null && confidence < kVeryLowConfidenceLogprob;
 
 /// The decision for one segment, exposed for the tests.
 bool isLikelyHallucinatedSegment({

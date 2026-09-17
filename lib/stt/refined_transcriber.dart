@@ -5,6 +5,7 @@ import '../ai/llm_provider.dart';
 import '../core/constants.dart';
 import '../data/db/tables/preferences_table.dart';
 import 'stt_provider.dart';
+import 'term_corrections.dart';
 import 'transcript_sanitizer.dart';
 
 /// What a refined window is told about the lesson it comes from.
@@ -13,6 +14,10 @@ class RefinedContext {
     this.subjectName,
     this.cardTitles = const [],
     this.glossary,
+    this.terms = const [],
+    this.slideTexts = const [],
+    this.contextMessages = const [],
+    this.corrections = const [],
     this.previousText,
     this.languageCode,
     this.sensitivity = MicSensitivity.auto,
@@ -21,6 +26,18 @@ class RefinedContext {
   final String? subjectName;
   final List<String> cardTitles;
   final String? glossary;
+
+  /// The lesson's words, most relevant first.
+  final List<String> terms;
+
+  /// Text read from photos of the board and slides.
+  final List<String> slideTexts;
+
+  /// What the student typed as context.
+  final List<String> contextMessages;
+
+  /// Mishearings the student fixed before, applied to the result.
+  final List<TermCorrection> corrections;
 
   /// The end of the window before this one, so a sentence cut at the
   /// boundary is continued rather than guessed.
@@ -32,7 +49,8 @@ class RefinedContext {
 /// What Gemini answers for a window with no speech in it.
 const String kRefinedSilenceMarker = '[ticho]';
 
-const String _geminiSystemPrompt = '''
+const String _geminiSystemPrompt =
+    '''
 You transcribe a recording of a school lesson or a meeting, word for word.
 
 - Write exactly what is said, in the language it is said in (usually Czech), with correct diacritics and punctuation. Do not translate.
@@ -40,7 +58,7 @@ You transcribe a recording of a school lesson or a meeting, word for word.
 - Never add a word that is not in the audio. A part you cannot make out is written as [nesrozumitelné].
 - Start a new paragraph when the speaker changes. Do not label speakers.
 - Leave out noises, music and silence. If nobody speaks at all, answer only $kRefinedSilenceMarker.
-- The context below only helps you spell names and terms; never copy text from it into the transcript.
+- The context below (subject, vocabulary, slide text, student's notes) only helps you recognise and spell the words that are actually spoken. Never add a word, sentence or fact from it that is not in the audio.
 - Answer with the transcript alone: no heading, no comments, no quotation marks.''';
 
 /// The request for one window: instructions, then whatever context there is.
@@ -54,9 +72,16 @@ List<LlmMessage> refinedGeminiMessages(RefinedContext context) {
       'Subject: ${context.subjectName!.trim()}',
     if (context.cardTitles.isNotEmpty)
       'Topics: ${context.cardTitles.join(', ')}',
-    if (context.glossary?.trim().isNotEmpty ?? false)
+    if (context.terms.isNotEmpty)
+      'Lesson vocabulary: ${context.terms.take(kRefinedTermCount).join(', ')}'
+    else if (context.glossary?.trim().isNotEmpty ?? false)
       'Names and terms: ${context.glossary!.trim()}',
-    if (tail.isNotEmpty) 'The previous part of the recording ended with:\n…$tail',
+    if (_capped(context.slideTexts, kRefinedSlideChars).isNotEmpty)
+      'Text from the slides:\n${_capped(context.slideTexts, kRefinedSlideChars)}',
+    if (_capped(context.contextMessages, kRefinedNotesChars).isNotEmpty)
+      "Student's notes:\n${_capped(context.contextMessages, kRefinedNotesChars)}",
+    if (tail.isNotEmpty)
+      'The previous part of the recording ended with:\n…$tail',
   ];
   return [
     const LlmMessage.system(_geminiSystemPrompt),
@@ -65,6 +90,30 @@ List<LlmMessage> refinedGeminiMessages(RefinedContext context) {
       'Transcribe this recording.',
     ),
   ];
+}
+
+/// How many vocabulary words a window's request lists.
+const int kRefinedTermCount = 80;
+
+/// Budgets for slide text and typed notes in a window's request.
+const int kRefinedSlideChars = 2000;
+const int kRefinedNotesChars = 800;
+
+/// [texts] joined, newest last, cut to [max] chars at a text boundary.
+String _capped(List<String> texts, int max) {
+  final kept = <String>[];
+  var used = 0;
+  for (final t in texts.reversed) {
+    final text = t.trim();
+    if (text.isEmpty) continue;
+    if (used + text.length > max) {
+      if (kept.isEmpty) kept.add(text.substring(0, max));
+      break;
+    }
+    kept.add(text);
+    used += text.length + 1;
+  }
+  return kept.reversed.join('\n');
 }
 
 /// Gemini's reply as transcript text: the silence marker becomes nothing,
@@ -123,7 +172,9 @@ class RefinedTranscriber {
     );
     if (isPromptEcho(text, context.previousText) ||
         isPromptEcho(
-            text, [?context.glossary, ?context.previousText].join(' '))) {
+          text,
+          [?context.glossary, ?context.previousText].join(' '),
+        )) {
       return '';
     }
     return text;

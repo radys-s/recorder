@@ -32,16 +32,16 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   /// Watched, so flipping a setting updates every screen without a refresh.
   Stream<Preference> watch() async* {
     await _ensureRow();
-    yield* (select(preferences)..where((t) => t.id.equals(_rowId)))
-        .watchSingle();
+    yield* (select(
+      preferences,
+    )..where((t) => t.id.equals(_rowId))).watchSingle();
   }
 
   /// One-shot read for code outside the widget tree — the queue worker asks
   /// for this per chunk, which is a local sqlite read every ~25 seconds.
   Future<Preference> current() async {
     await _ensureRow();
-    return (select(preferences)..where((t) => t.id.equals(_rowId)))
-        .getSingle();
+    return (select(preferences)..where((t) => t.id.equals(_rowId))).getSingle();
   }
 
   Future<void> _write(PreferencesCompanion patch) async {
@@ -67,19 +67,26 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> setOnboardingDismissed(bool value) =>
       _write(PreferencesCompanion(onboardingDismissed: Value(value)));
 
+  Future<void> setContextCorrection(bool value) =>
+      _write(PreferencesCompanion(contextCorrection: Value(value)));
+
   /// Gemini model picked in Settings; null or blank returns to the default.
   Future<void> setGeminiModelOverride(String? value) {
     final trimmed = value?.trim() ?? '';
-    return _write(PreferencesCompanion(
-      geminiModelOverride: Value(trimmed.isEmpty ? null : trimmed),
-    ));
+    return _write(
+      PreferencesCompanion(
+        geminiModelOverride: Value(trimmed.isEmpty ? null : trimmed),
+      ),
+    );
   }
 
   /// Rules for every lesson; blank clears them.
   Future<void> setGlobalRules(String? value) {
     final trimmed = value?.trim() ?? '';
     return _write(
-      PreferencesCompanion(globalRules: Value(trimmed.isEmpty ? null : trimmed)),
+      PreferencesCompanion(
+        globalRules: Value(trimmed.isEmpty ? null : trimmed),
+      ),
     );
   }
 }

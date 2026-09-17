@@ -2,7 +2,8 @@ import 'package:drift/drift.dart';
 
 import '../data/db/app_database.dart';
 import '../data/db/tables/chat_messages_table.dart';
-import '../stt/glossary.dart';
+import '../stt/lesson_vocabulary.dart';
+import '../stt/term_corrections.dart';
 import 'context_builder.dart';
 import 'lesson_notes_input.dart';
 
@@ -177,17 +178,110 @@ class LessonContextSource {
     return '$s $d';
   }
 
-  /// Names and terms from the lesson's pinned cards, for Whisper.
-  Future<String?> glossary(int meetingId) async {
-    final ids = await _db.subjectsDao.pinnedCardIds(meetingId);
-    if (ids.isEmpty) return null;
-    final rows = await (_db.select(
-      _db.contextCards,
-    )..where((t) => t.id.isIn(ids))).get();
-    return buildWhisperGlossary([
-      for (final c in rows)
-        (title: c.title, content: c.content, keywords: c.keywords),
-    ]);
+  /// What transcription should know about the lesson: the subject, the words
+  /// it uses ranked for what is being said right now, and the mishearings the
+  /// student already fixed. Null when there is nothing to tell.
+  Future<LessonListening?> listening(int meetingId) async {
+    final meeting = await (_db.select(
+      _db.meetings,
+    )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
+    if (meeting == null) return null;
+    final subjectId = meeting.subjectId;
+    final subject = subjectId == null
+        ? null
+        : await _db.subjectsDao.subject(subjectId);
+
+    final terms = subject == null
+        ? const <SubjectTerm>[]
+        : await _db.subjectsDao.terms(subject.id);
+    final cards = subject == null
+        ? const <ContextCard>[]
+        : await _db.subjectsDao.cards(subject.id);
+    final pinned = (await _db.subjectsDao.pinnedCardIds(meetingId)).toSet();
+    final chat = await _db.chatMessagesDao.messages(meetingId);
+    final segments = await _db.transcriptSegmentsDao.segmentsForMeeting(
+      meetingId,
+    );
+
+    final ready = [
+      for (final m in chat)
+        if (m.role == ChatRole.user &&
+            m.status == ChatStatus.ready &&
+            m.body.trim().isNotEmpty)
+          m,
+    ];
+    final slideTexts = [
+      for (final m in ready)
+        if (m.intent == ChatIntent.photo) m.body.trim(),
+    ];
+    final contextMessages = [
+      for (final m in ready)
+        if (m.intent == ChatIntent.context) m.body.trim(),
+    ];
+
+    var lastEnd = 0;
+    for (final s in segments) {
+      if (s.endMs > lastEnd) lastEnd = s.endMs;
+    }
+    final recent = [
+      for (final s in segments)
+        if (s.endMs >= lastEnd - kListeningRecentMs &&
+            (s.content ?? '').trim().isNotEmpty)
+          s.content!.trim(),
+    ].join(' ');
+
+    VocabularyCard card(ContextCard c) =>
+        (title: c.title, content: c.content, keywords: c.keywords);
+    final pinnedCards = [
+      for (final c in cards)
+        if (pinned.contains(c.id)) c,
+    ];
+    final ranked = rankLessonTerms(
+      terms: [
+        for (final t in terms)
+          (
+            id: t.id,
+            term: t.term,
+            heard: t.heard,
+            source: t.source,
+            uses: t.uses,
+          ),
+      ],
+      pinnedCards: [for (final c in pinnedCards) card(c)],
+      otherCards: [
+        for (final c in cards)
+          if (!pinned.contains(c.id)) card(c),
+      ],
+      photoTexts: slideTexts,
+      contextMessages: contextMessages,
+      recentTranscript: recent,
+    );
+
+    final corrections = <TermCorrection>[];
+    final correctionIds = <int>[];
+    for (final t in terms) {
+      final heard = t.heard?.trim() ?? '';
+      if (heard.isEmpty) continue;
+      corrections.add((heard: heard, term: t.term));
+      correctionIds.add(t.id);
+    }
+
+    final cardTitles = [for (final c in pinnedCards) c.title];
+    final listening = LessonListening(
+      subjectName: subject?.name,
+      leadIn: lessonLeadIn(
+        subjectName: subject?.name,
+        cardTitles: cardTitles,
+        terms: ranked,
+      ),
+      corrections: corrections,
+      correctionIds: correctionIds,
+      terms: ranked,
+      cardTitles: cardTitles,
+      slideTexts: slideTexts,
+      contextMessages: contextMessages,
+    );
+    return listening.isEmpty ? null : listening;
   }
 
   Future<void> markUsed(int cardId) =>

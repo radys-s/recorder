@@ -101,13 +101,13 @@ void main() {
   });
 
   group('whisperPrompt length', () {
-    test('keeps a 350-char tail and trims the glossary first', () {
+    test('keeps a 320-char tail and trims the glossary first', () {
       final tail = 'x' * 1000;
       final glossary = List.generate(80, (i) => 'Pojem$i').join(', ');
       final prompt = GroqWhisperSttProvider.whisperPrompt(
           glossary: glossary, context: tail)!;
-      expect(prompt, endsWith('x' * 350));
-      expect(prompt.length, lessThanOrEqualTo(600));
+      expect(prompt, endsWith('x' * 320));
+      expect(prompt.length, lessThanOrEqualTo(620));
       expect(prompt, startsWith('Pojem0, Pojem1'));
       expect(prompt, isNot(contains(', .')));
     });

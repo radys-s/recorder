@@ -35,7 +35,7 @@ String? buildWhisperGlossary(
 
   final counts = <String, int>{};
   for (final card in list) {
-    for (final name in _properNouns(card.content)) {
+    for (final name in properNouns(card.content)) {
       counts[name] = (counts[name] ?? 0) + 1;
     }
   }
@@ -56,7 +56,7 @@ String? buildWhisperGlossary(
 final _word = RegExp(r'\p{L}+', unicode: true);
 
 /// Capitalised words that do not open a sentence — names, mostly.
-Iterable<String> _properNouns(String text) sync* {
+Iterable<String> properNouns(String text) sync* {
   for (final match in _word.allMatches(text)) {
     final w = match.group(0)!;
     if (w.length < 3) continue;
