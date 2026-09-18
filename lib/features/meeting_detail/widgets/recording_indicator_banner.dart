@@ -120,6 +120,10 @@ class _Banner extends ConsumerStatefulWidget {
 class _BannerState extends ConsumerState<_Banner> {
   Timer? _ticker;
 
+  /// The lesson whose weak-signal warning has been read and waved away. Kept
+  /// per meeting, so the next lesson is warned again.
+  int? _signalNoticeDismissed;
+
   @override
   void initState() {
     super.initState();
@@ -172,10 +176,14 @@ class _BannerState extends ConsumerState<_Banner> {
     final startedAt = ref.watch(
       recordingControllerProvider.select((s) => s.startedAt),
     );
+    final weakSignal = ref.watch(
+      recordingControllerProvider.select((s) => s.weakSignal),
+    );
     final elapsed = startedAt == null
         ? Duration.zero
         : DateTime.now().difference(startedAt);
     final scheme = Theme.of(context).colorScheme;
+    final warn = weakSignal && _signalNoticeDismissed != meetingId;
 
     return Material(
       color: scheme.errorContainer,
@@ -185,42 +193,94 @@ class _BannerState extends ConsumerState<_Banner> {
           bottom: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(Gap.md, Gap.xs, Gap.sm, Gap.xs),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const _PulsingDot(),
-                const SizedBox(width: Gap.sm),
-                Expanded(
-                  child: Text(
-                    'Nahrává se · ${formatClock(elapsed)}',
-                    style: TextStyle(
-                      color: scheme.onErrorContainer,
-                      fontWeight: FontWeight.w500,
-                      // The clock ticks every second; without tabular digits
-                      // the whole line shifts as they change width.
-                      fontFeatures: kTabularFigures,
+                Row(
+                  children: [
+                    const _PulsingDot(),
+                    const SizedBox(width: Gap.sm),
+                    Expanded(
+                      child: Text(
+                        'Nahrává se · ${formatClock(elapsed)}',
+                        style: TextStyle(
+                          color: scheme.onErrorContainer,
+                          fontWeight: FontWeight.w500,
+                          // The clock ticks every second; without tabular digits
+                          // the whole line shifts as they change width.
+                          fontFeatures: kTabularFigures,
+                        ),
+                      ),
                     ),
+                    LevelWaveform(
+                      level: ref
+                          .read(recordingControllerProvider.notifier)
+                          .level,
+                      color: scheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: Gap.xs),
+                    TextButton.icon(
+                      onPressed: () {
+                        HapticFeedback.mediumImpact();
+                        ref.read(recordingControllerProvider.notifier).stop();
+                      },
+                      icon: const Icon(Icons.stop, size: 18),
+                      label: const Text('Zastavit'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: scheme.onErrorContainer,
+                      ),
+                    ),
+                  ],
+                ),
+                if (warn)
+                  _WeakSignalNotice(
+                    onDismiss: () =>
+                        setState(() => _signalNoticeDismissed = meetingId),
                   ),
-                ),
-                LevelWaveform(
-                  level: ref.read(recordingControllerProvider.notifier).level,
-                  color: scheme.onErrorContainer,
-                ),
-                const SizedBox(width: Gap.xs),
-                TextButton.icon(
-                  onPressed: () {
-                    HapticFeedback.mediumImpact();
-                    ref.read(recordingControllerProvider.notifier).stop();
-                  },
-                  icon: const Icon(Icons.stop, size: 18),
-                  label: const Text('Zastavit'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: scheme.onErrorContainer,
-                  ),
-                ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Said once per lesson, and only after a full minute of it: the microphone
+/// is hearing the room more than the teacher, and no amount of processing
+/// afterwards can put back what never reached it. Moving the phone can.
+class _WeakSignalNotice extends StatelessWidget {
+  const _WeakSignalNotice({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.xs),
+      child: Row(
+        children: [
+          Icon(
+            Icons.mic_off_outlined,
+            size: 18,
+            color: scheme.onErrorContainer,
+          ),
+          const SizedBox(width: Gap.sm),
+          Expanded(
+            child: Text(
+              'Slabý signál — polož telefon blíž k vyučujícímu',
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: scheme.onErrorContainer),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Skrýt',
+            visualDensity: VisualDensity.compact,
+            onPressed: onDismiss,
+            icon: Icon(Icons.close, size: 18, color: scheme.onErrorContainer),
+          ),
+        ],
       ),
     );
   }

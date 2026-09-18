@@ -32,6 +32,8 @@ typedef RankedTerm = ({String term, int? id});
 class LessonListening {
   const LessonListening({
     this.subjectName,
+    this.courseLine,
+    this.topicTitle,
     this.leadIn,
     this.corrections = const [],
     this.correctionIds = const [],
@@ -42,6 +44,13 @@ class LessonListening {
   });
 
   final String? subjectName;
+
+  /// The course as „Počítačové sítě, SOŠ, obor IT, 3. ročník" — what tells the
+  /// AI at which level the words are meant.
+  final String? courseLine;
+
+  /// The topic of the thematic plan this lesson is on.
+  final String? topicTitle;
 
   /// Titles of the cards pinned for this lesson.
   final List<String> cardTitles;
@@ -71,7 +80,8 @@ class LessonListening {
 ///
 /// 1. Words the student added or corrected — they are the ones that went
 ///    wrong before.
-/// 2. Keywords, titles and names of the cards pinned for this lesson.
+/// 2. The terms of the topic the lesson is on, from the thematic plan.
+/// 3. Keywords, titles and names of the cards pinned for this lesson.
 /// 3. The rest of the vocabulary and the other cards, by how many word stems
 ///    they share with what was just said, then by how often they came up.
 /// 4. Names from slide photos and from what the student typed.
@@ -79,6 +89,7 @@ class LessonListening {
 /// Duplicates are compared without case and diacritics; the first wins.
 List<RankedTerm> rankLessonTerms({
   List<VocabularyTerm> terms = const [],
+  List<String> topicTerms = const [],
   List<VocabularyCard> pinnedCards = const [],
   List<VocabularyCard> otherCards = const [],
   List<String> photoTexts = const [],
@@ -100,6 +111,9 @@ List<RankedTerm> rankLessonTerms({
   ]..sort((a, b) => b.uses.compareTo(a.uses));
   for (final t in taught) {
     add(t.term, t.id);
+  }
+  for (final t in topicTerms) {
+    add(t);
   }
 
   for (final card in pinnedCards) {
@@ -147,27 +161,37 @@ List<RankedTerm> rankLessonTerms({
 Iterable<String> _keywords(VocabularyCard card) =>
     (card.keywords ?? '').split(',').where((k) => k.trim().isNotEmpty);
 
-/// The opening of Whisper's prompt: „Hodina: Čeština — Babička, Máj. Pojmy:
-/// Viktorka, Proško."
+/// The opening of Whisper's prompt: „Hodina: Počítačové sítě, 3. ročník —
+/// téma: Směrování, Babička. Pojmy: OSPF, RIP."
 ///
 /// Whisper copies spelling and style from a prompt that reads like the
 /// transcript before it, so a sentence works better than a bare list of words.
 /// Terms that do not fit are left out whole, never cut.
 String? lessonLeadIn({
   String? subjectName,
+  String? courseLine,
+  String? topicTitle,
   List<String> cardTitles = const [],
   List<RankedTerm> terms = const [],
   int maxChars = kLessonLeadInMaxChars,
 }) {
-  final name = subjectName?.trim() ?? '';
+  final course = courseLine?.trim() ?? '';
+  final name = course.isNotEmpty ? course : (subjectName?.trim() ?? '');
+  final topic = topicTitle?.trim() ?? '';
+  // The topic leads the list of what the lesson is about; the pinned cards
+  // follow it, joined the same way.
+  final subjects = <String>[
+    if (topic.isNotEmpty) topic,
+    for (final t in cardTitles)
+      if (t.trim().isNotEmpty) t.trim(),
+  ];
   final titles = <String>[];
   var head = name.isEmpty ? '' : 'Hodina: $name';
-  for (final title in cardTitles) {
-    final t = title.trim();
-    if (t.isEmpty) continue;
+  for (final t in subjects) {
+    final label = titles.isEmpty && topic.isNotEmpty ? 'téma: $t' : t;
     final next = titles.isEmpty
-        ? (head.isEmpty ? t : '$head — $t')
-        : '$head, $t';
+        ? (head.isEmpty ? label : '$head — $label')
+        : '$head, $label';
     if (next.length + 1 > maxChars) break;
     titles.add(t);
     head = next;

@@ -1,4 +1,4 @@
-import '../data/db/app_database.dart' show SyllabusTopic;
+import '../data/db/app_database.dart' show Meeting, SyllabusTopic;
 import '../stt/transcript_sanitizer.dart' show normalizeForArtifactMatch;
 import 'grounding.dart';
 import 'json_extract.dart';
@@ -201,6 +201,19 @@ List<SyllabusTopic> currentTopics(List<SyllabusTopic> topics, DateTime date) {
     for (final t in timed)
       if (distance(t) == best) t,
   ];
+}
+
+/// The lesson's topic: the one picked by hand, else the plan's topic for the
+/// lesson's date.
+SyllabusTopic? lessonTopic(Meeting meeting, List<SyllabusTopic> topics) {
+  final id = meeting.topicId;
+  if (id != null) {
+    for (final t in topics) {
+      if (t.id == id) return t;
+    }
+  }
+  final current = currentTopics(topics, meeting.createdAt);
+  return current.isEmpty ? null : current.first;
 }
 
 /// The topic a lesson is about, judged from what is being said.

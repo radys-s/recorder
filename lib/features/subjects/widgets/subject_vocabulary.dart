@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/spacing.dart';
 import '../../../data/db/app_database.dart';
+import '../../../core/providers.dart';
 import '../../../data/db/daos/subjects_dao.dart';
-import '../../../data/db/tables/subject_terms_table.dart';
 import '../subjects_providers.dart';
 
 final subjectTermsProvider = StreamProvider.family<List<SubjectTerm>, int>((
@@ -13,13 +13,6 @@ final subjectTermsProvider = StreamProvider.family<List<SubjectTerm>, int>((
 ) {
   return ref.watch(subjectsDaoProvider).watchTerms(subjectId);
 });
-
-String termSourceLabel(TermSource source) => switch (source) {
-  TermSource.manual => 'Přidáno ručně',
-  TermSource.correction => 'Z opravy přepisu',
-  TermSource.card => 'Z karty',
-  TermSource.notes => 'Z výpisků',
-};
 
 /// „Slovník předmětu" in a subject's settings: names and terms the
 /// transcription should spell right, and the misheard forms it should fix.
@@ -85,7 +78,7 @@ class SubjectVocabulary extends ConsumerWidget {
             title: Text(
               term.heard == null ? term.term : '${term.heard} › ${term.term}',
             ),
-            subtitle: Text(termSourceLabel(term.source)),
+            subtitle: Text(term.source.label),
             onTap: () => _edit(context, ref, term),
             trailing: IconButton(
               icon: const Icon(Icons.close),
@@ -94,15 +87,72 @@ class SubjectVocabulary extends ConsumerWidget {
                   ref.read(subjectsDaoProvider).deleteTerm(term.id),
             ),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: () => _edit(context, ref),
-            icon: const Icon(Icons.add),
-            label: const Text('Přidat pojem'),
-          ),
+        Wrap(
+          spacing: Gap.sm,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _edit(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Přidat pojem'),
+            ),
+            _AliasButton(subjectId: subjectId),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// Asks the AI how Czech speech recognition mishears this subject's foreign
+/// terms, and stores the answers as corrections.
+///
+/// The plan's save does this on its own; the button is for a vocabulary that
+/// grew afterwards, and for trying again when the first call ran into a limit.
+class _AliasButton extends ConsumerStatefulWidget {
+  const _AliasButton({required this.subjectId});
+
+  final int subjectId;
+
+  @override
+  ConsumerState<_AliasButton> createState() => _AliasButtonState();
+}
+
+class _AliasButtonState extends ConsumerState<_AliasButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final written = await ref
+        .read(termAliasServiceProvider)
+        .generate(widget.subjectId);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            written == 0
+                ? 'Žádné nové slyšené podoby.'
+                : 'Přidáno ${czechCount(written, 'slyšená podoba', 'slyšené podoby', 'slyšených podob')}.',
+          ),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: _busy ? null : _run,
+      icon: _busy
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.hearing),
+      label: const Text('Doplnit slyšené podoby'),
     );
   }
 }

@@ -4,6 +4,8 @@ import '../data/db/tables/preferences_table.dart';
 class LessonNotesInput {
   const LessonNotesInput({
     required this.subjectName,
+    this.courseLine,
+    this.topicTitle,
     this.cardTitles = const [],
     this.context = const [],
     this.photos = const [],
@@ -12,6 +14,13 @@ class LessonNotesInput {
   });
 
   final String subjectName;
+
+  /// The course as „Počítačové sítě, SOŠ, obor IT, 3. ročník" — what tells the
+  /// AI at which level to pitch the notes.
+  final String? courseLine;
+
+  /// The topic of the thematic plan this lesson is on.
+  final String? topicTitle;
 
   /// Titles of the cards pinned for the lesson.
   final List<String> cardTitles;
@@ -92,7 +101,10 @@ String lessonUserMessage(
   final cards = lesson.cardTitles.isEmpty
       ? ''
       : '\nKarty k hodině: ${lesson.cardTitles.join(', ')}';
-  return 'Předmět: ${lesson.subjectName}$cards\n\n'
+  final course = (lesson.courseLine ?? '').trim();
+  final topic = (lesson.topicTitle ?? '').trim();
+  return 'Předmět: ${course.isEmpty ? lesson.subjectName : course}'
+      '${topic.isEmpty ? '' : '\nTéma hodiny: $topic'}$cards\n\n'
       'Přepis:\n${transcript.trim()}'
       '${lessonNotesBlocks(lesson, maxChars: maxExtraChars)}';
 }

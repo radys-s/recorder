@@ -114,19 +114,6 @@ class LessonContextStrip extends ConsumerWidget {
   }
 }
 
-/// The lesson's topic: the one picked by hand, else the plan's topic for the
-/// lesson's date.
-SyllabusTopic? lessonTopic(Meeting meeting, List<SyllabusTopic> topics) {
-  final id = meeting.topicId;
-  if (id != null) {
-    for (final t in topics) {
-      if (t.id == id) return t;
-    }
-  }
-  final current = currentTopics(topics, meeting.createdAt);
-  return current.isEmpty ? null : current.first;
-}
-
 /// Pick a topic for one lesson, or „Automaticky" (by the plan's months).
 /// Pops `(id: null)` for automatic, `(id: n)` for a topic.
 class TopicPickerSheet extends StatelessWidget {

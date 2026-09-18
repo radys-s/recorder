@@ -28,6 +28,8 @@ class LessonCard {
 class LessonMaterial {
   const LessonMaterial({
     this.subjectName,
+    this.courseLine,
+    this.topicTitle,
     this.globalRules,
     this.subjectRules,
     this.lessonRules,
@@ -37,6 +39,13 @@ class LessonMaterial {
   });
 
   final String? subjectName;
+
+  /// The course as „Počítačové sítě, SOŠ, obor IT, 3. ročník": at which level
+  /// the answer has to be pitched.
+  final String? courseLine;
+
+  /// The topic of the thematic plan this lesson is on.
+  final String? topicTitle;
   final String? globalRules;
   final String? subjectRules;
   final String? lessonRules;
@@ -176,7 +185,14 @@ LessonContext buildLessonContext({
       ?_line('This lesson', material.lessonRules),
       for (final r in material.chatRules) ?_line('Said in class', r),
     ],
-    lead: [if (material.subjectName case final name?) 'Subject: $name'],
+    lead: [
+      if (material.courseLine?.trim().isNotEmpty ?? false)
+        'Course: ${material.courseLine!.trim()}'
+      else if (material.subjectName case final name?)
+        'Subject: $name',
+      if (material.topicTitle?.trim().isNotEmpty ?? false)
+        'Topic of this lesson: ${material.topicTitle!.trim()}',
+    ],
     budgetChars: budget.rules * 3,
     separated: false,
   );

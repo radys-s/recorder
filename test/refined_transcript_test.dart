@@ -140,6 +140,25 @@ void main() {
       expect(plans.single.chunks.map((s) => s.id), [0, 1, 2]);
     });
 
+    test('during the lesson the unfinished tail is left alone', () {
+      final plans = planWindows(
+        [for (var i = 0; i < 10; i++) _seg(i, i * 30, (i + 1) * 30)],
+        target: const Duration(minutes: 2),
+        includeTail: false,
+      );
+      // The last two chunks are still being added to; only full windows go.
+      expect([for (final w in plans) w.chunks.length], [4, 4]);
+      expect(plans.last.endMs, 240000);
+      expect(
+        planWindows(
+          [for (var i = 0; i < 3; i++) _seg(i, i * 30, (i + 1) * 30)],
+          target: const Duration(minutes: 2),
+          includeTail: false,
+        ),
+        isEmpty,
+      );
+    });
+
     test('nothing recorded, nothing planned', () {
       expect(planWindows(const [], target: const Duration(minutes: 4)), isEmpty);
     });
@@ -323,16 +342,14 @@ void main() {
           retryDelays: const [Duration.zero],
         );
 
-    /// A finished meeting with [count] 30-second chunks on disk.
-    Future<int> seed(int count, {int voicedMs = 20000}) async {
-      final meetingId = await db.meetingsDao.insertMeeting(
-        MeetingsCompanion.insert(
-          title: 'Hodina',
-          createdAt: _t0,
-          endedAt: Value(_t0.add(const Duration(hours: 1))),
-        ),
-      );
-      for (var i = 0; i < count; i++) {
+    /// Writes [count] more 30-second chunks, starting at sequence [from].
+    Future<void> addChunks(
+      int meetingId,
+      int count, {
+      int from = 0,
+      int voicedMs = 20000,
+    }) async {
+      for (var i = from; i < from + count; i++) {
         final name = 'chunk_$i.wav';
         await writeWavFile(
           path: p.join(dir.path, name),
@@ -353,6 +370,25 @@ void main() {
               ),
             );
       }
+    }
+
+    /// A meeting with [count] 30-second chunks on disk, finished unless
+    /// [ended] says the lesson is still running.
+    Future<int> seed(
+      int count, {
+      int voicedMs = 20000,
+      bool ended = true,
+    }) async {
+      final meetingId = await db.meetingsDao.insertMeeting(
+        MeetingsCompanion.insert(
+          title: 'Hodina',
+          createdAt: _t0,
+          endedAt: ended
+              ? Value(_t0.add(const Duration(hours: 1)))
+              : const Value.absent(),
+        ),
+      );
+      await addChunks(meetingId, count, voicedMs: voicedMs);
       return meetingId;
     }
 
@@ -442,6 +478,51 @@ void main() {
       );
       await service().refine(meetingId);
       expect(await db.refinedSegmentsDao.windows(meetingId), isEmpty);
+    });
+
+    test('a lesson still running refines only its whole windows', () async {
+      final meetingId = await seed(10, ended: false); // 5 min
+      transcriber.geminiResult = (call) => 'okno $call';
+      await service().refineWhileRecording(meetingId);
+
+      // One 4-minute window; the 60 s recorded since is still being spoken.
+      final windows = await db.refinedSegmentsDao.windows(meetingId);
+      expect(windows, hasLength(1));
+      expect(windows.single.endMs, 240000);
+      expect(windows.single.content, 'okno 1');
+
+      // Nothing new to close yet, so no second request.
+      await service().refineWhileRecording(meetingId);
+      expect(transcriber.geminiCalls, hasLength(1));
+    });
+
+    test('stopping keeps what the lesson already refined', () async {
+      final meetingId = await seed(10, ended: false);
+      transcriber.geminiResult = (call) => 'okno $call';
+      await service().refineWhileRecording(meetingId);
+
+      await addChunks(meetingId, 2, from: 10);
+      await db.meetingsDao.markEnded(meetingId, _t0.add(const Duration(hours: 1)));
+      await service().refine(meetingId);
+
+      final windows = await db.refinedSegmentsDao.windows(meetingId);
+      expect(windows.map((w) => w.content), ['okno 1', 'okno 2']);
+      // The tail window starts where the finished one ended, so the first
+      // four minutes are not paid for twice.
+      expect(windows.last.startMs, 240000);
+      expect(transcriber.geminiCalls, hasLength(2));
+    });
+
+    test('‚Přepsat znovu‘ plans the whole meeting again', () async {
+      final meetingId = await seed(16); // 8 min → two 4-min windows
+      transcriber.geminiResult = (call) => 'okno $call';
+      await service().refine(meetingId);
+      expect(transcriber.geminiCalls, hasLength(2));
+
+      await service().refine(meetingId, force: true);
+      final windows = await db.refinedSegmentsDao.windows(meetingId);
+      expect(windows, hasLength(2));
+      expect(windows.map((w) => w.content), ['okno 3', 'okno 4']);
     });
 
     test('resume picks up pending and interrupted windows', () async {

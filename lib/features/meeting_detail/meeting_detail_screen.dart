@@ -506,7 +506,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             tooltip: 'Přepsat znovu',
             onPressed: working > 0
                 ? null
-                : () => service.refine(widget.meetingId),
+                : () => service.refine(widget.meetingId, force: true),
             icon: const Icon(Icons.refresh),
           ),
         ],

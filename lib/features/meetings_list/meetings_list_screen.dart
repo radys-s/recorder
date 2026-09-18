@@ -786,6 +786,12 @@ class _MeetingCard extends ConsumerWidget {
           label: 'Přepis ${summary.transcribedCount}/${summary.segmentCount}',
           tone: ChipTone.progress,
         ),
+      if (summary.weakAudio)
+        const StatusChip(
+          icon: Icons.graphic_eq,
+          label: 'Slabý zvuk',
+          tone: ChipTone.alert,
+        ),
       if (summary.segmentCount == 0)
         const StatusChip(icon: Icons.mic_off_outlined, label: 'Bez záznamu'),
       if (meeting.interrupted)

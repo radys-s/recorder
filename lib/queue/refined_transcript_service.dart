@@ -18,6 +18,8 @@ import '../stt/term_corrections.dart';
 /// Lesson facts a window's request is told.
 typedef RefinedLessonInfo = ({
   String? subjectName,
+  String? courseLine,
+  String? topicTitle,
   List<String> cardTitles,
   String? glossary,
   List<String> terms,
@@ -82,14 +84,33 @@ class RefinedTranscriptService {
     }
   }
 
-  /// Plans the meeting's windows afresh and transcribes them. Replaces any
-  /// earlier refined text, which is what „Přepsat znovu" means.
-  Future<void> refine(int meetingId) async {
+  /// Plans what is left of a finished meeting and transcribes it.
+  ///
+  /// Windows already done during the lesson are kept, so stopping the
+  /// recording only costs the tail. With [force] the meeting is planned from
+  /// scratch and every window is transcribed again, which is what
+  /// „Přepsat znovu" means.
+  Future<void> refine(int meetingId, {bool force = false}) =>
+      _plan(meetingId, live: false, force: force);
+
+  /// Re-hears the windows that are already whole while the lesson is still
+  /// running, so the student reads corrected text within minutes instead of
+  /// after the bell. The chunk still being recorded is never part of a window,
+  /// and live answers keep running on the raw live text.
+  Future<void> refineWhileRecording(int meetingId) =>
+      _plan(meetingId, live: true, force: false);
+
+  Future<void> _plan(
+    int meetingId, {
+    required bool live,
+    required bool force,
+  }) async {
     try {
       final meeting = await (_db.select(
         _db.meetings,
       )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
-      if (meeting == null || meeting.endedAt == null) return;
+      if (meeting == null) return;
+      if (live ? meeting.endedAt != null : meeting.endedAt == null) return;
 
       final segments = await _db.transcriptSegmentsDao.segmentsForMeeting(
         meetingId,
@@ -99,16 +120,47 @@ class RefinedTranscriptService {
       final plans = planWindows(
         segments,
         target: gemini ? kRefinedGeminiWindow : kRefinedWhisperWindow,
+        includeTail: !live,
       );
-      await _db.refinedSegmentsDao.replaceWindows(meetingId, [
-        for (final w in plans)
-          (startMs: w.startMs, endMs: w.endMs, engine: engine),
-      ]);
-      AppLog.d(
-        _tag,
-        'meeting $meetingId: ${plans.length} window(s) via ${engine.name}',
-      );
-      if (plans.isEmpty) return;
+      final dao = _db.refinedSegmentsDao;
+
+      if (force) {
+        await dao.replaceWindows(meetingId, [
+          for (final w in plans)
+            (startMs: w.startMs, endMs: w.endMs, engine: engine),
+        ]);
+        AppLog.d(
+          _tag,
+          'meeting $meetingId: ${plans.length} window(s) via ${engine.name}',
+        );
+        if (plans.isEmpty) return;
+      } else {
+        final existing = await dao.windows(meetingId);
+        // Chunks only ever get appended, so the boundaries of the windows
+        // already planned do not move; everything past the last one is new.
+        final covered = existing.isEmpty
+            ? 0
+            : existing.map((w) => w.endMs).reduce((a, b) => a > b ? a : b);
+        final fresh = [
+          for (final w in plans)
+            if (w.endMs > covered)
+              (
+                // A last window that swallowed a short tail can reach back
+                // into covered audio; [chunksIn] goes by midpoint, so moving
+                // the start forward is enough to keep the two from overlapping.
+                startMs: w.startMs < covered ? covered : w.startMs,
+                endMs: w.endMs,
+                engine: engine,
+              ),
+        ];
+        if (fresh.isEmpty) return;
+        await dao.addWindows(meetingId, fresh);
+        AppLog.d(
+          _tag,
+          'meeting $meetingId: ${fresh.length} new window(s) via '
+          '${engine.name}${live ? ', lesson still running' : ''}',
+        );
+      }
       _enqueue(meetingId);
       await _kick();
     } catch (e, st) {
@@ -299,6 +351,8 @@ class RefinedTranscriptService {
     }
     return RefinedContext(
       subjectName: info?.subjectName,
+      courseLine: info?.courseLine,
+      topicTitle: info?.topicTitle,
       cardTitles: info?.cardTitles ?? const [],
       glossary: info?.glossary,
       terms: info?.terms ?? const [],

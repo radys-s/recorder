@@ -20,10 +20,16 @@ class WindowPlan {
 /// the first chunk that takes it to [target]; a last window shorter than
 /// [minLast] joins the one before it rather than going out as a scrap of
 /// audio with no context.
+///
+/// With [includeTail] false the chunks left over after the last full window
+/// are dropped instead. That is what a pass running during the lesson needs:
+/// more audio is still coming, so a short tail is not a last window, it is an
+/// unfinished one.
 List<WindowPlan> planWindows(
   List<TranscriptSegment> segments, {
   required Duration target,
   Duration minLast = kRefinedMinLastWindow,
+  bool includeTail = true,
 }) {
   final ordered = [...segments]..sort((a, b) => a.sequence.compareTo(b.sequence));
   final windows = <List<TranscriptSegment>>[];
@@ -35,7 +41,7 @@ List<WindowPlan> planWindows(
       current = <TranscriptSegment>[];
     }
   }
-  if (current.isNotEmpty) {
+  if (current.isNotEmpty && includeTail) {
     final length = current.last.endMs - current.first.startMs;
     if (windows.isNotEmpty && length < minLast.inMilliseconds) {
       windows.last.addAll(current);

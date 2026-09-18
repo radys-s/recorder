@@ -8,20 +8,25 @@ import 'lesson_vocabulary.dart';
 import 'transcript_sanitizer.dart';
 
 const _systemPrompt = '''
-You proofread one chunk of an automatic Czech speech transcript of a school lesson.
+You proofread the last few chunks of an automatic Czech speech transcript of a school lesson.
 
-Fix only words the speech recognition misheard: names and terms of this subject, wrong diacritics, a word split in two or two words merged at the edge of the chunk. Use the lesson vocabulary to spell them.
+Fix only words the speech recognition misheard: names and terms of this subject, wrong diacritics, a word split in two or two words merged at the edge of a chunk. Use the course and the lesson vocabulary to spell them.
 
-Never rephrase, reorder, add, remove, translate or summarise. Keep filler words, repetitions and grammar mistakes the speaker really made. If you are not sure a word is wrong, leave it as it is. Most chunks need no change at all.
+Never rephrase, reorder, add, remove, translate or summarise. Never move text from one chunk into another. Keep filler words, repetitions and grammar mistakes the speaker really made. If you are not sure a word is wrong, leave it as it is. Most chunks need no change at all.
 
-Reply with JSON only: {"text": "<the chunk, corrected>"}''';
+Reply with JSON only: {"texts": ["<chunk 1, corrected>", "<chunk 2, corrected>"]} — exactly as many items as there are chunks, in the same order.''';
 
 /// Fixes the words Whisper misheard in a lesson transcript, using the
 /// subject's vocabulary.
 ///
+/// Chunks are proofread in small batches rather than one at a time: the model
+/// sees about forty seconds of speech instead of ten, which is what lets it
+/// tell a misheard term from a word the teacher really said, and it is three
+/// times fewer requests against the same rate limit.
+///
 /// The prompt asks for spelling fixes only; [acceptCorrection] makes sure of
-/// it, so a model that rewrites a sentence costs the correction, never the
-/// transcript.
+/// it — per chunk, so one rewritten sentence costs that chunk's correction and
+/// nothing else.
 class TranscriptCorrector {
   TranscriptCorrector(
     this._llm, {
@@ -48,17 +53,38 @@ class TranscriptCorrector {
     required LessonListening lesson,
     List<String> previous = const [],
     bool uncertain = false,
+  }) async => (await correctBatch(
+    texts: [text],
+    lesson: lesson,
+    previous: previous,
+    uncertain: uncertain,
+  )).first;
+
+  /// One entry per chunk of [texts], in the same order: the corrected text, or
+  /// null where the chunk is unchanged, was rejected, or the call failed.
+  Future<List<String?>> correctBatch({
+    required List<String> texts,
+    required LessonListening lesson,
+    List<String> previous = const [],
+    bool uncertain = false,
   }) async {
-    if (_disabled) return null;
+    final none = List<String?>.filled(texts.length, null);
+    if (_disabled || texts.isEmpty) return none;
     final terms = [
       for (final t in lesson.terms.take(kCorrectorTermCount)) t.term,
     ];
     final user = [
-      if (lesson.subjectName != null) 'Subject: ${lesson.subjectName}',
+      if (lesson.courseLine?.trim().isNotEmpty ?? false)
+        'Course: ${lesson.courseLine!.trim()}'
+      else if (lesson.subjectName != null)
+        'Subject: ${lesson.subjectName}',
+      if (lesson.topicTitle?.trim().isNotEmpty ?? false)
+        'Topic of this lesson: ${lesson.topicTitle!.trim()}',
       if (terms.isNotEmpty) 'Lesson vocabulary: ${terms.join(', ')}',
-      if (previous.isNotEmpty) 'Previous chunks: ${previous.join(' ')}',
-      if (uncertain) 'The recognizer was unsure about this chunk.',
-      'Chunk: $text',
+      if (previous.isNotEmpty) 'Earlier chunks: ${previous.join(' ')}',
+      if (uncertain) 'The recognizer was unsure about some of these chunks.',
+      'Chunks:',
+      for (var i = 0; i < texts.length; i++) '${i + 1}) ${texts[i]}',
     ].join('\n');
 
     for (var attempt = 0; attempt < 2; attempt++) {
@@ -74,14 +100,38 @@ class TranscriptCorrector {
           jsonMode: true,
           timeout: timeout,
         );
-        final corrected = extractJsonObject(raw)?['text'];
-        if (corrected is! String) return null;
-        final verdict = acceptCorrection(text, corrected, knownTerms: terms);
-        if (verdict != null) {
-          AppLog.d(_tag, 'rejected: $verdict');
-          return null;
+        final list = extractJsonObject(raw)?['texts'];
+        // A reply with a different number of chunks has lost track of which
+        // text is which, and applying it would move words between segments.
+        if (list is! List || list.length != texts.length) {
+          AppLog.d(
+            _tag,
+            'rejected: reply does not cover ${texts.length} chunks',
+          );
+          return none;
         }
-        return corrected.trim() == text.trim() ? null : corrected.trim();
+        final out = <String?>[];
+        for (var i = 0; i < texts.length; i++) {
+          final corrected = list[i];
+          if (corrected is! String) {
+            out.add(null);
+            continue;
+          }
+          final verdict = acceptCorrection(
+            texts[i],
+            corrected,
+            knownTerms: terms,
+          );
+          if (verdict != null) {
+            AppLog.d(_tag, 'rejected chunk ${i + 1}: $verdict');
+            out.add(null);
+            continue;
+          }
+          out.add(
+            corrected.trim() == texts[i].trim() ? null : corrected.trim(),
+          );
+        }
+        return out;
       } on AiPermanentException catch (e) {
         if (e.statusCode == 404 && _model != fallbackModel) {
           AppLog.d(_tag, '$_model missing, using $fallbackModel');
@@ -90,13 +140,13 @@ class TranscriptCorrector {
         }
         AppLog.e(_tag, 'disabled for this session: ${e.message}');
         _disabled = true;
-        return null;
+        return none;
       } on AiException catch (e) {
         AppLog.d(_tag, 'skipped: ${e.message}');
-        return null;
+        return none;
       }
     }
-    return null;
+    return none;
   }
 }
 

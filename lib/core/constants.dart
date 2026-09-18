@@ -132,6 +132,26 @@ const Duration kCutLookbackDuration = Duration(seconds: 3);
 const Duration kCalibrationWarmup = Duration(seconds: 3);
 const Duration kCalibrationWindow = Duration(seconds: 20);
 
+/// Speech this far above the room's own noise is enough for Whisper.
+///
+/// Distance is what decides it: a voice loses about 6 dB every time it gets
+/// twice as far away, so a teacher across the room arrives barely above the
+/// class itself. Below [kWeakSignalSnrDb] for [kWeakSignalPatience] the
+/// student is told to move the phone; it takes [kGoodSignalSnrDb] to call it
+/// good again, so one quiet minute does not make the warning flicker.
+const double kWeakSignalSnrDb = 12;
+const double kGoodSignalSnrDb = 15;
+const Duration kWeakSignalPatience = Duration(seconds: 60);
+
+/// How often the signal quality is re-measured, over the last
+/// [kCalibrationWindow] of audio.
+const Duration kSignalQualityInterval = Duration(seconds: 5);
+
+/// How many scored segments a lesson needs before its mean confidence is
+/// allowed to call the whole recording badly heard. One mumbled chunk in an
+/// otherwise clear lesson is normal; a dozen of them is the room.
+const int kWeakAudioMinScoredSegments = 8;
+
 /// Below this length a chunk carries no words, only room tone — and Whisper
 /// answers silence with a confident hallucination ("you", "Thank you.") rather
 /// than an empty string. Such a chunk is still written to disk and still gets a

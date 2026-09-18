@@ -53,6 +53,36 @@ class RefinedSegmentsDao extends DatabaseAccessor<AppDatabase>
         }
       });
 
+  /// Adds windows after the ones the meeting already has, keeping their text.
+  ///
+  /// This is how a pass that runs during the lesson grows: everything already
+  /// transcribed stays, and only the audio nobody has re-heard yet is planned.
+  Future<void> addWindows(
+    int meetingId,
+    List<({int startMs, int endMs, RefinedEngine engine})> planned,
+  ) =>
+      transaction(() async {
+        if (planned.isEmpty) return;
+        final existing = await _forMeeting(meetingId).get();
+        var index = existing.isEmpty
+            ? 0
+            : existing.map((w) => w.windowIndex).reduce((a, b) => a > b ? a : b) + 1;
+        final now = DateTime.now();
+        for (final w in planned) {
+          await into(refinedSegments).insert(
+            RefinedSegmentsCompanion.insert(
+              meetingId: meetingId,
+              windowIndex: index++,
+              startMs: w.startMs,
+              endMs: w.endMs,
+              engine: w.engine,
+              status: RefinedStatus.pending,
+              createdAt: now,
+            ),
+          );
+        }
+      });
+
   Future<void> markRunning(int id) => _write(
         id,
         const RefinedSegmentsCompanion(

@@ -5,7 +5,9 @@ import '../data/db/tables/chat_messages_table.dart';
 import '../stt/lesson_vocabulary.dart';
 import '../stt/term_corrections.dart';
 import 'context_builder.dart';
+import 'course_profile.dart';
 import 'lesson_notes_input.dart';
+import 'syllabus.dart';
 
 /// Reads what the student gave the AI for one lesson.
 ///
@@ -28,6 +30,9 @@ class LessonContextSource {
     final subject = subjectId == null
         ? null
         : await _db.subjectsDao.subject(subjectId);
+    final topic = meeting == null || subjectId == null
+        ? null
+        : lessonTopic(meeting, await _db.subjectsDao.topics(subjectId));
 
     final chat = await _db.chatMessagesDao.messages(meetingId);
     final userChat = [
@@ -60,6 +65,8 @@ class LessonContextSource {
 
     return LessonMaterial(
       subjectName: subject?.name,
+      courseLine: subject == null ? null : courseLine(subject, prefs),
+      topicTitle: topic?.title,
       globalRules: prefs.globalRules,
       subjectRules: subject?.rules,
       lessonRules: meeting?.rules,
@@ -90,6 +97,11 @@ class LessonContextSource {
     if (subjectId == null) return null;
     final subject = await _db.subjectsDao.subject(subjectId);
     if (subject == null) return null;
+    final prefs = await _db.preferencesDao.current();
+    final topic = lessonTopic(
+      meeting!,
+      await _db.subjectsDao.topics(subjectId),
+    );
 
     final pinned = (await _db.subjectsDao.pinnedCardIds(meetingId)).toSet();
     final cards = await _db.subjectsDao.cards(subjectId);
@@ -141,6 +153,8 @@ class LessonContextSource {
 
     return LessonNotesInput(
       subjectName: subject.name,
+      courseLine: courseLine(subject, prefs),
+      topicTitle: topic?.title,
       cardTitles: [
         for (final c in cards)
           if (pinned.contains(c.id)) c.title,
@@ -190,6 +204,10 @@ class LessonContextSource {
     final subject = subjectId == null
         ? null
         : await _db.subjectsDao.subject(subjectId);
+    final prefs = subject == null ? null : await _db.preferencesDao.current();
+    final topics = subjectId == null
+        ? const <SyllabusTopic>[]
+        : await _db.subjectsDao.topics(subjectId);
 
     final terms = subject == null
         ? const <SubjectTerm>[]
@@ -230,6 +248,19 @@ class LessonContextSource {
           s.content!.trim(),
     ].join(' ');
 
+    // The topic the student picked, else the plan's topic for the lesson date.
+    // While the lesson runs, what is being said may move it on — but only on
+    // detectTopic's clear margin, and the move is written down so the chip and
+    // the course overview agree with the prompt.
+    var topic = lessonTopic(meeting, topics);
+    if (meeting.topicId == null && topics.isNotEmpty) {
+      final detected = detectTopic(topics, recent, current: topic);
+      if (detected != null && detected.id != topic?.id) {
+        topic = detected;
+        await _db.subjectsDao.setMeetingTopic(meetingId, detected.id);
+      }
+    }
+
     VocabularyCard card(ContextCard c) =>
         (title: c.title, content: c.content, keywords: c.keywords);
     final pinnedCards = [
@@ -237,6 +268,10 @@ class LessonContextSource {
         if (pinned.contains(c.id)) c,
     ];
     final ranked = rankLessonTerms(
+      topicTerms: [
+        for (final t in (topic?.terms ?? '').split(','))
+          if (t.trim().isNotEmpty) t.trim(),
+      ],
       terms: [
         for (final t in terms)
           (
@@ -267,10 +302,15 @@ class LessonContextSource {
     }
 
     final cardTitles = [for (final c in pinnedCards) c.title];
+    final course = subject == null ? null : courseLine(subject, prefs);
     final listening = LessonListening(
       subjectName: subject?.name,
+      courseLine: course,
+      topicTitle: topic?.title,
       leadIn: lessonLeadIn(
         subjectName: subject?.name,
+        courseLine: course,
+        topicTitle: topic?.title,
         cardTitles: cardTitles,
         terms: ranked,
       ),

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../ai/syllabus_import_service.dart';
+import '../ai/term_alias_service.dart';
 import '../ai/ai_router.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
@@ -336,6 +337,14 @@ final maskedGeminiKeyProvider = FutureProvider<String?>((ref) {
 });
 
 /// Summaries and keywords for cards, made when a card is saved.
+/// Turns the subject's foreign terms into the forms Whisper mishears them as.
+final termAliasServiceProvider = Provider<TermAliasService>((ref) {
+  return TermAliasService(
+    ref.watch(appDatabaseProvider).subjectsDao,
+    ref.watch(llmProvider),
+  );
+});
+
 final cardDigestServiceProvider = Provider<CardDigestService>((ref) {
   final geminiKeys = ref.watch(geminiKeyStoreProvider);
   return CardDigestService(
@@ -475,6 +484,8 @@ final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
       final l = await lessons.listening(meetingId);
       return (
         subjectName: l?.subjectName,
+        courseLine: l?.courseLine,
+        topicTitle: l?.topicTitle,
         cardTitles: l?.cardTitles ?? const <String>[],
         glossary: l?.leadIn,
         terms: [for (final t in l?.terms ?? const <RankedTerm>[]) t.term],

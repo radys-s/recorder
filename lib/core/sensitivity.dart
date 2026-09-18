@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../data/db/tables/preferences_table.dart';
 import '../stt/whisper_segment_filter.dart';
 import 'constants.dart';
@@ -172,5 +174,86 @@ class AutoCalibrator {
       // `speechGain`), so the room only has to set the ceiling.
       maxGain: kAutoMaxGain,
     );
+  }
+}
+
+
+/// How far the speaking voice stands out from the room, measured while
+/// recording.
+///
+/// Both numbers come from the same rolling window of frame levels the
+/// calibrator uses: the 20th percentile is the room with nobody talking, the
+/// 90th is the loudest speech in it, and their ratio in decibels is what
+/// decides whether Whisper has anything to work with. It is deliberately
+/// independent of the sensitivity setting — a manual setting does not make a
+/// distant teacher any louder.
+class SignalQualityTracker {
+  SignalQualityTracker({
+    Duration frameDuration = kSilenceFrameDuration,
+    Duration window = kCalibrationWindow,
+    Duration interval = kSignalQualityInterval,
+    this.patience = kWeakSignalPatience,
+  })  : _frameMs = frameDuration.inMilliseconds,
+        _windowFrames = window.inMilliseconds ~/ frameDuration.inMilliseconds,
+        _intervalFrames =
+            interval.inMilliseconds ~/ frameDuration.inMilliseconds;
+
+  final int _frameMs;
+  final int _windowFrames;
+  final int _intervalFrames;
+
+  /// How long the signal has to stay weak before it is worth saying so.
+  final Duration patience;
+
+  final List<double> _levels = [];
+  int _frames = 0;
+  int _weakMs = 0;
+
+  /// Speech above the room noise in dB, or null before the first full window.
+  double? snrDb;
+
+  /// True once the signal has been weak for [patience] without recovering.
+  bool weak = false;
+
+  /// Feeds one frame; returns true when [weak] changed and the UI should say
+  /// something.
+  bool add(double rms) {
+    _levels.add(rms);
+    if (_levels.length > _windowFrames) _levels.removeAt(0);
+    _frames++;
+    if (_levels.length < _windowFrames || _frames % _intervalFrames != 0) {
+      return false;
+    }
+
+    final snr = snrFor(_levels);
+    snrDb = snr;
+    if (snr == null) return false;
+
+    final was = weak;
+    if (snr >= kGoodSignalSnrDb) {
+      _weakMs = 0;
+      weak = false;
+    } else if (snr < kWeakSignalSnrDb) {
+      _weakMs += _intervalFrames * _frameMs;
+      if (_weakMs >= patience.inMilliseconds) weak = true;
+    }
+    // Between the two thresholds nothing moves: that is the hysteresis.
+    return weak != was;
+  }
+
+  /// Speech level over noise floor in dB, or null when the room is silent
+  /// enough that the ratio would be meaningless.
+  static double? snrFor(List<double> levels) {
+    if (levels.isEmpty) return null;
+    final sorted = [...levels]..sort();
+    double percentile(double q) => sorted[((sorted.length - 1) * q).round()];
+    final floor = percentile(0.2);
+    final speech = percentile(0.9);
+    // Digital silence: nothing was recorded at all, which is a different
+    // problem and not one a nearer phone would fix.
+    if (speech <= 0) return null;
+    // A perfectly quiet floor would divide by zero; -80 dBFS stands in for it.
+    final base = floor <= 0.0001 ? 0.0001 : floor;
+    return 20 * (math.log(speech / base) / math.ln10);
   }
 }

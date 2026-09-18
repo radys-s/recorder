@@ -241,7 +241,7 @@ class _Llm extends LlmProvider {
     Duration? timeout,
   }) async {
     if (throwing) throw const AiTransientException('rate limited');
-    return LlmCompletion(content: text == null ? '{}' : '{"text": "$text"}');
+    return LlmCompletion(content: text == null ? '{}' : '{"texts": ["$text"]}');
   }
 }
 
@@ -459,19 +459,19 @@ void main() {
       },
     );
 
-    test(
-      'an accepted AI correction replaces the text before answers see it',
-      () async {
-        final (world, transcribed, used) = await run(
-          const TranscriptionResult(text: 'A viktorko zpívala u vody.'),
-          corrected: 'A Viktorka zpívala u vody.',
-        );
-        expect(world.segment(1).content, 'A Viktorka zpívala u vody.');
-        expect(world.segment(1).rawContent, 'A viktorko zpívala u vody.');
-        expect(transcribed, ['A Viktorka zpívala u vody.']);
-        expect(used, {8});
-      },
-    );
+    test('an accepted AI correction replaces the stored text, and the answer '
+        'did not wait for it', () async {
+      final (world, transcribed, used) = await run(
+        const TranscriptionResult(text: 'A viktorko zpívala u vody.'),
+        corrected: 'A Viktorka zpívala u vody.',
+      );
+      expect(world.segment(1).content, 'A Viktorka zpívala u vody.');
+      expect(world.segment(1).rawContent, 'A viktorko zpívala u vody.');
+      // The answer ran on what Whisper heard plus the deterministic fixes;
+      // the AI pass is a batch that lands later and only rewrites the row.
+      expect(transcribed, ['A viktorko zpívala u vody.']);
+      expect(used, {8});
+    });
 
     test('a rewrite is rejected and the heard text stands', () async {
       final (world, transcribed, _) = await run(

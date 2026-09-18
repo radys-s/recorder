@@ -82,8 +82,16 @@ class TranscriptionQueueWorker {
   /// Corrections still running, so tests can wait for them.
   final Set<Future<void>> _corrections = {};
 
+  /// Chunks written and waiting for the next batched proofreading call.
+  final List<_PendingCorrection> _pending = [];
+  LessonListening? _pendingLesson;
+  int? _pendingMeetingId;
+
   /// Resolves once every correction started so far has finished.
-  Future<void> settle() => Future.wait(_corrections.toList());
+  Future<void> settle() async {
+    await _flushCorrections();
+    await Future.wait(_corrections.toList());
+  }
 
   StreamSubscription<int>? _queueSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -141,6 +149,7 @@ class TranscriptionQueueWorker {
     _queueSub = null;
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+    unawaited(_flushCorrections());
 
     AppLog.d(_tag, 'stopped');
   }
@@ -173,7 +182,13 @@ class TranscriptionQueueWorker {
     try {
       while (_running) {
         final rows = await _queueDao.dueRows(DateTime.now());
-        if (rows.isEmpty) break;
+        if (rows.isEmpty) {
+          // Nothing more is coming right now, so a half-full batch would
+          // otherwise sit there until the next chunk — which in a pause
+          // between lessons could be never.
+          unawaited(_flushCorrections());
+          break;
+        }
 
         for (final row in rows) {
           if (!_running) return;
@@ -326,9 +341,13 @@ class TranscriptionQueueWorker {
     }
   }
 
-  /// Proofreads a lesson chunk, then hands the final text on. The transcript
-  /// is already written, so the student never waits for this; live answers
-  /// do, for at most the corrector's timeout.
+  /// Hands the written text on, then queues it for proofreading.
+  ///
+  /// The order is the point. The deterministic fixes — the student's own
+  /// corrections and the subject's heard aliases — are already in [text] and
+  /// cost nothing, so the live answer runs on them straight away. The AI pass
+  /// happens later, in batches, and only rewrites what is stored; making an
+  /// answer wait for it would be the opposite of what it is for.
   Future<void> _afterWrite(
     TranscriptSegment segment,
     String text, {
@@ -338,43 +357,8 @@ class TranscriptionQueueWorker {
     required Set<int> used,
     required bool enabled,
   }) async {
-    var finalText = text;
-    final corrector = this.corrector;
-    if (corrector != null &&
-        lesson != null &&
-        enabled &&
-        !corrector.disabled &&
-        lesson.subjectName != null &&
-        text.trim().split(RegExp(r'\s+')).length >= 3) {
-      try {
-        final corrected = await corrector
-            .correct(
-              text: text,
-              lesson: lesson,
-              previous: [?previous],
-              uncertain: isLowConfidence(confidence),
-            )
-            .timeout(corrector.timeout + const Duration(seconds: 1));
-        if (corrected != null) {
-          final current = await _segmentsDao.segmentById(segment.id);
-          // The student may have fixed it by hand in the meantime.
-          if (current?.content == text) {
-            await _segmentsDao.correctSegment(segment.id, corrected);
-            finalText = corrected;
-            AppLog.d(
-              _tag,
-              'segment ${segment.id} corrected: ${_preview(text)} -> '
-              '${_preview(corrected)}',
-            );
-          }
-        }
-      } catch (e) {
-        AppLog.d(_tag, 'segment ${segment.id} correction skipped: $e');
-      }
-    }
-
     if (lesson != null) {
-      used.addAll(termsMentioned(finalText, lesson.terms));
+      used.addAll(termsMentioned(text, lesson.terms));
     }
     if (used.isNotEmpty && onTermsUsed != null) {
       try {
@@ -384,6 +368,15 @@ class TranscriptionQueueWorker {
       }
     }
 
+    _enqueueCorrection(
+      segment,
+      text,
+      lesson: lesson,
+      previous: previous,
+      confidence: confidence,
+      enabled: enabled,
+    );
+
     // Words the recognizer barely believed are no ground for an answer
     // nobody asked for; the student can still ask.
     if (isVeryLowConfidence(confidence)) {
@@ -391,9 +384,96 @@ class TranscriptionQueueWorker {
       return;
     }
     try {
-      onTranscribed?.call(segment, finalText);
+      onTranscribed?.call(segment, text);
     } catch (e, st) {
       AppLog.e(_tag, 'onTranscribed callback threw', e, st);
+    }
+  }
+
+  /// Adds a chunk to the batch waiting to be proofread, if it is worth it.
+  void _enqueueCorrection(
+    TranscriptSegment segment,
+    String text, {
+    required LessonListening? lesson,
+    required String? previous,
+    required double? confidence,
+    required bool enabled,
+  }) {
+    final corrector = this.corrector;
+    if (corrector == null ||
+        lesson == null ||
+        !enabled ||
+        corrector.disabled ||
+        lesson.subjectName == null ||
+        text.trim().split(RegExp(r'\s+')).length < 3) {
+      return;
+    }
+    // One request must never mix two lessons: the vocabulary and the course
+    // belong to the meeting, not to the batch.
+    if (_pending.isNotEmpty && _pendingMeetingId != segment.meetingId) {
+      unawaited(_flushCorrections());
+    }
+    _pendingMeetingId = segment.meetingId;
+    _pendingLesson = lesson;
+    _pending.add(_PendingCorrection(segment, text, previous, confidence));
+    if (_pending.length >= kCorrectionBatchSize) {
+      unawaited(_flushCorrections());
+    }
+  }
+
+  /// Sends whatever is waiting as one request. Resolves when it is done.
+  Future<void> _flushCorrections() {
+    if (_pending.isEmpty) return Future.value();
+    final batch = List.of(_pending);
+    final lesson = _pendingLesson!;
+    _pending.clear();
+    _pendingLesson = null;
+    _pendingMeetingId = null;
+
+    final run = _correctBatch(batch, lesson);
+    _corrections.add(run);
+    unawaited(run.whenComplete(() => _corrections.remove(run)));
+    return run;
+  }
+
+  Future<void> _correctBatch(
+    List<_PendingCorrection> batch,
+    LessonListening lesson,
+  ) async {
+    final corrector = this.corrector;
+    if (corrector == null || corrector.disabled) return;
+    try {
+      final corrected = await corrector
+          .correctBatch(
+            texts: [for (final p in batch) p.text],
+            lesson: lesson,
+            previous: [?batch.first.previous],
+            uncertain: batch.any((p) => isLowConfidence(p.confidence)),
+          )
+          .timeout(corrector.timeout + const Duration(seconds: 1));
+      final used = <int>{};
+      for (var i = 0; i < batch.length && i < corrected.length; i++) {
+        final text = corrected[i];
+        if (text == null) continue;
+        final pending = batch[i];
+        final current = await _segmentsDao.segmentById(pending.segment.id);
+        // The student may have fixed it by hand in the meantime.
+        if (current?.content != pending.text) continue;
+        await _segmentsDao.correctSegment(pending.segment.id, text);
+        // A word only the correction spelled right still counts as a word this
+        // lesson used, and ranking it is the whole point of counting.
+        used.addAll(termsMentioned(text, lesson.terms));
+        AppLog.d(
+          _tag,
+          'segment ${pending.segment.id} corrected: '
+          '${_preview(pending.text)} -> ${_preview(text)}',
+        );
+      }
+      if (used.isNotEmpty && onTermsUsed != null) {
+        await onTermsUsed!(used);
+      }
+    } catch (e) {
+      AppLog.d(_tag, 'correction of ${batch.length} chunk(s) skipped: $e');
     }
   }
 
@@ -439,4 +519,21 @@ class TranscriptionQueueWorker {
     await _segmentsDao.updateSegmentStatus(row.segmentId, SegmentStatus.failed);
     AppLog.e(_tag, 'row ${row.id} parked as permanently failed', error);
   }
+}
+
+/// How many chunks one proofreading request covers.
+///
+/// Three is about forty seconds of speech: enough context for the model to
+/// tell a misheard term from a word the teacher really said, and a third of
+/// the requests a chunk-at-a-time pass would spend on the same rate limit.
+const int kCorrectionBatchSize = 3;
+
+/// A written chunk waiting for the next proofreading request.
+class _PendingCorrection {
+  _PendingCorrection(this.segment, this.text, this.previous, this.confidence);
+
+  final TranscriptSegment segment;
+  final String text;
+  final String? previous;
+  final double? confidence;
 }

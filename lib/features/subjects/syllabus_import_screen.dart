@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -273,6 +275,10 @@ class _SyllabusImportScreenState extends ConsumerState<SyllabusImportScreen> {
       await ref
           .read(subjectsDaoProvider)
           .replaceTopics(widget.subject.id, _topics, widget.source);
+      // The plan is where a subject's foreign terms arrive, so this is the
+      // moment to learn how Czech speech recognition mishears them. Unawaited:
+      // one AI call must never hold up saving what the student just reviewed.
+      unawaited(ref.read(termAliasServiceProvider).generate(widget.subject.id));
       navigator.pop();
       messenger
         ..hideCurrentSnackBar()

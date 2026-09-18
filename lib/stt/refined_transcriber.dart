@@ -12,6 +12,8 @@ import 'transcript_sanitizer.dart';
 class RefinedContext {
   const RefinedContext({
     this.subjectName,
+    this.courseLine,
+    this.topicTitle,
     this.cardTitles = const [],
     this.glossary,
     this.terms = const [],
@@ -24,6 +26,12 @@ class RefinedContext {
   });
 
   final String? subjectName;
+
+  /// The course as „Počítačové sítě, SOŠ, obor IT, 3. ročník".
+  final String? courseLine;
+
+  /// The topic of the thematic plan the lesson is on.
+  final String? topicTitle;
   final List<String> cardTitles;
   final String? glossary;
 
@@ -68,8 +76,12 @@ List<LlmMessage> refinedGeminiMessages(RefinedContext context) {
       ? previous
       : previous.substring(previous.length - kRefinedContextChars);
   final lines = [
-    if (context.subjectName?.trim().isNotEmpty ?? false)
+    if (context.courseLine?.trim().isNotEmpty ?? false)
+      'Course: ${context.courseLine!.trim()}'
+    else if (context.subjectName?.trim().isNotEmpty ?? false)
       'Subject: ${context.subjectName!.trim()}',
+    if (context.topicTitle?.trim().isNotEmpty ?? false)
+      'Topic of this lesson: ${context.topicTitle!.trim()}',
     if (context.cardTitles.isNotEmpty)
       'Topics: ${context.cardTitles.join(', ')}',
     if (context.terms.isNotEmpty)

@@ -2,8 +2,12 @@ import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/lesson_context_source.dart';
+import 'package:recorder/ai/llm_provider.dart';
+import 'package:recorder/ai/syllabus.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
+import 'package:recorder/data/db/tables/preferences_table.dart';
+import 'package:recorder/data/db/tables/syllabus_topics_table.dart';
 import 'package:recorder/data/db/tables/subject_terms_table.dart';
 import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 import 'package:recorder/stt/lesson_vocabulary.dart';
@@ -48,6 +52,21 @@ void main() {
       expect(ranked.firstWhere((t) => t.term == 'Proško').id, 2);
     });
 
+    test('topic terms rank right after the taught ones', () {
+      final ranked = rankLessonTerms(
+        terms: [
+          _term(1, 'Proško', source: TermSource.correction),
+          _term(2, 'Realismus'),
+        ],
+        topicTerms: ['OSPF', 'RIP'],
+        pinnedCards: [(title: 'Babička', content: '', keywords: 'Barunka')],
+      );
+      expect(
+        [for (final t in ranked.take(3)) t.term],
+        ['Proško', 'OSPF', 'RIP'],
+      );
+    });
+
     test('the rest is ordered by what was just said', () {
       final ranked = rankLessonTerms(
         terms: [_term(1, 'Fotosyntéza'), _term(2, 'Revoluce')],
@@ -86,6 +105,24 @@ void main() {
         terms: [(term: 'babicka', id: null), (term: 'Viktorka', id: null)],
       );
       expect(lead, 'Hodina: Čeština — Babička. Pojmy: Viktorka.');
+    });
+
+    test('the course and the topic lead, still under the limit', () {
+      final lead = lessonLeadIn(
+        subjectName: 'Sítě',
+        courseLine: 'Počítačové sítě, SOŠ, SPŠE Ječná, obor IT, 3. ročník',
+        topicTitle: 'Směrování',
+        cardTitles: ['VLAN'],
+        terms: [for (var i = 0; i < 80; i++) (term: 'Pojem$i', id: null)],
+      )!;
+      expect(
+        lead,
+        startsWith(
+          'Hodina: Počítačové sítě, SOŠ, SPŠE Ječná, obor IT, 3. ročník '
+          '— téma: Směrování, VLAN. Pojmy: ',
+        ),
+      );
+      expect(lead.length, lessThanOrEqualTo(kLessonLeadInMaxChars));
     });
 
     test('nothing to say is null', () {
@@ -165,6 +202,75 @@ Příklady:
       const fixed = 'Autorem je pan Mácha z Prahy.';
       expect(acceptCorrection(raw, fixed), isNotNull);
       expect(acceptCorrection(raw, fixed, knownTerms: ['K. H. Mácha']), isNull);
+    });
+  });
+
+  group('TranscriptCorrector.correctBatch', () {
+    const lesson = LessonListening(
+      subjectName: 'Počítačové sítě',
+      courseLine: 'Počítačové sítě, SOŠ, obor IT, 3. ročník',
+      topicTitle: 'Směrování',
+      leadIn: '',
+      terms: [(term: 'OSPF', id: 1), (term: 'VLAN', id: 2)],
+    );
+    const texts = [
+      'Nastavíme vílan na obou směrovačích.',
+      'Pak se podíváme na tabulku.',
+    ];
+
+    test('one request covers every chunk, judged one by one', () async {
+      final llm = _BatchLlm(
+        '{"texts": ["Nastavíme VLAN na obou směrovačích.", '
+        '"Pak se podíváme na směrovací tabulku a na její obsah."]}',
+      );
+      final out = await TranscriptCorrector(llm)
+          .correctBatch(texts: texts, lesson: lesson);
+
+      expect(llm.prompts, hasLength(1));
+      expect(out.first, 'Nastavíme VLAN na obou směrovačích.');
+      // The second chunk grew a clause nobody said, and it is rejected on its
+      // own without costing the first one its fix.
+      expect(out.last, isNull);
+    });
+
+    test(
+      'the course, the topic and the numbered chunks are all asked about',
+      () async {
+        final llm = _BatchLlm('{"texts": ["a", "b"]}');
+        await TranscriptCorrector(llm)
+            .correctBatch(texts: texts, lesson: lesson);
+
+        final prompt = llm.prompts.single;
+        expect(
+          prompt,
+          contains('Course: Počítačové sítě, SOŠ, obor IT, 3. ročník'),
+        );
+        expect(prompt, contains('Topic of this lesson: Směrování'));
+        expect(prompt, contains('1) ${texts.first}'));
+        expect(prompt, contains('2) ${texts.last}'));
+      },
+    );
+
+    test('a reply that lost a chunk is thrown away whole', () async {
+      // Anything but a one-to-one answer has lost track of which text is
+      // which, and applying it would move words between segments.
+      final llm = _BatchLlm(
+        '{"texts": ["Nastavíme VLAN na obou směrovačích."]}',
+      );
+      expect(
+        await TranscriptCorrector(llm)
+            .correctBatch(texts: texts, lesson: lesson),
+        [null, null],
+      );
+    });
+
+    test('a failed call corrects nothing and never throws', () async {
+      final llm = _BatchLlm(null);
+      expect(
+        await TranscriptCorrector(llm)
+            .correctBatch(texts: texts, lesson: lesson),
+        [null, null],
+      );
     });
   });
 
@@ -296,9 +402,92 @@ Příklady:
       expect([for (final t in l.terms) t.term], contains('Ratibořice'));
     });
 
+    test('the course line and the plan topic reach the prompts', () async {
+      final site = await db.savedNotesDao.createFolder('Sítě');
+      await db.subjectsDao.setSubjectProfile(site, fullName: 'Počítačové sítě');
+      await db.preferencesDao.setStudyProfile(
+        schoolType: SchoolType.secondaryTechnical,
+        studyField: 'IT',
+        studyYear: 3,
+      );
+      await db.subjectsDao.replaceTopics(site, const [
+        SyllabusTopicDraft(
+          title: 'Směrování',
+          terms: ['OSPF', 'RIP'],
+          monthFrom: 9,
+          monthTo: 9,
+        ),
+      ], SyllabusSource.pasted);
+      final id = await lesson(site, ['Dnes budeme počítat masky.']);
+
+      final l = (await LessonContextSource(db).listening(id))!;
+      expect(l.courseLine, 'Počítačové sítě, SOŠ, obor IT, 3. ročník');
+      expect(l.topicTitle, 'Směrování');
+      expect(l.leadIn, contains('téma: Směrování'));
+      expect([for (final t in l.terms.take(2)) t.term], ['OSPF', 'RIP']);
+
+      final notes = (await LessonContextSource(db).notesInput(id))!;
+      expect(notes.courseLine, 'Počítačové sítě, SOŠ, obor IT, 3. ročník');
+      expect(notes.topicTitle, 'Směrování');
+    });
+
+    test(
+      'a detected topic is written down, a picked one is left alone',
+      () async {
+        final site = await db.savedNotesDao.createFolder('Sítě');
+        await db.subjectsDao.replaceTopics(site, const [
+          SyllabusTopicDraft(title: 'Kabeláž', terms: ['kroucená dvojlinka']),
+          SyllabusTopicDraft(title: 'Směrování', terms: ['OSPF', 'RIP']),
+        ], SyllabusSource.pasted);
+        final id = await lesson(site, [
+          'Dneska OSPF a RIP, podíváme se na OSPF i na směrování.',
+        ]);
+
+        final l = (await LessonContextSource(db).listening(id))!;
+        expect(l.topicTitle, 'Směrování');
+        final topics = await db.subjectsDao.topics(site);
+        final meeting = await db.meetingsDao.watchMeetingByIdOnce(id);
+        expect(
+          meeting!.topicId,
+          topics.firstWhere((t) => t.title == 'Směrování').id,
+        );
+
+        // A hand-picked topic stays, whatever is being said.
+        await db.subjectsDao.setMeetingTopic(
+          id,
+          topics.firstWhere((t) => t.title == 'Kabeláž').id,
+        );
+        final again = (await LessonContextSource(db).listening(id))!;
+        expect(again.topicTitle, 'Kabeláž');
+      },
+    );
+
     test('a meeting with nothing to tell is null', () async {
       final id = await lesson(null, ['Ahoj.']);
       expect(await LessonContextSource(db).listening(id), isNull);
     });
   });
+}
+
+/// Answers the corrector with a fixed reply, or fails the call.
+class _BatchLlm extends LlmProvider {
+  _BatchLlm(this.reply);
+
+  final String? reply;
+  final prompts = <String>[];
+
+  @override
+  Future<LlmCompletion> completeDetailed({
+    required String model,
+    required List<LlmMessage> messages,
+    double temperature = 0.2,
+    int? maxTokens,
+    bool jsonMode = false,
+    Duration? timeout,
+  }) async {
+    prompts.add(messages.last.content);
+    final reply = this.reply;
+    if (reply == null) throw const AiTransientException('rate limited');
+    return LlmCompletion(content: reply);
+  }
 }

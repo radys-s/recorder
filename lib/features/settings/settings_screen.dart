@@ -156,6 +156,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const AiServicesSection(),
           const StudyProfileSection(),
           const _LanguageSection(),
+          const _MicTipsSection(),
           const _SensitivitySection(),
           const _LiveAnswersSection(),
           const _GlobalRulesSection(),
@@ -501,6 +502,146 @@ class _LanguageSection extends ConsumerWidget {
               : null,
         ),
       ],
+    );
+  }
+}
+
+/// What actually decides how well a lesson is heard is where the phone lies,
+/// not which model reads it afterwards — a voice loses about 6 dB every time
+/// it gets twice as far away, and nothing downstream puts that back. Hence a
+/// sheet rather than a line of help text.
+class _MicTipsSection extends StatelessWidget {
+  const _MicTipsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(
+          title: 'Kvalita zvuku',
+          description:
+              'Přepis je jen tak dobrý jako nahrávka. Pár věcí s tím udělá '
+              'víc než jakékoli nastavení.',
+        ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.mic_none),
+            title: const Text('Tipy pro lepší přepis'),
+            subtitle: const Text('Kam položit telefon a co pomáhá nejvíc'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showMicTipsSheet(context),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The advice in the order it matters, which is not the order people try it:
+/// distance first, a microphone on the teacher second, everything else after.
+Future<void> showMicTipsSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) {
+      final text = Theme.of(context).textTheme;
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.lg),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Tipy pro lepší přepis', style: text.titleLarge),
+                const SizedBox(height: Gap.md),
+                const _Tip(
+                  icon: Icons.place_outlined,
+                  title: '1. Vzdálenost rozhoduje',
+                  body:
+                      'Hlas ztrácí zhruba polovinu hlasitosti pokaždé, když '
+                      'se vzdálenost zdvojnásobí. Telefon na první lavici '
+                      'slyší vyučujícího mnohem líp než telefon v zadní '
+                      'řadě — a žádná AI to zpětně nedoplní.',
+                ),
+                const _Tip(
+                  icon: Icons.table_restaurant_outlined,
+                  title: '2. Polož ho na stůl, mikrofonem nahoru',
+                  body:
+                      'Ne do batohu, ne pod sešit a ne do ruky. Podržení '
+                      'v ruce přidává šustění, které přehluší tichou řeč.',
+                ),
+                const _Tip(
+                  icon: Icons.cable,
+                  title: '3. Klopový mikrofon na vyučujícím',
+                  body:
+                      'Bezdrátový nebo USB-C klopák připnutý vyučujícímu je '
+                      'jednoznačně nejlepší řešení — vždycky se ale nejdřív '
+                      'zeptej, jestli s tím souhlasí. iPhone na připojený '
+                      'mikrofon přepne sám.',
+                ),
+                const _Tip(
+                  icon: Icons.bluetooth_disabled,
+                  title: '4. Bluetooth sluchátka spíš uškodí',
+                  body:
+                      'Handsfree profil posílá úzké pásmo a zvuk si ještě '
+                      'po svém upraví. Vestavěný mikrofon telefonu je na '
+                      'přepis lepší.',
+                ),
+                const _Tip(
+                  icon: Icons.graphic_eq,
+                  title: '5. Sleduj varování během hodiny',
+                  body:
+                      'Když aplikace napíše „Slabý signál", opravdu to znamená, '
+                      'že se z místnosti ozývá víc než z vyučujícího. Posunout '
+                      'telefon blíž je v tu chvíli účinnější než cokoli jiného.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _Tip extends StatelessWidget {
+  const _Tip({required this.icon, required this.title, required this.body});
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: scheme.primary),
+          const SizedBox(width: Gap.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: text.titleSmall),
+                const SizedBox(height: Gap.xs),
+                Text(
+                  body,
+                  style: text.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

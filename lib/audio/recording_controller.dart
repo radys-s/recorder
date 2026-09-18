@@ -36,6 +36,8 @@ class RecordingState {
     this.chunkCount = 0,
     this.totalBytes = 0,
     this.error,
+    this.snrDb,
+    this.weakSignal = false,
   });
 
   final bool isRecording;
@@ -49,6 +51,13 @@ class RecordingState {
   final int totalBytes;
   final String? error;
 
+  /// How far speech stands out from the room, in dB; null until the first
+  /// measurement of this lesson.
+  final double? snrDb;
+
+  /// The signal has been too weak for long enough to be worth saying so.
+  final bool weakSignal;
+
   Duration get elapsed =>
       startedAt == null ? Duration.zero : DateTime.now().difference(startedAt!);
 
@@ -59,6 +68,8 @@ class RecordingState {
     int? chunkCount,
     int? totalBytes,
     String? error,
+    double? snrDb,
+    bool? weakSignal,
     bool clearError = false,
     bool clearMeeting = false,
   }) {
@@ -69,6 +80,8 @@ class RecordingState {
       chunkCount: chunkCount ?? this.chunkCount,
       totalBytes: totalBytes ?? this.totalBytes,
       error: clearError ? null : (error ?? this.error),
+      snrDb: clearMeeting ? null : (snrDb ?? this.snrDb),
+      weakSignal: clearMeeting ? false : (weakSignal ?? this.weakSignal),
     );
   }
 }
@@ -201,6 +214,7 @@ class RecordingController extends Notifier<RecordingState> {
       final fast = prefs.liveAnswersEnabled;
       // A new recording measures its room from scratch.
       _calibrator = null;
+      _quality = SignalQualityTracker();
       _sensitivity = null;
       _chunker = PcmChunker(
         onChunk: _onChunk,
@@ -327,7 +341,12 @@ class RecordingController extends Notifier<RecordingState> {
       state = state.copyWith(error: '$e');
     } finally {
       level.value = (rms: 0, peak: 0);
-      state = state.copyWith(isRecording: false, totalBytes: _totalBytes);
+      _quality = null;
+      state = state.copyWith(
+        isRecording: false,
+        totalBytes: _totalBytes,
+        weakSignal: false,
+      );
       _stopping = false;
     }
     // The flushed tail chunk is still being written at this point, so the
@@ -388,7 +407,20 @@ class RecordingController extends Notifier<RecordingState> {
   /// Only present while the sensitivity is automatic.
   AutoCalibrator? _calibrator;
 
+  /// Runs for every recording, automatic sensitivity or not: a manual setting
+  /// does not make a distant teacher any louder.
+  SignalQualityTracker? _quality;
+
   void _onFrameLevel(double rms) {
+    if (_quality?.add(rms) ?? false) {
+      final q = _quality!;
+      AppLog.d(
+        _tag,
+        'signal ${q.weak ? 'weak' : 'recovered'}: '
+        '${q.snrDb!.toStringAsFixed(1)} dB',
+      );
+      state = state.copyWith(weakSignal: q.weak, snrDb: q.snrDb);
+    }
     final next = _calibrator?.add(rms);
     if (next == null) return;
     _profile = next;
@@ -420,15 +452,32 @@ class RecordingController extends Notifier<RecordingState> {
     state = state.copyWith(totalBytes: _totalBytes);
     // The profile is captured now: the thresholds that measured this chunk
     // are the ones that should judge it.
+    final meetingId = _meetingId;
     final pending = _persistChunk(
       chunk,
-      _meetingId,
+      meetingId,
       _sessionDir,
       _docsPath,
       _profile,
     );
     _persisting.add(pending);
-    unawaited(pending.whenComplete(() => _persisting.remove(pending)));
+    unawaited(
+      pending.whenComplete(() {
+        _persisting.remove(pending);
+        // Whole windows are re-heard while the lesson runs, so the transcript
+        // on screen catches up within minutes. stop() plans the rest.
+        if (meetingId != null &&
+            state.isRecording &&
+            !_stopping &&
+            _meetingId == meetingId) {
+          unawaited(
+            ref
+                .read(refinedTranscriptServiceProvider)
+                .refineWhileRecording(meetingId),
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _persistChunk(

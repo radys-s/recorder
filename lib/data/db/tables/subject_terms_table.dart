@@ -6,13 +6,15 @@ enum TermSource {
   manual,
   correction,
   card,
-  notes;
+  notes,
+  alias;
 
   String get label => switch (this) {
     TermSource.manual => 'Přidáno ručně',
     TermSource.correction => 'Z opravy přepisu',
     TermSource.card => 'Z karty',
     TermSource.notes => 'Z výpisků',
+    TermSource.alias => 'Slyšená podoba',
   };
 }
 

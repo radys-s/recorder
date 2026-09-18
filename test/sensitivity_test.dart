@@ -8,6 +8,21 @@ import 'package:recorder/core/sensitivity.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/stt/whisper_segment_filter.dart';
 
+/// One window of frames whose quietest fifth is [floor] and whose loudest
+/// fifth is [speech] — exactly the two percentiles the tracker measures.
+bool _feedSignal(
+  SignalQualityTracker t,
+  int frames, {
+  required double floor,
+  required double speech,
+}) {
+  var changed = false;
+  for (var i = 0; i < frames; i++) {
+    if (t.add(i % 5 == 0 ? speech : floor)) changed = true;
+  }
+  return changed;
+}
+
 /// Alternating ±[amplitude] PCM16, so the RMS is exactly amplitude / 32768.
 Uint8List _pcm({required int ms, required int amplitude}) {
   final samples = kSampleRateHz * ms ~/ 1000;
@@ -33,10 +48,10 @@ int _peak(List<Uint8List> frames) {
 int _voicedMs(SensitivityProfile profile, Uint8List pcm) {
   final chunks = <PcmChunk>[];
   PcmChunker(
-    onChunk: chunks.add,
-    voicedRmsThreshold: profile.voicedRmsThreshold,
-    silenceRmsThreshold: profile.silenceRmsThreshold,
-  )
+      onChunk: chunks.add,
+      voicedRmsThreshold: profile.voicedRmsThreshold,
+      silenceRmsThreshold: profile.silenceRmsThreshold,
+    )
     ..addBytes(pcm)
     ..flush();
   return chunks.single.voicedMs;
@@ -56,10 +71,14 @@ void main() {
 
     test('maps every setting, and the steps move in one direction', () {
       expect(SensitivityProfile.of(MicSensitivity.low), SensitivityProfile.low);
-      expect(SensitivityProfile.of(MicSensitivity.medium),
-          SensitivityProfile.medium);
       expect(
-          SensitivityProfile.of(MicSensitivity.high), SensitivityProfile.high);
+        SensitivityProfile.of(MicSensitivity.medium),
+        SensitivityProfile.medium,
+      );
+      expect(
+        SensitivityProfile.of(MicSensitivity.high),
+        SensitivityProfile.high,
+      );
 
       const l = SensitivityProfile.low;
       const m = SensitivityProfile.medium;
@@ -77,12 +96,18 @@ void main() {
     });
 
     test('labels, with automatic appended in storage and shown first', () {
-      expect(MicSensitivity.values.map((s) => s.label),
-          ['Málo', 'Středně', 'Hodně', 'Automaticky']);
+      expect(MicSensitivity.values.map((s) => s.label), [
+        'Málo',
+        'Středně',
+        'Hodně',
+        'Automaticky',
+      ]);
       expect(MicSensitivity.ordered.first, MicSensitivity.auto);
       expect(MicSensitivity.ordered.toSet(), MicSensitivity.values.toSet());
-      expect(SensitivityProfile.of(MicSensitivity.auto),
-          SensitivityProfile.auto);
+      expect(
+        SensitivityProfile.of(MicSensitivity.auto),
+        SensitivityProfile.auto,
+      );
     });
   });
 
@@ -114,9 +139,7 @@ void main() {
 
     test('a quiet room with a distant speaker gets high-like thresholds', () {
       // 80 % room tone at -60 dBFS, 20 % speech at -40 dBFS.
-      final levels = [
-        for (var i = 0; i < 30; i++) i % 5 == 0 ? 0.01 : 0.001,
-      ];
+      final levels = [for (var i = 0; i < 30; i++) i % 5 == 0 ? 0.01 : 0.001];
       final p = AutoCalibrator.profileFor(levels);
       expect(p.voicedRmsThreshold, SensitivityProfile.high.voicedRmsThreshold);
       expect(p.silenceRmsThreshold, 0.004);
@@ -125,9 +148,7 @@ void main() {
     });
 
     test('a noisy classroom gets low-like thresholds', () {
-      final levels = [
-        for (var i = 0; i < 30; i++) i % 3 == 0 ? 0.2 : 0.012,
-      ];
+      final levels = [for (var i = 0; i < 30; i++) i % 3 == 0 ? 0.2 : 0.012];
       final p = AutoCalibrator.profileFor(levels);
       expect(p.voicedRmsThreshold, SensitivityProfile.low.voicedRmsThreshold);
       expect(p.silenceRmsThreshold, SensitivityProfile.low.silenceRmsThreshold);
@@ -139,8 +160,11 @@ void main() {
     test('silence always sits above voiced, whatever the room', () {
       for (final floor in [0.0, 0.0005, 0.002, 0.004, 0.02, 0.5]) {
         final p = AutoCalibrator.profileFor(List.filled(30, floor));
-        expect(p.silenceRmsThreshold, greaterThan(p.voicedRmsThreshold),
-            reason: 'floor $floor');
+        expect(
+          p.silenceRmsThreshold,
+          greaterThan(p.voicedRmsThreshold),
+          reason: 'floor $floor',
+        );
       }
     });
 
@@ -151,8 +175,10 @@ void main() {
         ...List.filled(windowFrames, 0.012),
       ], out);
       expect(out, hasLength(2));
-      expect(out.last.voicedRmsThreshold,
-          greaterThan(out.first.voicedRmsThreshold));
+      expect(
+        out.last.voicedRmsThreshold,
+        greaterThan(out.first.voicedRmsThreshold),
+      );
     });
   });
 
@@ -187,9 +213,9 @@ void main() {
     test('quiet speech is not cut up as one long pause on high', () {
       final chunks = <PcmChunk>[];
       PcmChunker(
-        onChunk: chunks.add,
-        silenceRmsThreshold: SensitivityProfile.high.silenceRmsThreshold,
-      )
+          onChunk: chunks.add,
+          silenceRmsThreshold: SensitivityProfile.high.silenceRmsThreshold,
+        )
         ..addBytes(_pcm(ms: 20000, amplitude: 200))
         ..flush();
       // Never silent, so nothing before the 30 s hard cap: one chunk.
@@ -200,15 +226,17 @@ void main() {
   group('speechGain / applyGain', () {
     List<bool> all(int n, [bool v = true]) => List.filled(n, v);
 
-    test('no gain allowed, silence or no voiced frame leaves the audio alone',
-        () {
-      final quiet = [_pcm(ms: 100, amplitude: 500)];
-      expect(speechGain(quiet, all(1), maxGain: 1), 1);
-      expect(speechGain([Uint8List(3200)], all(1), maxGain: 16), 1);
-      expect(speechGain(quiet, all(1, false), maxGain: 16), 1);
-      expect(speechGain(quiet, const [], maxGain: 16), 1);
-      expect(identical(applyGain(quiet, 1), quiet), isTrue);
-    });
+    test(
+      'no gain allowed, silence or no voiced frame leaves the audio alone',
+      () {
+        final quiet = [_pcm(ms: 100, amplitude: 500)];
+        expect(speechGain(quiet, all(1), maxGain: 1), 1);
+        expect(speechGain([Uint8List(3200)], all(1), maxGain: 16), 1);
+        expect(speechGain(quiet, all(1, false), maxGain: 16), 1);
+        expect(speechGain(quiet, const [], maxGain: 16), 1);
+        expect(identical(applyGain(quiet, 1), quiet), isTrue);
+      },
+    );
 
     test('quiet voiced speech is raised to the loudness target', () {
       // RMS 1000/32768 ≈ 0.0305 → gain ≈ 3.28 to reach 0.1.
@@ -246,27 +274,32 @@ void main() {
     });
 
     test('loud speech needs no gain', () {
-      expect(speechGain([_pcm(ms: 100, amplitude: 8000)], all(1), maxGain: 16),
-          1);
+      expect(
+        speechGain([_pcm(ms: 100, amplitude: 8000)], all(1), maxGain: 16),
+        1,
+      );
     });
 
-    test('the soft limiter never exceeds Int16 and leaves quiet samples alone',
-        () {
-      final extreme = ByteData(4)
-        ..setInt16(0, -32768, Endian.little)
-        ..setInt16(2, 32767, Endian.little);
-      final out = ByteData.sublistView(
-          applyGain([extreme.buffer.asUint8List()], 16).single);
-      expect(out.getInt16(0, Endian.little), greaterThanOrEqualTo(-32768));
-      expect(out.getInt16(2, Endian.little), lessThanOrEqualTo(32767));
-      expect(out.getInt16(2, Endian.little), greaterThan(30000));
+    test(
+      'the soft limiter never exceeds Int16 and leaves quiet samples alone',
+      () {
+        final extreme = ByteData(4)
+          ..setInt16(0, -32768, Endian.little)
+          ..setInt16(2, 32767, Endian.little);
+        final out = ByteData.sublistView(
+          applyGain([extreme.buffer.asUint8List()], 16).single,
+        );
+        expect(out.getInt16(0, Endian.little), greaterThanOrEqualTo(-32768));
+        expect(out.getInt16(2, Endian.little), lessThanOrEqualTo(32767));
+        expect(out.getInt16(2, Endian.little), greaterThan(30000));
 
-      expect(softLimit(0.5), 0.5);
-      expect(softLimit(-0.5), -0.5);
-      expect(softLimit(3), lessThan(1));
-      expect(softLimit(0.71), greaterThan(0.7));
-      expect(softLimit(-3), greaterThan(-1));
-    });
+        expect(softLimit(0.5), 0.5);
+        expect(softLimit(-0.5), -0.5);
+        expect(softLimit(3), lessThan(1));
+        expect(softLimit(0.71), greaterThan(0.7));
+        expect(softLimit(-3), greaterThan(-1));
+      },
+    );
 
     test('input is not modified and a dangling odd byte is kept', () {
       final frame = Uint8List.fromList([..._pcm(ms: 1, amplitude: 1000), 7]);
@@ -335,10 +368,53 @@ void main() {
           borderline,
           noSpeechProbThreshold: l.noSpeechProbThreshold,
           lowAvgLogprobThreshold: l.lowAvgLogprobThreshold,
-        )!
-            .dropped,
+        )!.dropped,
         1,
       );
+    });
+  });
+
+  group('SignalQualityTracker', () {
+    test('a ten-fold gap between speech and room is 20 dB', () {
+      final levels = [for (var i = 0; i < 200; i++) i % 5 == 0 ? 0.01 : 0.001];
+      expect(SignalQualityTracker.snrFor(levels), closeTo(20, 0.01));
+    });
+
+    test('digital silence is not a weak signal but a dead microphone', () {
+      expect(SignalQualityTracker.snrFor(List.filled(200, 0)), isNull);
+      expect(SignalQualityTracker.snrFor(const []), isNull);
+    });
+
+    test('nothing is judged before a full window has been heard', () {
+      final t = SignalQualityTracker();
+      _feedSignal(t, 199, floor: 0.01, speech: 0.03);
+      expect(t.snrDb, isNull);
+      expect(t.weak, isFalse);
+    });
+
+    test('one quiet minute is what it takes to say so', () {
+      final t = SignalQualityTracker();
+      // ~9.5 dB, below kWeakSignalSnrDb, but not yet for long enough.
+      expect(_feedSignal(t, 700, floor: 0.01, speech: 0.03), isFalse);
+      expect(t.weak, isFalse);
+      expect(t.snrDb, lessThan(kWeakSignalSnrDb));
+
+      expect(_feedSignal(t, 100, floor: 0.01, speech: 0.03), isTrue);
+      expect(t.weak, isTrue);
+    });
+
+    test('recovering takes more than crossing back over the line', () {
+      final t = SignalQualityTracker();
+      _feedSignal(t, 800, floor: 0.01, speech: 0.03);
+      expect(t.weak, isTrue);
+
+      // ~14 dB: above the weak threshold, below the good one. A lesson that
+      // hovers there must not flip the warning on and off every five seconds.
+      expect(_feedSignal(t, 400, floor: 0.01, speech: 0.05), isFalse);
+      expect(t.weak, isTrue);
+
+      expect(_feedSignal(t, 400, floor: 0.001, speech: 0.01), isTrue);
+      expect(t.weak, isFalse);
     });
   });
 }
