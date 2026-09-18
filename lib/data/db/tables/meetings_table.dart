@@ -26,4 +26,10 @@ class Meetings extends Table {
   /// The plan topic the student picked for this lesson; null lets the app
   /// work it out from the date and what is being said.
   IntColumn get topicId => integer().nullable()();
+
+  /// When the chunk WAVs were deleted to free space. Null means the audio is
+  /// still there. Persisted rather than derived from the file system, because
+  /// "the directory is gone" and "the directory was never written" have to
+  /// read differently to „Přepsat znovu".
+  DateTimeColumn get audioClearedAt => dateTime().nullable()();
 }

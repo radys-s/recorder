@@ -107,6 +107,35 @@ enum SchoolType {
   };
 }
 
+/// How long a finished lesson's audio is kept before it is deleted.
+///
+/// A 45-minute lesson is about 85 MB of 16 kHz mono WAV, so a school week
+/// fills a gigabyte or two. The transcript, the výpisky and everything else
+/// stay; only the chunk files go. Stored by index, so new steps are appended.
+enum AudioRetention {
+  oneDay,
+  sevenDays,
+  thirtyDays,
+  never;
+
+  static const ordered = [oneDay, sevenDays, thirtyDays, never];
+
+  /// Null for [never], which is the whole point of that value.
+  Duration? get keepFor => switch (this) {
+    AudioRetention.oneDay => const Duration(days: 1),
+    AudioRetention.sevenDays => const Duration(days: 7),
+    AudioRetention.thirtyDays => const Duration(days: 30),
+    AudioRetention.never => null,
+  };
+
+  String get label => switch (this) {
+    AudioRetention.oneDay => '1 den',
+    AudioRetention.sevenDays => '7 dní',
+    AudioRetention.thirtyDays => '30 dní',
+    AudioRetention.never => 'Nikdy',
+  };
+}
+
 /// App settings that have to survive a restart but are not secrets.
 ///
 /// A single row, always id 0. The API key lives in the platform keystore
@@ -160,6 +189,11 @@ class Preferences extends Table {
   IntColumn get schoolType => intEnum<SchoolType>().nullable()();
   TextColumn get studyField => text().nullable()();
   IntColumn get studyYear => integer().nullable()();
+
+  /// How long a finished lesson's audio is kept. The transcript is never
+  /// touched by this.
+  IntColumn get audioRetention =>
+      intEnum<AudioRetention>().withDefault(const Constant(1))(); // sevenDays
 
   @override
   Set<Column> get primaryKey => {id};

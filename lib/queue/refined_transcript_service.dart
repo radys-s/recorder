@@ -48,6 +48,7 @@ class RefinedTranscriptService {
     required this.tempDir,
     this.lessonInfo,
     this.waitForTurn,
+    this.onPassFinished,
     this.retryDelays = kRefinedRetryDelays,
   });
 
@@ -62,6 +63,11 @@ class RefinedTranscriptService {
 
   /// Awaited before every request, e.g. to wait out a missing connection.
   final Future<void> Function()? waitForTurn;
+
+  /// Called once the queue runs dry. The audio cleanup hangs off this: a
+  /// window that still has to be re-heard is the one thing that must not have
+  /// its chunks deleted underneath it.
+  final Future<void> Function()? onPassFinished;
 
   /// Pause before each further try; one try more than there are delays.
   final List<Duration> retryDelays;
@@ -198,6 +204,11 @@ class RefinedTranscriptService {
       } catch (e, st) {
         AppLog.e(_tag, 'meeting $meetingId: pass stopped', e, st);
       }
+    }
+    try {
+      await onPassFinished?.call();
+    } catch (e, st) {
+      AppLog.e(_tag, 'after-pass step failed', e, st);
     }
   }
 

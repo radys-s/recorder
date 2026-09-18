@@ -175,6 +175,7 @@ class _Prefs implements PreferencesDao {
     micSensitivity: sensitivity,
     onboardingDismissed: false,
     contextCorrection: true,
+    audioRetention: AudioRetention.sevenDays,
   );
 
   @override

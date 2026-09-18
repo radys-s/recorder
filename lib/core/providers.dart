@@ -37,6 +37,8 @@ import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
 import '../data/db/tables/subject_terms_table.dart';
+import '../audio/recording_controller.dart';
+import '../data/audio_cleaner.dart';
 import '../data/card_deleter.dart';
 import '../data/secure/api_key_store.dart';
 import 'logging.dart';
@@ -455,6 +457,21 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
   return worker;
 });
 
+/// Frees the chunk WAVs of lessons that are finished with them.
+final audioCleanerProvider = Provider<AudioCleaner>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return AudioCleaner(
+    db.meetingsDao,
+    db.preferencesDao,
+    documentsPath: documentsPath,
+    // The lesson being recorded writes into that directory right now.
+    isRecording: (meetingId) {
+      final state = ref.read(recordingControllerProvider);
+      return state.isRecording && state.meetingId == meetingId;
+    },
+  );
+});
+
 final refinedSegmentsDaoProvider = Provider<RefinedSegmentsDao>((ref) {
   return ref.watch(appDatabaseProvider).refinedSegmentsDao;
 });
@@ -495,6 +512,9 @@ final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
       );
     },
     waitForTurn: _waitUntilOnline,
+    // The pass is the last thing that needs the chunk files, so this is the
+    // moment their retention clock is worth checking.
+    onPassFinished: () => ref.read(audioCleanerProvider).sweep(),
   );
 });
 

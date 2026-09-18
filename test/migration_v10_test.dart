@@ -155,6 +155,21 @@ void main() {
     final topic = (await db.subjectsDao.topics(3)).single;
     await db.subjectsDao.setMeetingTopic(9, topic.id);
     expect((await db.select(db.meetings).getSingle()).topicId, topic.id);
+    // v19 adds the audio retention setting and the cleared-audio mark.
+    expect(
+      (await db.preferencesDao.current()).audioRetention,
+      AudioRetention.sevenDays,
+    );
+    await db.preferencesDao.setAudioRetention(AudioRetention.thirtyDays);
+    expect(
+      (await db.preferencesDao.current()).audioRetention,
+      AudioRetention.thirtyDays,
+    );
+    await db.meetingsDao.markAudioCleared(9, DateTime(2026, 9, 18));
+    expect(
+      (await db.select(db.meetings).getSingle()).audioClearedAt,
+      DateTime(2026, 9, 18),
+    );
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

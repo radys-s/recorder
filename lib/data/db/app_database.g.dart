@@ -98,6 +98,18 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _audioClearedAtMeta = const VerificationMeta(
+    'audioClearedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> audioClearedAt =
+      GeneratedColumn<DateTime>(
+        'audio_cleared_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -108,6 +120,7 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     subjectId,
     rules,
     topicId,
+    audioClearedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -173,6 +186,15 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         topicId.isAcceptableOrUnknown(data['topic_id']!, _topicIdMeta),
       );
     }
+    if (data.containsKey('audio_cleared_at')) {
+      context.handle(
+        _audioClearedAtMeta,
+        audioClearedAt.isAcceptableOrUnknown(
+          data['audio_cleared_at']!,
+          _audioClearedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -214,6 +236,10 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         DriftSqlType.int,
         data['${effectivePrefix}topic_id'],
       ),
+      audioClearedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}audio_cleared_at'],
+      ),
     );
   }
 
@@ -246,6 +272,12 @@ class Meeting extends DataClass implements Insertable<Meeting> {
   /// The plan topic the student picked for this lesson; null lets the app
   /// work it out from the date and what is being said.
   final int? topicId;
+
+  /// When the chunk WAVs were deleted to free space. Null means the audio is
+  /// still there. Persisted rather than derived from the file system, because
+  /// "the directory is gone" and "the directory was never written" have to
+  /// read differently to „Přepsat znovu".
+  final DateTime? audioClearedAt;
   const Meeting({
     required this.id,
     required this.title,
@@ -255,6 +287,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     this.subjectId,
     this.rules,
     this.topicId,
+    this.audioClearedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -274,6 +307,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     }
     if (!nullToAbsent || topicId != null) {
       map['topic_id'] = Variable<int>(topicId);
+    }
+    if (!nullToAbsent || audioClearedAt != null) {
+      map['audio_cleared_at'] = Variable<DateTime>(audioClearedAt);
     }
     return map;
   }
@@ -296,6 +332,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       topicId: topicId == null && nullToAbsent
           ? const Value.absent()
           : Value(topicId),
+      audioClearedAt: audioClearedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(audioClearedAt),
     );
   }
 
@@ -313,6 +352,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       subjectId: serializer.fromJson<int?>(json['subjectId']),
       rules: serializer.fromJson<String?>(json['rules']),
       topicId: serializer.fromJson<int?>(json['topicId']),
+      audioClearedAt: serializer.fromJson<DateTime?>(json['audioClearedAt']),
     );
   }
   @override
@@ -327,6 +367,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       'subjectId': serializer.toJson<int?>(subjectId),
       'rules': serializer.toJson<String?>(rules),
       'topicId': serializer.toJson<int?>(topicId),
+      'audioClearedAt': serializer.toJson<DateTime?>(audioClearedAt),
     };
   }
 
@@ -339,6 +380,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     Value<int?> subjectId = const Value.absent(),
     Value<String?> rules = const Value.absent(),
     Value<int?> topicId = const Value.absent(),
+    Value<DateTime?> audioClearedAt = const Value.absent(),
   }) => Meeting(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -348,6 +390,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     subjectId: subjectId.present ? subjectId.value : this.subjectId,
     rules: rules.present ? rules.value : this.rules,
     topicId: topicId.present ? topicId.value : this.topicId,
+    audioClearedAt: audioClearedAt.present
+        ? audioClearedAt.value
+        : this.audioClearedAt,
   );
   Meeting copyWithCompanion(MeetingsCompanion data) {
     return Meeting(
@@ -361,6 +406,9 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
       rules: data.rules.present ? data.rules.value : this.rules,
       topicId: data.topicId.present ? data.topicId.value : this.topicId,
+      audioClearedAt: data.audioClearedAt.present
+          ? data.audioClearedAt.value
+          : this.audioClearedAt,
     );
   }
 
@@ -374,7 +422,8 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           ..write('interrupted: $interrupted, ')
           ..write('subjectId: $subjectId, ')
           ..write('rules: $rules, ')
-          ..write('topicId: $topicId')
+          ..write('topicId: $topicId, ')
+          ..write('audioClearedAt: $audioClearedAt')
           ..write(')'))
         .toString();
   }
@@ -389,6 +438,7 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     subjectId,
     rules,
     topicId,
+    audioClearedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -401,7 +451,8 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           other.interrupted == this.interrupted &&
           other.subjectId == this.subjectId &&
           other.rules == this.rules &&
-          other.topicId == this.topicId);
+          other.topicId == this.topicId &&
+          other.audioClearedAt == this.audioClearedAt);
 }
 
 class MeetingsCompanion extends UpdateCompanion<Meeting> {
@@ -413,6 +464,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
   final Value<int?> subjectId;
   final Value<String?> rules;
   final Value<int?> topicId;
+  final Value<DateTime?> audioClearedAt;
   const MeetingsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -422,6 +474,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.subjectId = const Value.absent(),
     this.rules = const Value.absent(),
     this.topicId = const Value.absent(),
+    this.audioClearedAt = const Value.absent(),
   });
   MeetingsCompanion.insert({
     this.id = const Value.absent(),
@@ -432,6 +485,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.subjectId = const Value.absent(),
     this.rules = const Value.absent(),
     this.topicId = const Value.absent(),
+    this.audioClearedAt = const Value.absent(),
   }) : title = Value(title),
        createdAt = Value(createdAt);
   static Insertable<Meeting> custom({
@@ -443,6 +497,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Expression<int>? subjectId,
     Expression<String>? rules,
     Expression<int>? topicId,
+    Expression<DateTime>? audioClearedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -453,6 +508,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       if (subjectId != null) 'subject_id': subjectId,
       if (rules != null) 'rules': rules,
       if (topicId != null) 'topic_id': topicId,
+      if (audioClearedAt != null) 'audio_cleared_at': audioClearedAt,
     });
   }
 
@@ -465,6 +521,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Value<int?>? subjectId,
     Value<String?>? rules,
     Value<int?>? topicId,
+    Value<DateTime?>? audioClearedAt,
   }) {
     return MeetingsCompanion(
       id: id ?? this.id,
@@ -475,6 +532,7 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       subjectId: subjectId ?? this.subjectId,
       rules: rules ?? this.rules,
       topicId: topicId ?? this.topicId,
+      audioClearedAt: audioClearedAt ?? this.audioClearedAt,
     );
   }
 
@@ -505,6 +563,9 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     if (topicId.present) {
       map['topic_id'] = Variable<int>(topicId.value);
     }
+    if (audioClearedAt.present) {
+      map['audio_cleared_at'] = Variable<DateTime>(audioClearedAt.value);
+    }
     return map;
   }
 
@@ -518,7 +579,8 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
           ..write('interrupted: $interrupted, ')
           ..write('subjectId: $subjectId, ')
           ..write('rules: $rules, ')
-          ..write('topicId: $topicId')
+          ..write('topicId: $topicId, ')
+          ..write('audioClearedAt: $audioClearedAt')
           ..write(')'))
         .toString();
   }
@@ -2035,6 +2097,16 @@ class $PreferencesTable extends Preferences
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<AudioRetention, int>
+  audioRetention = GeneratedColumn<int>(
+    'audio_retention',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  ).withConverter<AudioRetention>($PreferencesTable.$converteraudioRetention);
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     transcriptLanguage,
@@ -2050,6 +2122,7 @@ class $PreferencesTable extends Preferences
     schoolType,
     studyField,
     studyYear,
+    audioRetention,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2212,6 +2285,12 @@ class $PreferencesTable extends Preferences
         DriftSqlType.int,
         data['${effectivePrefix}study_year'],
       ),
+      audioRetention: $PreferencesTable.$converteraudioRetention.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}audio_retention'],
+        )!,
+      ),
     );
   }
 
@@ -2232,6 +2311,8 @@ class $PreferencesTable extends Preferences
       const EnumIndexConverter<SchoolType>(SchoolType.values);
   static JsonTypeConverter2<SchoolType?, int?, int?> $converterschoolTypen =
       JsonTypeConverter2.asNullable($converterschoolType);
+  static JsonTypeConverter2<AudioRetention, int, int> $converteraudioRetention =
+      const EnumIndexConverter<AudioRetention>(AudioRetention.values);
 }
 
 class Preference extends DataClass implements Insertable<Preference> {
@@ -2274,6 +2355,10 @@ class Preference extends DataClass implements Insertable<Preference> {
   final SchoolType? schoolType;
   final String? studyField;
   final int? studyYear;
+
+  /// How long a finished lesson's audio is kept. The transcript is never
+  /// touched by this.
+  final AudioRetention audioRetention;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2289,6 +2374,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.schoolType,
     this.studyField,
     this.studyYear,
+    required this.audioRetention,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2335,6 +2421,11 @@ class Preference extends DataClass implements Insertable<Preference> {
     if (!nullToAbsent || studyYear != null) {
       map['study_year'] = Variable<int>(studyYear);
     }
+    {
+      map['audio_retention'] = Variable<int>(
+        $PreferencesTable.$converteraudioRetention.toSql(audioRetention),
+      );
+    }
     return map;
   }
 
@@ -2366,6 +2457,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       studyYear: studyYear == null && nullToAbsent
           ? const Value.absent()
           : Value(studyYear),
+      audioRetention: Value(audioRetention),
     );
   }
 
@@ -2400,6 +2492,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       ),
       studyField: serializer.fromJson<String?>(json['studyField']),
       studyYear: serializer.fromJson<int?>(json['studyYear']),
+      audioRetention: $PreferencesTable.$converteraudioRetention.fromJson(
+        serializer.fromJson<int>(json['audioRetention']),
+      ),
     );
   }
   @override
@@ -2430,6 +2525,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       ),
       'studyField': serializer.toJson<String?>(studyField),
       'studyYear': serializer.toJson<int?>(studyYear),
+      'audioRetention': serializer.toJson<int>(
+        $PreferencesTable.$converteraudioRetention.toJson(audioRetention),
+      ),
     };
   }
 
@@ -2448,6 +2546,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<SchoolType?> schoolType = const Value.absent(),
     Value<String?> studyField = const Value.absent(),
     Value<int?> studyYear = const Value.absent(),
+    AudioRetention? audioRetention,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2465,6 +2564,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     schoolType: schoolType.present ? schoolType.value : this.schoolType,
     studyField: studyField.present ? studyField.value : this.studyField,
     studyYear: studyYear.present ? studyYear.value : this.studyYear,
+    audioRetention: audioRetention ?? this.audioRetention,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2506,6 +2606,9 @@ class Preference extends DataClass implements Insertable<Preference> {
           ? data.studyField.value
           : this.studyField,
       studyYear: data.studyYear.present ? data.studyYear.value : this.studyYear,
+      audioRetention: data.audioRetention.present
+          ? data.audioRetention.value
+          : this.audioRetention,
     );
   }
 
@@ -2525,7 +2628,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('schoolName: $schoolName, ')
           ..write('schoolType: $schoolType, ')
           ..write('studyField: $studyField, ')
-          ..write('studyYear: $studyYear')
+          ..write('studyYear: $studyYear, ')
+          ..write('audioRetention: $audioRetention')
           ..write(')'))
         .toString();
   }
@@ -2546,6 +2650,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     schoolType,
     studyField,
     studyYear,
+    audioRetention,
   );
   @override
   bool operator ==(Object other) =>
@@ -2564,7 +2669,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.schoolName == this.schoolName &&
           other.schoolType == this.schoolType &&
           other.studyField == this.studyField &&
-          other.studyYear == this.studyYear);
+          other.studyYear == this.studyYear &&
+          other.audioRetention == this.audioRetention);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2582,6 +2688,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<SchoolType?> schoolType;
   final Value<String?> studyField;
   final Value<int?> studyYear;
+  final Value<AudioRetention> audioRetention;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2597,6 +2704,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.schoolType = const Value.absent(),
     this.studyField = const Value.absent(),
     this.studyYear = const Value.absent(),
+    this.audioRetention = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2613,6 +2721,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.schoolType = const Value.absent(),
     this.studyField = const Value.absent(),
     this.studyYear = const Value.absent(),
+    this.audioRetention = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2629,6 +2738,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<int>? schoolType,
     Expression<String>? studyField,
     Expression<int>? studyYear,
+    Expression<int>? audioRetention,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2648,6 +2758,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (schoolType != null) 'school_type': schoolType,
       if (studyField != null) 'study_field': studyField,
       if (studyYear != null) 'study_year': studyYear,
+      if (audioRetention != null) 'audio_retention': audioRetention,
     });
   }
 
@@ -2666,6 +2777,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<SchoolType?>? schoolType,
     Value<String?>? studyField,
     Value<int?>? studyYear,
+    Value<AudioRetention>? audioRetention,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2682,6 +2794,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       schoolType: schoolType ?? this.schoolType,
       studyField: studyField ?? this.studyField,
       studyYear: studyYear ?? this.studyYear,
+      audioRetention: audioRetention ?? this.audioRetention,
     );
   }
 
@@ -2742,6 +2855,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (studyYear.present) {
       map['study_year'] = Variable<int>(studyYear.value);
     }
+    if (audioRetention.present) {
+      map['audio_retention'] = Variable<int>(
+        $PreferencesTable.$converteraudioRetention.toSql(audioRetention.value),
+      );
+    }
     return map;
   }
 
@@ -2761,7 +2879,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('schoolName: $schoolName, ')
           ..write('schoolType: $schoolType, ')
           ..write('studyField: $studyField, ')
-          ..write('studyYear: $studyYear')
+          ..write('studyYear: $studyYear, ')
+          ..write('audioRetention: $audioRetention')
           ..write(')'))
         .toString();
   }
@@ -9206,6 +9325,7 @@ typedef $$MeetingsTableCreateCompanionBuilder = MeetingsCompanion Function({
   Value<int?> subjectId,
   Value<String?> rules,
   Value<int?> topicId,
+  Value<DateTime?> audioClearedAt,
 });
 typedef $$MeetingsTableUpdateCompanionBuilder = MeetingsCompanion Function({
   Value<int> id,
@@ -9216,6 +9336,7 @@ typedef $$MeetingsTableUpdateCompanionBuilder = MeetingsCompanion Function({
   Value<int?> subjectId,
   Value<String?> rules,
   Value<int?> topicId,
+  Value<DateTime?> audioClearedAt,
 });
 
 class $$MeetingsTableFilterComposer
@@ -9264,6 +9385,11 @@ class $$MeetingsTableFilterComposer
 
   ColumnFilters<int> get topicId => $composableBuilder(
     column: $table.topicId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get audioClearedAt => $composableBuilder(
+    column: $table.audioClearedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9316,6 +9442,11 @@ class $$MeetingsTableOrderingComposer
     column: $table.topicId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get audioClearedAt => $composableBuilder(
+    column: $table.audioClearedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MeetingsTableAnnotationComposer
@@ -9352,6 +9483,11 @@ class $$MeetingsTableAnnotationComposer
 
   GeneratedColumn<int> get topicId =>
       $composableBuilder(column: $table.topicId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get audioClearedAt => $composableBuilder(
+    column: $table.audioClearedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$MeetingsTableTableManager
@@ -9390,6 +9526,7 @@ class $$MeetingsTableTableManager
                 Value<int?> subjectId = const Value.absent(),
                 Value<String?> rules = const Value.absent(),
                 Value<int?> topicId = const Value.absent(),
+                Value<DateTime?> audioClearedAt = const Value.absent(),
               }) => MeetingsCompanion(
                 id: id,
                 title: title,
@@ -9399,6 +9536,7 @@ class $$MeetingsTableTableManager
                 subjectId: subjectId,
                 rules: rules,
                 topicId: topicId,
+                audioClearedAt: audioClearedAt,
               ),
           createCompanionCallback:
               ({
@@ -9410,6 +9548,7 @@ class $$MeetingsTableTableManager
                 Value<int?> subjectId = const Value.absent(),
                 Value<String?> rules = const Value.absent(),
                 Value<int?> topicId = const Value.absent(),
+                Value<DateTime?> audioClearedAt = const Value.absent(),
               }) => MeetingsCompanion.insert(
                 id: id,
                 title: title,
@@ -9419,6 +9558,7 @@ class $$MeetingsTableTableManager
                 subjectId: subjectId,
                 rules: rules,
                 topicId: topicId,
+                audioClearedAt: audioClearedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -10130,6 +10270,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<SchoolType?> schoolType,
       Value<String?> studyField,
       Value<int?> studyYear,
+      Value<AudioRetention> audioRetention,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -10147,6 +10288,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<SchoolType?> schoolType,
       Value<String?> studyField,
       Value<int?> studyYear,
+      Value<AudioRetention> audioRetention,
     });
 
 class $$PreferencesTableFilterComposer
@@ -10231,6 +10373,12 @@ class $$PreferencesTableFilterComposer
     column: $table.studyYear,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<AudioRetention, AudioRetention, int>
+  get audioRetention => $composableBuilder(
+    column: $table.audioRetention,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -10309,6 +10457,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<int> get studyYear => $composableBuilder(
     column: $table.studyYear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get audioRetention => $composableBuilder(
+    column: $table.audioRetention,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -10391,6 +10544,12 @@ class $$PreferencesTableAnnotationComposer
 
   GeneratedColumn<int> get studyYear =>
       $composableBuilder(column: $table.studyYear, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<AudioRetention, int> get audioRetention =>
+      $composableBuilder(
+        column: $table.audioRetention,
+        builder: (column) => column,
+      );
 }
 
 class $$PreferencesTableTableManager
@@ -10439,6 +10598,7 @@ class $$PreferencesTableTableManager
                 Value<SchoolType?> schoolType = const Value.absent(),
                 Value<String?> studyField = const Value.absent(),
                 Value<int?> studyYear = const Value.absent(),
+                Value<AudioRetention> audioRetention = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10454,6 +10614,7 @@ class $$PreferencesTableTableManager
                 schoolType: schoolType,
                 studyField: studyField,
                 studyYear: studyYear,
+                audioRetention: audioRetention,
               ),
           createCompanionCallback:
               ({
@@ -10472,6 +10633,7 @@ class $$PreferencesTableTableManager
                 Value<SchoolType?> schoolType = const Value.absent(),
                 Value<String?> studyField = const Value.absent(),
                 Value<int?> studyYear = const Value.absent(),
+                Value<AudioRetention> audioRetention = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10487,6 +10649,7 @@ class $$PreferencesTableTableManager
                 schoolType: schoolType,
                 studyField: studyField,
                 studyYear: studyYear,
+                audioRetention: audioRetention,
               ),
           withReferenceMapper: (p0) => p0
               .map(

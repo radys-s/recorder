@@ -66,6 +66,25 @@ class MeetingSummary {
   Duration get duration => Duration(milliseconds: durationMs);
 }
 
+/// One finished meeting's audio, and whether anything still needs it.
+class ClearableAudio {
+  const ClearableAudio({
+    required this.meetingId,
+    required this.endedAt,
+    required this.queueSettled,
+    required this.refiningSettled,
+  });
+
+  final int meetingId;
+  final DateTime endedAt;
+
+  /// Every chunk has either been transcribed or given up on.
+  final bool queueSettled;
+
+  /// No refined window is still pending or running.
+  final bool refiningSettled;
+}
+
 @DriftAccessor(
   tables: [
     Meetings,
@@ -83,6 +102,9 @@ class MeetingSummary {
 class MeetingsDao extends DatabaseAccessor<AppDatabase>
     with _$MeetingsDaoMixin {
   MeetingsDao(super.db);
+
+  /// A one-shot read for code that only needs today's titles, not a stream.
+  Future<List<Meeting>> allMeetingsOnce() => select(meetings).get();
 
   Stream<List<Meeting>> watchAllMeetings() {
     return (select(
@@ -205,6 +227,60 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase>
   /// mid-upload finishes, its transcript write is a no-op on a deleted row, but
   /// the live-answer call it triggers can still insert a card afterwards. Safe
   /// only at startup, for the same reason as [closeOrphanedMeetings].
+  /// Finished meetings that still have audio on disk, with what would be lost
+  /// by deleting it: an upload still in flight, or a refined window still to
+  /// be heard. One query rather than one per meeting, because this runs at
+  /// startup.
+  Future<List<ClearableAudio>> clearableAudio() {
+    final unsettledUploads = subqueryExpression<int>(
+      selectOnly(uploadQueue)
+        ..addColumns([uploadQueue.id.count()])
+        ..where(
+          uploadQueue.meetingId.equalsExp(meetings.id) &
+              uploadQueue.status.isNotIn([
+                QueueStatus.succeeded.index,
+                QueueStatus.failedPermanent.index,
+              ]),
+        ),
+    );
+    final unsettledWindows = subqueryExpression<int>(
+      selectOnly(refinedSegments)
+        ..addColumns([refinedSegments.id.count()])
+        ..where(
+          refinedSegments.meetingId.equalsExp(meetings.id) &
+              refinedSegments.status.isNotIn([
+                RefinedStatus.ready.index,
+                RefinedStatus.failed.index,
+              ]),
+        ),
+    );
+
+    final query = selectOnly(meetings)
+      ..addColumns([
+        meetings.id,
+        meetings.endedAt,
+        unsettledUploads,
+        unsettledWindows,
+      ])
+      ..where(meetings.endedAt.isNotNull() & meetings.audioClearedAt.isNull());
+
+    return query
+        .map(
+          (row) => ClearableAudio(
+            meetingId: row.read(meetings.id)!,
+            endedAt: row.read(meetings.endedAt)!,
+            queueSettled: (row.read(unsettledUploads) ?? 0) == 0,
+            refiningSettled: (row.read(unsettledWindows) ?? 0) == 0,
+          ),
+        )
+        .get();
+  }
+
+  Future<void> markAudioCleared(int meetingId, DateTime at) =>
+      (update(meetings)..where((t) => t.id.equals(meetingId))).write(
+        MeetingsCompanion(audioClearedAt: Value(at)),
+      );
+
   Future<int> deleteOrphanRows() => transaction(() async {
     final existing = selectOnly(meetings)..addColumns([meetings.id]);
     var removed = 0;

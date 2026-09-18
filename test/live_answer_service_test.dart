@@ -30,6 +30,7 @@ class _Prefs implements PreferencesDao {
     micSensitivity: MicSensitivity.medium,
     onboardingDismissed: false,
     contextCorrection: true,
+    audioRetention: AudioRetention.sevenDays,
   );
 
   @override

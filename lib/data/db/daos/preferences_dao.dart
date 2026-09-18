@@ -67,6 +67,9 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> setOnboardingDismissed(bool value) =>
       _write(PreferencesCompanion(onboardingDismissed: Value(value)));
 
+  Future<void> setAudioRetention(AudioRetention value) =>
+      _write(PreferencesCompanion(audioRetention: Value(value)));
+
   Future<void> setContextCorrection(bool value) =>
       _write(PreferencesCompanion(contextCorrection: Value(value)));
 

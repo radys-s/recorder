@@ -83,6 +83,16 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
       }
     });
 
+    // Chunk WAVs are the only thing here that grows without bound — roughly
+    // 1.9 MB a minute — so a lesson whose transcript is finished and whose
+    // retention window has passed gives its audio back.
+    await _step('clear old audio', () async {
+      final cleared = await ref.read(audioCleanerProvider).sweep();
+      if (cleared > 0) {
+        AppLog.d(_tag, 'freed the audio of $cleared meeting(s)');
+      }
+    });
+
     // A generation dies with the process, so a row still claiming to be
     // generating is a leftover, not work in progress — left alone it would sit
     // under a progress bar forever.

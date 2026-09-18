@@ -14,6 +14,7 @@ import '../../data/db/tables/preferences_table.dart';
 import '../debug/queue_debug_screen.dart';
 import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
+import 'storage_section.dart';
 import 'study_profile_section.dart';
 
 /// Groq API key entry. Phase 1 has nothing else to configure, apart from the
@@ -157,6 +158,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const StudyProfileSection(),
           const _LanguageSection(),
           const _MicTipsSection(),
+          const StorageSection(),
           const _SensitivitySection(),
           const _LiveAnswersSection(),
           const _GlobalRulesSection(),
