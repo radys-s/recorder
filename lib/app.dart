@@ -136,6 +136,13 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
       }
       await ref.read(lessonReminderServiceProvider).reschedule();
     });
+
+    // Watches the subjects and mirrors them to Google Docs when the student
+    // turned it on; a no-op until they sign in with Google.
+    await _step(
+      'sync google docs',
+      () async => ref.read(driveSyncServiceProvider).start(),
+    );
   }
 
   Future<void> _step(String name, Future<void> Function() body) async {

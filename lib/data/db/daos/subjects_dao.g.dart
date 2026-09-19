@@ -14,6 +14,7 @@ mixin _$SubjectsDaoMixin on DatabaseAccessor<AppDatabase> {
   $ChatMessagesTable get chatMessages => attachedDatabase.chatMessages;
   $SubjectTermsTable get subjectTerms => attachedDatabase.subjectTerms;
   $SyllabusTopicsTable get syllabusTopics => attachedDatabase.syllabusTopics;
+  $DriveDocsTable get driveDocs => attachedDatabase.driveDocs;
   SubjectsDaoManager get managers => SubjectsDaoManager(this);
 }
 
@@ -46,4 +47,6 @@ class SubjectsDaoManager {
         _db.attachedDatabase,
         _db.syllabusTopics,
       );
+  $$DriveDocsTableTableManager get driveDocs =>
+      $$DriveDocsTableTableManager(_db.attachedDatabase, _db.driveDocs);
 }

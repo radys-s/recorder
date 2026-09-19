@@ -395,3 +395,29 @@ const List<Duration> kRefinedRetryDelays = [
 
 /// The previous window's ending, handed to the next as context.
 const int kRefinedContextChars = 500;
+
+/// Google Docs sync for NotebookLM. The client id is the student's own (their
+/// Google Cloud project), typed in Settings; only the refresh token is secret.
+const String kGoogleRefreshTokenStorageKey = 'google_refresh_token';
+
+const String kGoogleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth';
+const String kGoogleTokenUrl = 'https://oauth2.googleapis.com/token';
+const String kGoogleRevokeUrl = 'https://oauth2.googleapis.com/revoke';
+
+/// Only files the app created itself — the app never sees the rest of Drive.
+const String kDriveScope = 'https://www.googleapis.com/auth/drive.file';
+
+const String kDriveFilesUrl = 'https://www.googleapis.com/drive/v3/files';
+const String kDriveAboutUrl = 'https://www.googleapis.com/drive/v3/about';
+const String kDriveUploadUrl =
+    'https://www.googleapis.com/upload/drive/v3/files';
+
+/// The Drive folder every subject's doc lives in.
+const String kDriveFolderName = 'Schůzky';
+
+/// Quiet time after the last change before an automatic sync.
+const Duration kDriveSyncDebounce = Duration(seconds: 20);
+
+/// A Google Doc holds about 1.02 M characters; the transcript doc keeps the
+/// newest lessons under this.
+const int kDriveDocMaxChars = 900000;

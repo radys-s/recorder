@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +54,10 @@ import '../stt/refined_transcriber.dart';
 import '../stt/stt_provider.dart';
 import '../stt/term_corrections.dart';
 import '../stt/transcript_corrector.dart';
+import '../sync/drive_api.dart';
+import '../sync/drive_sync_service.dart';
+import '../sync/google_auth.dart';
+import '../sync/web_authenticator.dart';
 import 'constants.dart';
 import 'local_reminder_scheduler.dart';
 import 'paths.dart';
@@ -565,6 +570,50 @@ Future<void> _waitUntilOnline() async {
     await Future<void>.delayed(const Duration(seconds: 15));
   }
 }
+
+/// Google APIs (sign-in and Drive) share one client; Drive uploads of a long
+/// subject can take a while on a slow connection.
+final googleDioProvider = Provider<Dio>((ref) {
+  return Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      sendTimeout: const Duration(seconds: 90),
+      receiveTimeout: const Duration(seconds: 60),
+    ),
+  );
+});
+
+final webAuthenticatorProvider = Provider<WebAuthenticator>(
+  (ref) => const ChannelWebAuthenticator(),
+);
+
+/// The Google account the Docs sync writes as. Refresh token in the Keychain.
+final googleAccountProvider = Provider<GoogleAccount>((ref) {
+  return GoogleAccount(
+    prefs: ref.watch(preferencesDaoProvider),
+    refreshTokenStore: ApiKeyStore(storageKey: kGoogleRefreshTokenStorageKey),
+    authenticator: ref.watch(webAuthenticatorProvider),
+    auth: GoogleAuthClient(ref.watch(googleDioProvider)),
+  );
+});
+
+/// Mirrors the subjects into Google Docs for NotebookLM. Started at launch.
+final driveSyncServiceProvider = Provider<DriveSyncService>((ref) {
+  final account = ref.watch(googleAccountProvider);
+  final service = DriveSyncService(
+    ref.watch(appDatabaseProvider),
+    api: DioDriveApi(ref.watch(googleDioProvider), account.accessToken),
+    invalidateAccessToken: account.invalidateAccessToken,
+    waitUntilOnline: _waitUntilOnline,
+  );
+  ref.onDispose(service.dispose);
+  return service;
+});
+
+/// Sync state of every subject's docs, for Settings.
+final driveDocsProvider = StreamProvider<List<DriveDoc>>((ref) {
+  return ref.watch(appDatabaseProvider).driveDocsDao.watchAll();
+});
 
 /// Whether a Groq key is stored. Screens watch this to show a "set your key"
 /// hint; invalidate it after saving or clearing the key in Settings.

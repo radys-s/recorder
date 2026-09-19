@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/syllabus.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
+import 'package:recorder/data/db/tables/drive_docs_table.dart';
 import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/data/db/tables/refined_segments_table.dart';
 import 'package:recorder/data/db/tables/syllabus_topics_table.dart';
@@ -180,6 +181,21 @@ void main() {
       (await db.preferencesDao.current()).lessonReminder,
       LessonReminder.fiveMinutes,
     );
+    // v21 adds the Google Docs sync: off, no client, no docs yet.
+    final drive = await db.preferencesDao.current();
+    expect(drive.driveSyncEnabled, isFalse);
+    expect(drive.driveIncludeTranscripts, isFalse);
+    expect(drive.googleClientId, isNull);
+    await db.driveDocsDao.markSynced(
+      3,
+      DriveDocKind.notes,
+      docId: 'doc1',
+      hash: 'h',
+      at: DateTime(2026, 9, 19),
+    );
+    expect((await db.driveDocsDao.doc(3, DriveDocKind.notes))!.docId, 'doc1');
+    await db.subjectsDao.deleteSubject(3);
+    expect(await db.driveDocsDao.doc(3, DriveDocKind.notes), isNull);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

@@ -227,6 +227,19 @@ class Preferences extends Table {
   IntColumn get lessonReminder =>
       intEnum<LessonReminder>().withDefault(const Constant(0))(); // off
 
+  /// Google Docs sync for NotebookLM. The OAuth client id is the student's
+  /// own, from their own Google Cloud project; it is not a secret. The
+  /// refresh token lives in the Keychain, never here.
+  TextColumn get googleClientId => text().nullable()();
+  TextColumn get googleAccountEmail => text().nullable()();
+  BoolColumn get driveSyncEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get driveIncludeTranscripts =>
+      boolean().withDefault(const Constant(false))();
+
+  /// The „Schůzky" folder the docs live in, once created.
+  TextColumn get driveFolderId => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

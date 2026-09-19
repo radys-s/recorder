@@ -5,6 +5,7 @@ import 'connection/connection.dart';
 
 import 'daos/answer_cards_dao.dart';
 import 'daos/chat_messages_dao.dart';
+import 'daos/drive_docs_dao.dart';
 import 'daos/meeting_notes_dao.dart';
 import 'daos/meetings_dao.dart';
 import 'daos/preferences_dao.dart';
@@ -16,6 +17,7 @@ import 'daos/upload_queue_dao.dart';
 import 'tables/answer_cards_table.dart';
 import 'tables/chat_messages_table.dart';
 import 'tables/context_cards_table.dart';
+import 'tables/drive_docs_table.dart';
 import 'tables/meeting_notes_table.dart';
 import 'tables/meetings_table.dart';
 import 'tables/preferences_table.dart';
@@ -47,6 +49,7 @@ part 'app_database.g.dart';
     RefinedSegments,
     SubjectTerms,
     SyllabusTopics,
+    DriveDocs,
   ],
   daos: [
     MeetingsDao,
@@ -59,6 +62,7 @@ part 'app_database.g.dart';
     SubjectsDao,
     ChatMessagesDao,
     RefinedSegmentsDao,
+    DriveDocsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -68,7 +72,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -181,6 +185,16 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 20 && from >= 3) {
         await m.addColumn(preferences, preferences.lessonReminder);
+      }
+      if (from < 21) {
+        await m.createTable(driveDocs);
+        if (from >= 3) {
+          await m.addColumn(preferences, preferences.googleClientId);
+          await m.addColumn(preferences, preferences.driveSyncEnabled);
+          await m.addColumn(preferences, preferences.driveIncludeTranscripts);
+          await m.addColumn(preferences, preferences.driveFolderId);
+          await m.addColumn(preferences, preferences.googleAccountEmail);
+        }
       }
     },
   );

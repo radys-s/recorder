@@ -14,6 +14,7 @@ import '../../data/db/tables/preferences_table.dart';
 import '../debug/queue_debug_screen.dart';
 import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
+import 'drive_sync_section.dart';
 import 'lesson_reminders_section.dart';
 import 'storage_section.dart';
 import 'study_profile_section.dart';
@@ -161,6 +162,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _MicTipsSection(),
           const LessonRemindersSection(),
           const StorageSection(),
+          const DriveSyncSection(),
           const _SensitivitySection(),
           const _LiveAnswersSection(),
           const _GlobalRulesSection(),

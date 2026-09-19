@@ -4,6 +4,7 @@ import '../../../ai/syllabus.dart' show SyllabusTopicDraft;
 import '../app_database.dart';
 import '../tables/chat_messages_table.dart';
 import '../tables/context_cards_table.dart';
+import '../tables/drive_docs_table.dart';
 import '../tables/meetings_table.dart';
 import '../../../stt/transcript_sanitizer.dart';
 import '../tables/saved_notes_table.dart';
@@ -45,6 +46,7 @@ class SubjectSummary {
     ChatMessages,
     SubjectTerms,
     SyllabusTopics,
+    DriveDocs,
   ],
 )
 class SubjectsDao extends DatabaseAccessor<AppDatabase>
@@ -139,6 +141,8 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         await (delete(subjectTerms)..where((t) => t.subjectId.equals(id))).go();
         await (delete(syllabusTopics)..where((t) => t.subjectId.equals(id)))
             .go();
+        // The docs themselves stay in the student's Drive; only the link goes.
+        await (delete(driveDocs)..where((t) => t.subjectId.equals(id))).go();
         await (update(savedNotes)..where((t) => t.folderId.equals(id)))
             .write(const SavedNotesCompanion(folderId: Value(null)));
         await (update(meetings)..where((t) => t.subjectId.equals(id)))

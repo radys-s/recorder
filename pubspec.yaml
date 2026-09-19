@@ -78,6 +78,10 @@ dependencies:
   # the scheduler imports it to name the instant a reminder fires.
   timezone: ^0.11.1
 
+  # Already locked (a dependency of other packages); the Google sign-in
+  # hashes its PKCE verifier with it.
+  crypto: ^3.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

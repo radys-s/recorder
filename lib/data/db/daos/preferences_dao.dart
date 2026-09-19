@@ -73,6 +73,27 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> setLessonReminder(LessonReminder value) =>
       _write(PreferencesCompanion(lessonReminder: Value(value)));
 
+  /// A new client id belongs to a different Google Cloud project, so the
+  /// account signed in through the old one is forgotten with it.
+  Future<void> setGoogleClientId(String? value) => _write(
+    PreferencesCompanion(
+      googleClientId: Value(value),
+      googleAccountEmail: const Value(null),
+    ),
+  );
+
+  Future<void> setGoogleAccountEmail(String? value) =>
+      _write(PreferencesCompanion(googleAccountEmail: Value(value)));
+
+  Future<void> setDriveSyncEnabled(bool value) =>
+      _write(PreferencesCompanion(driveSyncEnabled: Value(value)));
+
+  Future<void> setDriveIncludeTranscripts(bool value) =>
+      _write(PreferencesCompanion(driveIncludeTranscripts: Value(value)));
+
+  Future<void> setDriveFolderId(String? value) =>
+      _write(PreferencesCompanion(driveFolderId: Value(value)));
+
   Future<void> setContextCorrection(bool value) =>
       _write(PreferencesCompanion(contextCorrection: Value(value)));
 

@@ -2116,6 +2116,69 @@ class $PreferencesTable extends Preferences
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   ).withConverter<LessonReminder>($PreferencesTable.$converterlessonReminder);
+  static const VerificationMeta _googleClientIdMeta = const VerificationMeta(
+    'googleClientId',
+  );
+  @override
+  late final GeneratedColumn<String> googleClientId = GeneratedColumn<String>(
+    'google_client_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _googleAccountEmailMeta =
+      const VerificationMeta('googleAccountEmail');
+  @override
+  late final GeneratedColumn<String> googleAccountEmail =
+      GeneratedColumn<String>(
+        'google_account_email',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _driveSyncEnabledMeta = const VerificationMeta(
+    'driveSyncEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> driveSyncEnabled = GeneratedColumn<bool>(
+    'drive_sync_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("drive_sync_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _driveIncludeTranscriptsMeta =
+      const VerificationMeta('driveIncludeTranscripts');
+  @override
+  late final GeneratedColumn<bool> driveIncludeTranscripts =
+      GeneratedColumn<bool>(
+        'drive_include_transcripts',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("drive_include_transcripts" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
+  static const VerificationMeta _driveFolderIdMeta = const VerificationMeta(
+    'driveFolderId',
+  );
+  @override
+  late final GeneratedColumn<String> driveFolderId = GeneratedColumn<String>(
+    'drive_folder_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2134,6 +2197,11 @@ class $PreferencesTable extends Preferences
     studyYear,
     audioRetention,
     lessonReminder,
+    googleClientId,
+    googleAccountEmail,
+    driveSyncEnabled,
+    driveIncludeTranscripts,
+    driveFolderId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2222,6 +2290,51 @@ class $PreferencesTable extends Preferences
         studyYear.isAcceptableOrUnknown(data['study_year']!, _studyYearMeta),
       );
     }
+    if (data.containsKey('google_client_id')) {
+      context.handle(
+        _googleClientIdMeta,
+        googleClientId.isAcceptableOrUnknown(
+          data['google_client_id']!,
+          _googleClientIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('google_account_email')) {
+      context.handle(
+        _googleAccountEmailMeta,
+        googleAccountEmail.isAcceptableOrUnknown(
+          data['google_account_email']!,
+          _googleAccountEmailMeta,
+        ),
+      );
+    }
+    if (data.containsKey('drive_sync_enabled')) {
+      context.handle(
+        _driveSyncEnabledMeta,
+        driveSyncEnabled.isAcceptableOrUnknown(
+          data['drive_sync_enabled']!,
+          _driveSyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('drive_include_transcripts')) {
+      context.handle(
+        _driveIncludeTranscriptsMeta,
+        driveIncludeTranscripts.isAcceptableOrUnknown(
+          data['drive_include_transcripts']!,
+          _driveIncludeTranscriptsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('drive_folder_id')) {
+      context.handle(
+        _driveFolderIdMeta,
+        driveFolderId.isAcceptableOrUnknown(
+          data['drive_folder_id']!,
+          _driveFolderIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2308,6 +2421,26 @@ class $PreferencesTable extends Preferences
           data['${effectivePrefix}lesson_reminder'],
         )!,
       ),
+      googleClientId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}google_client_id'],
+      ),
+      googleAccountEmail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}google_account_email'],
+      ),
+      driveSyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}drive_sync_enabled'],
+      )!,
+      driveIncludeTranscripts: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}drive_include_transcripts'],
+      )!,
+      driveFolderId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}drive_folder_id'],
+      ),
     );
   }
 
@@ -2381,6 +2514,17 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// Whether the phone says a timetabled lesson is about to start, and when.
   final LessonReminder lessonReminder;
+
+  /// Google Docs sync for NotebookLM. The OAuth client id is the student's
+  /// own, from their own Google Cloud project; it is not a secret. The
+  /// refresh token lives in the Keychain, never here.
+  final String? googleClientId;
+  final String? googleAccountEmail;
+  final bool driveSyncEnabled;
+  final bool driveIncludeTranscripts;
+
+  /// The „Schůzky" folder the docs live in, once created.
+  final String? driveFolderId;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2398,6 +2542,11 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.studyYear,
     required this.audioRetention,
     required this.lessonReminder,
+    this.googleClientId,
+    this.googleAccountEmail,
+    required this.driveSyncEnabled,
+    required this.driveIncludeTranscripts,
+    this.driveFolderId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2454,6 +2603,17 @@ class Preference extends DataClass implements Insertable<Preference> {
         $PreferencesTable.$converterlessonReminder.toSql(lessonReminder),
       );
     }
+    if (!nullToAbsent || googleClientId != null) {
+      map['google_client_id'] = Variable<String>(googleClientId);
+    }
+    if (!nullToAbsent || googleAccountEmail != null) {
+      map['google_account_email'] = Variable<String>(googleAccountEmail);
+    }
+    map['drive_sync_enabled'] = Variable<bool>(driveSyncEnabled);
+    map['drive_include_transcripts'] = Variable<bool>(driveIncludeTranscripts);
+    if (!nullToAbsent || driveFolderId != null) {
+      map['drive_folder_id'] = Variable<String>(driveFolderId);
+    }
     return map;
   }
 
@@ -2487,6 +2647,17 @@ class Preference extends DataClass implements Insertable<Preference> {
           : Value(studyYear),
       audioRetention: Value(audioRetention),
       lessonReminder: Value(lessonReminder),
+      googleClientId: googleClientId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(googleClientId),
+      googleAccountEmail: googleAccountEmail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(googleAccountEmail),
+      driveSyncEnabled: Value(driveSyncEnabled),
+      driveIncludeTranscripts: Value(driveIncludeTranscripts),
+      driveFolderId: driveFolderId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(driveFolderId),
     );
   }
 
@@ -2527,6 +2698,15 @@ class Preference extends DataClass implements Insertable<Preference> {
       lessonReminder: $PreferencesTable.$converterlessonReminder.fromJson(
         serializer.fromJson<int>(json['lessonReminder']),
       ),
+      googleClientId: serializer.fromJson<String?>(json['googleClientId']),
+      googleAccountEmail: serializer.fromJson<String?>(
+        json['googleAccountEmail'],
+      ),
+      driveSyncEnabled: serializer.fromJson<bool>(json['driveSyncEnabled']),
+      driveIncludeTranscripts: serializer.fromJson<bool>(
+        json['driveIncludeTranscripts'],
+      ),
+      driveFolderId: serializer.fromJson<String?>(json['driveFolderId']),
     );
   }
   @override
@@ -2563,6 +2743,13 @@ class Preference extends DataClass implements Insertable<Preference> {
       'lessonReminder': serializer.toJson<int>(
         $PreferencesTable.$converterlessonReminder.toJson(lessonReminder),
       ),
+      'googleClientId': serializer.toJson<String?>(googleClientId),
+      'googleAccountEmail': serializer.toJson<String?>(googleAccountEmail),
+      'driveSyncEnabled': serializer.toJson<bool>(driveSyncEnabled),
+      'driveIncludeTranscripts': serializer.toJson<bool>(
+        driveIncludeTranscripts,
+      ),
+      'driveFolderId': serializer.toJson<String?>(driveFolderId),
     };
   }
 
@@ -2583,6 +2770,11 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<int?> studyYear = const Value.absent(),
     AudioRetention? audioRetention,
     LessonReminder? lessonReminder,
+    Value<String?> googleClientId = const Value.absent(),
+    Value<String?> googleAccountEmail = const Value.absent(),
+    bool? driveSyncEnabled,
+    bool? driveIncludeTranscripts,
+    Value<String?> driveFolderId = const Value.absent(),
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2602,6 +2794,18 @@ class Preference extends DataClass implements Insertable<Preference> {
     studyYear: studyYear.present ? studyYear.value : this.studyYear,
     audioRetention: audioRetention ?? this.audioRetention,
     lessonReminder: lessonReminder ?? this.lessonReminder,
+    googleClientId: googleClientId.present
+        ? googleClientId.value
+        : this.googleClientId,
+    googleAccountEmail: googleAccountEmail.present
+        ? googleAccountEmail.value
+        : this.googleAccountEmail,
+    driveSyncEnabled: driveSyncEnabled ?? this.driveSyncEnabled,
+    driveIncludeTranscripts:
+        driveIncludeTranscripts ?? this.driveIncludeTranscripts,
+    driveFolderId: driveFolderId.present
+        ? driveFolderId.value
+        : this.driveFolderId,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2649,6 +2853,21 @@ class Preference extends DataClass implements Insertable<Preference> {
       lessonReminder: data.lessonReminder.present
           ? data.lessonReminder.value
           : this.lessonReminder,
+      googleClientId: data.googleClientId.present
+          ? data.googleClientId.value
+          : this.googleClientId,
+      googleAccountEmail: data.googleAccountEmail.present
+          ? data.googleAccountEmail.value
+          : this.googleAccountEmail,
+      driveSyncEnabled: data.driveSyncEnabled.present
+          ? data.driveSyncEnabled.value
+          : this.driveSyncEnabled,
+      driveIncludeTranscripts: data.driveIncludeTranscripts.present
+          ? data.driveIncludeTranscripts.value
+          : this.driveIncludeTranscripts,
+      driveFolderId: data.driveFolderId.present
+          ? data.driveFolderId.value
+          : this.driveFolderId,
     );
   }
 
@@ -2670,13 +2889,18 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('studyField: $studyField, ')
           ..write('studyYear: $studyYear, ')
           ..write('audioRetention: $audioRetention, ')
-          ..write('lessonReminder: $lessonReminder')
+          ..write('lessonReminder: $lessonReminder, ')
+          ..write('googleClientId: $googleClientId, ')
+          ..write('googleAccountEmail: $googleAccountEmail, ')
+          ..write('driveSyncEnabled: $driveSyncEnabled, ')
+          ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
+          ..write('driveFolderId: $driveFolderId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     transcriptLanguage,
     notesDepth,
@@ -2693,7 +2917,12 @@ class Preference extends DataClass implements Insertable<Preference> {
     studyYear,
     audioRetention,
     lessonReminder,
-  );
+    googleClientId,
+    googleAccountEmail,
+    driveSyncEnabled,
+    driveIncludeTranscripts,
+    driveFolderId,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2713,7 +2942,12 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.studyField == this.studyField &&
           other.studyYear == this.studyYear &&
           other.audioRetention == this.audioRetention &&
-          other.lessonReminder == this.lessonReminder);
+          other.lessonReminder == this.lessonReminder &&
+          other.googleClientId == this.googleClientId &&
+          other.googleAccountEmail == this.googleAccountEmail &&
+          other.driveSyncEnabled == this.driveSyncEnabled &&
+          other.driveIncludeTranscripts == this.driveIncludeTranscripts &&
+          other.driveFolderId == this.driveFolderId);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2733,6 +2967,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<int?> studyYear;
   final Value<AudioRetention> audioRetention;
   final Value<LessonReminder> lessonReminder;
+  final Value<String?> googleClientId;
+  final Value<String?> googleAccountEmail;
+  final Value<bool> driveSyncEnabled;
+  final Value<bool> driveIncludeTranscripts;
+  final Value<String?> driveFolderId;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2750,6 +2989,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.studyYear = const Value.absent(),
     this.audioRetention = const Value.absent(),
     this.lessonReminder = const Value.absent(),
+    this.googleClientId = const Value.absent(),
+    this.googleAccountEmail = const Value.absent(),
+    this.driveSyncEnabled = const Value.absent(),
+    this.driveIncludeTranscripts = const Value.absent(),
+    this.driveFolderId = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2768,6 +3012,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.studyYear = const Value.absent(),
     this.audioRetention = const Value.absent(),
     this.lessonReminder = const Value.absent(),
+    this.googleClientId = const Value.absent(),
+    this.googleAccountEmail = const Value.absent(),
+    this.driveSyncEnabled = const Value.absent(),
+    this.driveIncludeTranscripts = const Value.absent(),
+    this.driveFolderId = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2786,6 +3035,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<int>? studyYear,
     Expression<int>? audioRetention,
     Expression<int>? lessonReminder,
+    Expression<String>? googleClientId,
+    Expression<String>? googleAccountEmail,
+    Expression<bool>? driveSyncEnabled,
+    Expression<bool>? driveIncludeTranscripts,
+    Expression<String>? driveFolderId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2807,6 +3061,13 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (studyYear != null) 'study_year': studyYear,
       if (audioRetention != null) 'audio_retention': audioRetention,
       if (lessonReminder != null) 'lesson_reminder': lessonReminder,
+      if (googleClientId != null) 'google_client_id': googleClientId,
+      if (googleAccountEmail != null)
+        'google_account_email': googleAccountEmail,
+      if (driveSyncEnabled != null) 'drive_sync_enabled': driveSyncEnabled,
+      if (driveIncludeTranscripts != null)
+        'drive_include_transcripts': driveIncludeTranscripts,
+      if (driveFolderId != null) 'drive_folder_id': driveFolderId,
     });
   }
 
@@ -2827,6 +3088,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<int?>? studyYear,
     Value<AudioRetention>? audioRetention,
     Value<LessonReminder>? lessonReminder,
+    Value<String?>? googleClientId,
+    Value<String?>? googleAccountEmail,
+    Value<bool>? driveSyncEnabled,
+    Value<bool>? driveIncludeTranscripts,
+    Value<String?>? driveFolderId,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2845,6 +3111,12 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       studyYear: studyYear ?? this.studyYear,
       audioRetention: audioRetention ?? this.audioRetention,
       lessonReminder: lessonReminder ?? this.lessonReminder,
+      googleClientId: googleClientId ?? this.googleClientId,
+      googleAccountEmail: googleAccountEmail ?? this.googleAccountEmail,
+      driveSyncEnabled: driveSyncEnabled ?? this.driveSyncEnabled,
+      driveIncludeTranscripts:
+          driveIncludeTranscripts ?? this.driveIncludeTranscripts,
+      driveFolderId: driveFolderId ?? this.driveFolderId,
     );
   }
 
@@ -2915,6 +3187,23 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
         $PreferencesTable.$converterlessonReminder.toSql(lessonReminder.value),
       );
     }
+    if (googleClientId.present) {
+      map['google_client_id'] = Variable<String>(googleClientId.value);
+    }
+    if (googleAccountEmail.present) {
+      map['google_account_email'] = Variable<String>(googleAccountEmail.value);
+    }
+    if (driveSyncEnabled.present) {
+      map['drive_sync_enabled'] = Variable<bool>(driveSyncEnabled.value);
+    }
+    if (driveIncludeTranscripts.present) {
+      map['drive_include_transcripts'] = Variable<bool>(
+        driveIncludeTranscripts.value,
+      );
+    }
+    if (driveFolderId.present) {
+      map['drive_folder_id'] = Variable<String>(driveFolderId.value);
+    }
     return map;
   }
 
@@ -2936,7 +3225,12 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('studyField: $studyField, ')
           ..write('studyYear: $studyYear, ')
           ..write('audioRetention: $audioRetention, ')
-          ..write('lessonReminder: $lessonReminder')
+          ..write('lessonReminder: $lessonReminder, ')
+          ..write('googleClientId: $googleClientId, ')
+          ..write('googleAccountEmail: $googleAccountEmail, ')
+          ..write('driveSyncEnabled: $driveSyncEnabled, ')
+          ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
+          ..write('driveFolderId: $driveFolderId')
           ..write(')'))
         .toString();
   }
@@ -9303,6 +9597,429 @@ class SyllabusTopicsCompanion extends UpdateCompanion<SyllabusTopic> {
   }
 }
 
+class $DriveDocsTable extends DriveDocs
+    with TableInfo<$DriveDocsTable, DriveDoc> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DriveDocsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<int> subjectId = GeneratedColumn<int>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DriveDocKind, int> kind =
+      GeneratedColumn<int>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<DriveDocKind>($DriveDocsTable.$converterkind);
+  static const VerificationMeta _docIdMeta = const VerificationMeta('docId');
+  @override
+  late final GeneratedColumn<String> docId = GeneratedColumn<String>(
+    'doc_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _contentHashMeta = const VerificationMeta(
+    'contentHash',
+  );
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+    'content_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _errorMeta = const VerificationMeta('error');
+  @override
+  late final GeneratedColumn<String> error = GeneratedColumn<String>(
+    'error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    subjectId,
+    kind,
+    docId,
+    syncedAt,
+    contentHash,
+    error,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'drive_docs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DriveDoc> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('doc_id')) {
+      context.handle(
+        _docIdMeta,
+        docId.isAcceptableOrUnknown(data['doc_id']!, _docIdMeta),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+        _contentHashMeta,
+        contentHash.isAcceptableOrUnknown(
+          data['content_hash']!,
+          _contentHashMeta,
+        ),
+      );
+    }
+    if (data.containsKey('error')) {
+      context.handle(
+        _errorMeta,
+        error.isAcceptableOrUnknown(data['error']!, _errorMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {subjectId, kind};
+  @override
+  DriveDoc map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DriveDoc(
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      kind: $DriveDocsTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
+      docId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}doc_id'],
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      ),
+      contentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_hash'],
+      ),
+      error: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error'],
+      ),
+    );
+  }
+
+  @override
+  $DriveDocsTable createAlias(String alias) {
+    return $DriveDocsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<DriveDocKind, int, int> $converterkind =
+      const EnumIndexConverter<DriveDocKind>(DriveDocKind.values);
+}
+
+class DriveDoc extends DataClass implements Insertable<DriveDoc> {
+  final int subjectId;
+  final DriveDocKind kind;
+  final String? docId;
+  final DateTime? syncedAt;
+  final String? contentHash;
+  final String? error;
+  const DriveDoc({
+    required this.subjectId,
+    required this.kind,
+    this.docId,
+    this.syncedAt,
+    this.contentHash,
+    this.error,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['subject_id'] = Variable<int>(subjectId);
+    {
+      map['kind'] = Variable<int>($DriveDocsTable.$converterkind.toSql(kind));
+    }
+    if (!nullToAbsent || docId != null) {
+      map['doc_id'] = Variable<String>(docId);
+    }
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || contentHash != null) {
+      map['content_hash'] = Variable<String>(contentHash);
+    }
+    if (!nullToAbsent || error != null) {
+      map['error'] = Variable<String>(error);
+    }
+    return map;
+  }
+
+  DriveDocsCompanion toCompanion(bool nullToAbsent) {
+    return DriveDocsCompanion(
+      subjectId: Value(subjectId),
+      kind: Value(kind),
+      docId: docId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(docId),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+      contentHash: contentHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentHash),
+      error: error == null && nullToAbsent
+          ? const Value.absent()
+          : Value(error),
+    );
+  }
+
+  factory DriveDoc.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DriveDoc(
+      subjectId: serializer.fromJson<int>(json['subjectId']),
+      kind: $DriveDocsTable.$converterkind.fromJson(
+        serializer.fromJson<int>(json['kind']),
+      ),
+      docId: serializer.fromJson<String?>(json['docId']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      contentHash: serializer.fromJson<String?>(json['contentHash']),
+      error: serializer.fromJson<String?>(json['error']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'subjectId': serializer.toJson<int>(subjectId),
+      'kind': serializer.toJson<int>(
+        $DriveDocsTable.$converterkind.toJson(kind),
+      ),
+      'docId': serializer.toJson<String?>(docId),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'contentHash': serializer.toJson<String?>(contentHash),
+      'error': serializer.toJson<String?>(error),
+    };
+  }
+
+  DriveDoc copyWith({
+    int? subjectId,
+    DriveDocKind? kind,
+    Value<String?> docId = const Value.absent(),
+    Value<DateTime?> syncedAt = const Value.absent(),
+    Value<String?> contentHash = const Value.absent(),
+    Value<String?> error = const Value.absent(),
+  }) => DriveDoc(
+    subjectId: subjectId ?? this.subjectId,
+    kind: kind ?? this.kind,
+    docId: docId.present ? docId.value : this.docId,
+    syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+    contentHash: contentHash.present ? contentHash.value : this.contentHash,
+    error: error.present ? error.value : this.error,
+  );
+  DriveDoc copyWithCompanion(DriveDocsCompanion data) {
+    return DriveDoc(
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      docId: data.docId.present ? data.docId.value : this.docId,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      contentHash: data.contentHash.present
+          ? data.contentHash.value
+          : this.contentHash,
+      error: data.error.present ? data.error.value : this.error,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DriveDoc(')
+          ..write('subjectId: $subjectId, ')
+          ..write('kind: $kind, ')
+          ..write('docId: $docId, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('error: $error')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(subjectId, kind, docId, syncedAt, contentHash, error);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DriveDoc &&
+          other.subjectId == this.subjectId &&
+          other.kind == this.kind &&
+          other.docId == this.docId &&
+          other.syncedAt == this.syncedAt &&
+          other.contentHash == this.contentHash &&
+          other.error == this.error);
+}
+
+class DriveDocsCompanion extends UpdateCompanion<DriveDoc> {
+  final Value<int> subjectId;
+  final Value<DriveDocKind> kind;
+  final Value<String?> docId;
+  final Value<DateTime?> syncedAt;
+  final Value<String?> contentHash;
+  final Value<String?> error;
+  final Value<int> rowid;
+  const DriveDocsCompanion({
+    this.subjectId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.docId = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.error = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DriveDocsCompanion.insert({
+    required int subjectId,
+    required DriveDocKind kind,
+    this.docId = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.error = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : subjectId = Value(subjectId),
+       kind = Value(kind);
+  static Insertable<DriveDoc> custom({
+    Expression<int>? subjectId,
+    Expression<int>? kind,
+    Expression<String>? docId,
+    Expression<DateTime>? syncedAt,
+    Expression<String>? contentHash,
+    Expression<String>? error,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (subjectId != null) 'subject_id': subjectId,
+      if (kind != null) 'kind': kind,
+      if (docId != null) 'doc_id': docId,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (contentHash != null) 'content_hash': contentHash,
+      if (error != null) 'error': error,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DriveDocsCompanion copyWith({
+    Value<int>? subjectId,
+    Value<DriveDocKind>? kind,
+    Value<String?>? docId,
+    Value<DateTime?>? syncedAt,
+    Value<String?>? contentHash,
+    Value<String?>? error,
+    Value<int>? rowid,
+  }) {
+    return DriveDocsCompanion(
+      subjectId: subjectId ?? this.subjectId,
+      kind: kind ?? this.kind,
+      docId: docId ?? this.docId,
+      syncedAt: syncedAt ?? this.syncedAt,
+      contentHash: contentHash ?? this.contentHash,
+      error: error ?? this.error,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (subjectId.present) {
+      map['subject_id'] = Variable<int>(subjectId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<int>(
+        $DriveDocsTable.$converterkind.toSql(kind.value),
+      );
+    }
+    if (docId.present) {
+      map['doc_id'] = Variable<String>(docId.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
+    if (error.present) {
+      map['error'] = Variable<String>(error.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DriveDocsCompanion(')
+          ..write('subjectId: $subjectId, ')
+          ..write('kind: $kind, ')
+          ..write('docId: $docId, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('error: $error, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -9325,6 +10042,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $SubjectTermsTable subjectTerms = $SubjectTermsTable(this);
   late final $SyllabusTopicsTable syllabusTopics = $SyllabusTopicsTable(this);
+  late final $DriveDocsTable driveDocs = $DriveDocsTable(this);
   late final MeetingsDao meetingsDao = MeetingsDao(this as AppDatabase);
   late final TranscriptSegmentsDao transcriptSegmentsDao =
       TranscriptSegmentsDao(this as AppDatabase);
@@ -9348,6 +10066,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final RefinedSegmentsDao refinedSegmentsDao = RefinedSegmentsDao(
     this as AppDatabase,
   );
+  late final DriveDocsDao driveDocsDao = DriveDocsDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -9369,6 +10088,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     refinedSegments,
     subjectTerms,
     syllabusTopics,
+    driveDocs,
   ];
 }
 
@@ -10328,6 +11048,11 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<int?> studyYear,
       Value<AudioRetention> audioRetention,
       Value<LessonReminder> lessonReminder,
+      Value<String?> googleClientId,
+      Value<String?> googleAccountEmail,
+      Value<bool> driveSyncEnabled,
+      Value<bool> driveIncludeTranscripts,
+      Value<String?> driveFolderId,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -10347,6 +11072,11 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<int?> studyYear,
       Value<AudioRetention> audioRetention,
       Value<LessonReminder> lessonReminder,
+      Value<String?> googleClientId,
+      Value<String?> googleAccountEmail,
+      Value<bool> driveSyncEnabled,
+      Value<bool> driveIncludeTranscripts,
+      Value<String?> driveFolderId,
     });
 
 class $$PreferencesTableFilterComposer
@@ -10443,6 +11173,31 @@ class $$PreferencesTableFilterComposer
     column: $table.lessonReminder,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
+
+  ColumnFilters<String> get googleClientId => $composableBuilder(
+    column: $table.googleClientId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get googleAccountEmail => $composableBuilder(
+    column: $table.googleAccountEmail,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get driveSyncEnabled => $composableBuilder(
+    column: $table.driveSyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get driveIncludeTranscripts => $composableBuilder(
+    column: $table.driveIncludeTranscripts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get driveFolderId => $composableBuilder(
+    column: $table.driveFolderId,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -10531,6 +11286,31 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<int> get lessonReminder => $composableBuilder(
     column: $table.lessonReminder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get googleClientId => $composableBuilder(
+    column: $table.googleClientId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get googleAccountEmail => $composableBuilder(
+    column: $table.googleAccountEmail,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get driveSyncEnabled => $composableBuilder(
+    column: $table.driveSyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get driveIncludeTranscripts => $composableBuilder(
+    column: $table.driveIncludeTranscripts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get driveFolderId => $composableBuilder(
+    column: $table.driveFolderId,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -10625,6 +11405,31 @@ class $$PreferencesTableAnnotationComposer
         column: $table.lessonReminder,
         builder: (column) => column,
       );
+
+  GeneratedColumn<String> get googleClientId => $composableBuilder(
+    column: $table.googleClientId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get googleAccountEmail => $composableBuilder(
+    column: $table.googleAccountEmail,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get driveSyncEnabled => $composableBuilder(
+    column: $table.driveSyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get driveIncludeTranscripts => $composableBuilder(
+    column: $table.driveIncludeTranscripts,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get driveFolderId => $composableBuilder(
+    column: $table.driveFolderId,
+    builder: (column) => column,
+  );
 }
 
 class $$PreferencesTableTableManager
@@ -10675,6 +11480,11 @@ class $$PreferencesTableTableManager
                 Value<int?> studyYear = const Value.absent(),
                 Value<AudioRetention> audioRetention = const Value.absent(),
                 Value<LessonReminder> lessonReminder = const Value.absent(),
+                Value<String?> googleClientId = const Value.absent(),
+                Value<String?> googleAccountEmail = const Value.absent(),
+                Value<bool> driveSyncEnabled = const Value.absent(),
+                Value<bool> driveIncludeTranscripts = const Value.absent(),
+                Value<String?> driveFolderId = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10692,6 +11502,11 @@ class $$PreferencesTableTableManager
                 studyYear: studyYear,
                 audioRetention: audioRetention,
                 lessonReminder: lessonReminder,
+                googleClientId: googleClientId,
+                googleAccountEmail: googleAccountEmail,
+                driveSyncEnabled: driveSyncEnabled,
+                driveIncludeTranscripts: driveIncludeTranscripts,
+                driveFolderId: driveFolderId,
               ),
           createCompanionCallback:
               ({
@@ -10712,6 +11527,11 @@ class $$PreferencesTableTableManager
                 Value<int?> studyYear = const Value.absent(),
                 Value<AudioRetention> audioRetention = const Value.absent(),
                 Value<LessonReminder> lessonReminder = const Value.absent(),
+                Value<String?> googleClientId = const Value.absent(),
+                Value<String?> googleAccountEmail = const Value.absent(),
+                Value<bool> driveSyncEnabled = const Value.absent(),
+                Value<bool> driveIncludeTranscripts = const Value.absent(),
+                Value<String?> driveFolderId = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10729,6 +11549,11 @@ class $$PreferencesTableTableManager
                 studyYear: studyYear,
                 audioRetention: audioRetention,
                 lessonReminder: lessonReminder,
+                googleClientId: googleClientId,
+                googleAccountEmail: googleAccountEmail,
+                driveSyncEnabled: driveSyncEnabled,
+                driveIncludeTranscripts: driveIncludeTranscripts,
+                driveFolderId: driveFolderId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -13985,6 +14810,229 @@ typedef $$SyllabusTopicsTableProcessedTableManager =
       SyllabusTopic,
       PrefetchHooks Function()
     >;
+typedef $$DriveDocsTableCreateCompanionBuilder = DriveDocsCompanion Function({
+  required int subjectId,
+  required DriveDocKind kind,
+  Value<String?> docId,
+  Value<DateTime?> syncedAt,
+  Value<String?> contentHash,
+  Value<String?> error,
+  Value<int> rowid,
+});
+typedef $$DriveDocsTableUpdateCompanionBuilder = DriveDocsCompanion Function({
+  Value<int> subjectId,
+  Value<DriveDocKind> kind,
+  Value<String?> docId,
+  Value<DateTime?> syncedAt,
+  Value<String?> contentHash,
+  Value<String?> error,
+  Value<int> rowid,
+});
+
+class $$DriveDocsTableFilterComposer
+    extends Composer<_$AppDatabase, $DriveDocsTable> {
+  $$DriveDocsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DriveDocKind, DriveDocKind, int> get kind =>
+      $composableBuilder(
+        column: $table.kind,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get docId => $composableBuilder(
+    column: $table.docId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DriveDocsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DriveDocsTable> {
+  $$DriveDocsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get docId => $composableBuilder(
+    column: $table.docId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get error => $composableBuilder(
+    column: $table.error,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DriveDocsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DriveDocsTable> {
+  $$DriveDocsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DriveDocKind, int> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get docId =>
+      $composableBuilder(column: $table.docId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get error =>
+      $composableBuilder(column: $table.error, builder: (column) => column);
+}
+
+class $$DriveDocsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DriveDocsTable,
+          DriveDoc,
+          $$DriveDocsTableFilterComposer,
+          $$DriveDocsTableOrderingComposer,
+          $$DriveDocsTableAnnotationComposer,
+          $$DriveDocsTableCreateCompanionBuilder,
+          $$DriveDocsTableUpdateCompanionBuilder,
+          (DriveDoc, BaseReferences<_$AppDatabase, $DriveDocsTable, DriveDoc>),
+          DriveDoc,
+          PrefetchHooks Function()
+        > {
+  $$DriveDocsTableTableManager(_$AppDatabase db, $DriveDocsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DriveDocsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DriveDocsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DriveDocsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> subjectId = const Value.absent(),
+                Value<DriveDocKind> kind = const Value.absent(),
+                Value<String?> docId = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<String?> contentHash = const Value.absent(),
+                Value<String?> error = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DriveDocsCompanion(
+                subjectId: subjectId,
+                kind: kind,
+                docId: docId,
+                syncedAt: syncedAt,
+                contentHash: contentHash,
+                error: error,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int subjectId,
+                required DriveDocKind kind,
+                Value<String?> docId = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<String?> contentHash = const Value.absent(),
+                Value<String?> error = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DriveDocsCompanion.insert(
+                subjectId: subjectId,
+                kind: kind,
+                docId: docId,
+                syncedAt: syncedAt,
+                contentHash: contentHash,
+                error: error,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$DriveDocsTable, DriveDoc>(table),
+                  BaseReferences<_$AppDatabase, $DriveDocsTable, DriveDoc>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DriveDocsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DriveDocsTable,
+      DriveDoc,
+      $$DriveDocsTableFilterComposer,
+      $$DriveDocsTableOrderingComposer,
+      $$DriveDocsTableAnnotationComposer,
+      $$DriveDocsTableCreateCompanionBuilder,
+      $$DriveDocsTableUpdateCompanionBuilder,
+      (DriveDoc, BaseReferences<_$AppDatabase, $DriveDocsTable, DriveDoc>),
+      DriveDoc,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14021,4 +15069,6 @@ class $AppDatabaseManager {
       $$SubjectTermsTableTableManager(_db, _db.subjectTerms);
   $$SyllabusTopicsTableTableManager get syllabusTopics =>
       $$SyllabusTopicsTableTableManager(_db, _db.syllabusTopics);
+  $$DriveDocsTableTableManager get driveDocs =>
+      $$DriveDocsTableTableManager(_db, _db.driveDocs);
 }
