@@ -21,6 +21,21 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
+  /// Every meeting that has notes to read. A regenerate in progress still
+  /// counts: its previous notes stay readable until the new ones land.
+  Stream<Set<int>> watchMeetingIdsWithNotes() {
+    final query = selectOnly(meetingNotes)
+      ..addColumns([meetingNotes.meetingId])
+      ..where(
+        meetingNotes.content.isNotNull() &
+            meetingNotes.content.equals('').not(),
+      );
+    return query
+        .map((row) => row.read(meetingNotes.meetingId)!)
+        .watch()
+        .map((ids) => ids.toSet());
+  }
+
   /// Claims the row for a generation that is about to start.
   ///
   /// [content] is deliberately left alone: while a regenerate is running the

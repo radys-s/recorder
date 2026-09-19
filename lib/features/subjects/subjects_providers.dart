@@ -48,6 +48,12 @@ final subjectLessonsProvider =
   return ref.watch(subjectsDaoProvider).watchLessons(subjectId);
 });
 
+/// Every lesson that has výpisky to read, for the subject overview.
+final meetingIdsWithNotesProvider = StreamProvider<Set<int>>((ref) {
+  return ref.watch(appDatabaseProvider).meetingNotesDao
+      .watchMeetingIdsWithNotes();
+});
+
 final pinnedCardsProvider =
     StreamProvider.family<List<ContextCard>, int>((ref, meetingId) {
   return ref.watch(subjectsDaoProvider).watchPinnedCards(meetingId);

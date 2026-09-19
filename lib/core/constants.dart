@@ -313,6 +313,14 @@ const Duration kGeminiNotesTimeout = Duration(seconds: 150);
 const Duration kCardSuggestionTimeout = Duration(seconds: 60);
 const int kCardSuggestionMaxChars = 4000;
 
+/// „Shrnutí předmětu" reads every lesson's výpisky at once. Gemini takes
+/// a school year of them whole; the router's models get an even share per
+/// lesson, since a smaller context window is the likelier reason Gemini is
+/// not the one answering.
+const int kSubjectSummaryGeminiChars = 400000;
+const int kSubjectSummaryRouterChars = 24000;
+const Duration kSubjectSummaryTimeout = Duration(seconds: 150);
+
 /// How much of the student's context, photo text and Q&A výpisky on Groq read,
 /// all blocks together — Groq's per-minute token cap is shared with the notes.
 const int kNotesExtrasGroqChars = 8000;

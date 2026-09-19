@@ -111,10 +111,10 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           final id = await createSubjectFlow(context, ref);
           if (id == null || !mounted) return;
           await Navigator.of(context)
-              .push(SubjectDetailScreen.route(id, initialTab: 2));
+              .push(SubjectDetailScreen.route(id, initialTab: 3));
         } else {
           await Navigator.of(context).push(
-            SubjectDetailScreen.route(subjects.first.subject.id, initialTab: 2),
+            SubjectDetailScreen.route(subjects.first.subject.id, initialTab: 3),
           );
         }
     }

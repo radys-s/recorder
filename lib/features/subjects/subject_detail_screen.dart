@@ -18,6 +18,7 @@ import 'timetable.dart';
 import 'timetable_import_screen.dart';
 import 'widgets/timetable_slot_dialog.dart';
 import 'widgets/subject_badge.dart';
+import 'widgets/subject_overview.dart';
 import 'widgets/subject_syllabus.dart';
 import 'widgets/subject_vocabulary.dart';
 import '../../core/pending_deletions.dart';
@@ -32,7 +33,7 @@ class SubjectDetailScreen extends ConsumerStatefulWidget {
 
   final int subjectId;
 
-  /// 0 Karty, 1 Hodiny, 2 Nastavení.
+  /// 0 Karty, 1 Hodiny, 2 Přehled, 3 Nastavení.
   final int initialTab;
 
   static Route<void> route(int subjectId, {int initialTab = 0}) =>
@@ -49,7 +50,7 @@ class SubjectDetailScreen extends ConsumerStatefulWidget {
 class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(
-    length: 3,
+    length: 4,
     vsync: this,
     initialIndex: widget.initialTab,
   )..addListener(_onTab);
@@ -90,6 +91,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
           tabs: const [
             Tab(text: 'Karty'),
             Tab(text: 'Hodiny'),
+            Tab(text: 'Přehled'),
             Tab(text: 'Nastavení'),
           ],
         ),
@@ -117,6 +119,10 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                 children: [
                   _CardsTab(subjectId: subject.id),
                   _LessonsTab(subjectId: subject.id),
+                  SubjectOverview(
+                    subjectId: subject.id,
+                    onOpenSettings: () => _tabs.animateTo(3),
+                  ),
                   _SettingsTab(key: ValueKey(subject.id), subject: subject),
                 ],
               ),
@@ -495,7 +501,8 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
           ],
         ),
         const SizedBox(height: Gap.xl),
-        SubjectSyllabus(subject: subject),        const SizedBox(height: Gap.xl),
+        SubjectSyllabus(subject: subject),
+        const SizedBox(height: Gap.xl),
         SubjectVocabulary(subjectId: subject.id),
         const SizedBox(height: Gap.xl),
         Text('Barva', style: theme.textTheme.titleSmall),

@@ -15,6 +15,7 @@ import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
+import '../ai/subject_summary_service.dart';
 import '../ai/timetable_import.dart';
 import '../ai/chat_answer_service.dart';
 import '../ai/gemini_model_resolver.dart';
@@ -238,6 +239,16 @@ final cardSuggestionServiceProvider = Provider<CardSuggestionService>((ref) {
   return CardSuggestionService(
     ref.watch(appDatabaseProvider),
     groq: ref.watch(llmProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+  );
+});
+
+/// „Shrnutí předmětu" on the subject's Přehled tab.
+final subjectSummaryServiceProvider = Provider<SubjectSummaryService>((ref) {
+  return SubjectSummaryService(
+    ref.watch(appDatabaseProvider),
+    llm: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
     hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
   );
