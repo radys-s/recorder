@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../ai/card_suggestions.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
+import '../../../core/share.dart';
 import '../../../core/spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/notes_text.dart';
@@ -47,6 +48,17 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
             meetingId: widget.meetingId,
             depth: depth,
           ),
+    );
+  }
+
+  /// Plain text out of the app: into a notebook app, a chat, or NotebookLM
+  /// until the Docs sync exists.
+  Future<void> _share(BuildContext context, String content) async {
+    final meeting = ref.read(meetingProvider(widget.meetingId)).valueOrNull;
+    await shareText(
+      context,
+      title: meeting?.title ?? 'Výpisky',
+      content: content,
     );
   }
 
@@ -226,6 +238,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
             stale: generating,
             saved: savedId != null,
             onCopy: () => _copy(note.content!),
+            onShare: (ctx) => _share(ctx, note.content!),
             onSave: () => savedId != null
                 ? Navigator.of(context).push(SavedNoteScreen.route(savedId))
                 : _save(note),
@@ -382,6 +395,7 @@ class _NotesBody extends StatelessWidget {
     required this.stale,
     required this.saved,
     required this.onCopy,
+    required this.onShare,
     required this.onSave,
   });
 
@@ -396,6 +410,10 @@ class _NotesBody extends StatelessWidget {
   final bool saved;
 
   final VoidCallback onCopy;
+
+  /// Takes the context of the button, which is what an iPad anchors the share
+  /// popover to.
+  final void Function(BuildContext) onShare;
   final VoidCallback onSave;
 
   @override
@@ -428,6 +446,13 @@ class _NotesBody extends StatelessWidget {
                 icon: const Icon(Icons.copy_all_outlined),
                 tooltip: 'Kopírovat',
                 onPressed: onCopy,
+              ),
+              Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.ios_share),
+                  tooltip: 'Sdílet',
+                  onPressed: () => onShare(ctx),
+                ),
               ),
               const SizedBox(width: Gap.xs),
               FilledButton.tonalIcon(

@@ -176,6 +176,7 @@ class _Prefs implements PreferencesDao {
     onboardingDismissed: false,
     contextCorrection: true,
     audioRetention: AudioRetention.sevenDays,
+    lessonReminder: LessonReminder.off,
   );
 
   @override

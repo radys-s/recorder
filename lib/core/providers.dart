@@ -40,6 +40,7 @@ import '../data/db/tables/subject_terms_table.dart';
 import '../audio/recording_controller.dart';
 import '../data/audio_cleaner.dart';
 import '../data/card_deleter.dart';
+import '../data/lesson_reminder_service.dart';
 import '../data/secure/api_key_store.dart';
 import 'logging.dart';
 import '../queue/refined_transcript_service.dart';
@@ -52,6 +53,7 @@ import '../stt/stt_provider.dart';
 import '../stt/term_corrections.dart';
 import '../stt/transcript_corrector.dart';
 import 'constants.dart';
+import 'local_reminder_scheduler.dart';
 import 'paths.dart';
 import 'photo_picker.dart';
 
@@ -469,6 +471,27 @@ final audioCleanerProvider = Provider<AudioCleaner>((ref) {
       final state = ref.read(recordingControllerProvider);
       return state.isRecording && state.meetingId == meetingId;
     },
+  );
+});
+
+/// The subject of a reminder the student tapped, until a screen takes it.
+///
+/// A tap can arrive before any screen is listening — on a cold start it comes
+/// from the launch details — so it is parked here rather than delivered.
+final pendingReminderSubjectProvider = StateProvider<int?>((ref) => null);
+
+final reminderSchedulerProvider = Provider<LocalReminderScheduler>((ref) {
+  return LocalReminderScheduler(
+    onTap: (subjectId) =>
+        ref.read(pendingReminderSubjectProvider.notifier).state = subjectId,
+  );
+});
+
+/// Keeps the pending notifications in step with the timetable.
+final lessonReminderServiceProvider = Provider<LessonReminderService>((ref) {
+  return LessonReminderService(
+    ref.watch(appDatabaseProvider),
+    ref.watch(reminderSchedulerProvider),
   );
 });
 

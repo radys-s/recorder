@@ -11,6 +11,7 @@ import 'core/theme.dart';
 import 'data/db/app_database.dart';
 import 'features/meeting_detail/widgets/recording_indicator_banner.dart';
 import 'features/home/home_shell.dart';
+import 'features/subjects/subjects_providers.dart';
 
 class RecorderApp extends ConsumerStatefulWidget {
   const RecorderApp({super.key});
@@ -123,6 +124,18 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     await _step('resume refined transcripts', () async {
       unawaited(ref.read(refinedTranscriptServiceProvider).resume());
     });
+
+    // Reminders are concrete notifications for the next fortnight rather than
+    // a weekly repeat, so every launch plans the fortnight again. This is also
+    // where a tap that started the app is picked up — on a cold start there is
+    // no callback, only the launch details.
+    await _step('schedule lesson reminders', () async {
+      final subjectId = await ref.read(reminderSchedulerProvider).init();
+      if (subjectId != null) {
+        ref.read(pendingReminderSubjectProvider.notifier).state = subjectId;
+      }
+      await ref.read(lessonReminderServiceProvider).reschedule();
+    });
   }
 
   Future<void> _step(String name, Future<void> Function() body) async {
@@ -135,6 +148,13 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
 
   @override
   Widget build(BuildContext context) {
+    // A timetable the student just edited has to change what the phone will
+    // say tomorrow morning, not only after the next launch.
+    ref.listen(allSlotsProvider, (previous, next) {
+      if (previous?.value == null || next.value == null) return;
+      unawaited(ref.read(lessonReminderServiceProvider).reschedule());
+    });
+
     return MaterialApp(
       title: 'Recorder',
       navigatorKey: appNavigatorKey,

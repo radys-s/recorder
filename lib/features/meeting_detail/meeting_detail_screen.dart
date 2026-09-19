@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/motion.dart';
 import '../../core/providers.dart';
+import '../../core/share.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
@@ -15,6 +16,7 @@ import '../../core/widgets/status_chip.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/tables/refined_segments_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
+import '../../stt/refined_transcript.dart';
 import '../meetings_list/meeting_actions.dart';
 import '../subjects/widgets/lesson_context_strip.dart';
 import '../subjects/widgets/lesson_sheet.dart';
@@ -29,23 +31,35 @@ import 'widgets/refined_window_tile.dart';
 import 'widgets/transcript_segment_tile.dart';
 import 'widgets/word_fix_sheet.dart';
 
-enum _MeetingAction { lesson, rename, delete }
+enum _MeetingAction { lesson, rename, share, delete }
 
 /// A single meeting and its transcript, growing live while recording.
 class MeetingDetailScreen extends ConsumerStatefulWidget {
-  const MeetingDetailScreen({super.key, required this.meetingId});
+  const MeetingDetailScreen({
+    super.key,
+    required this.meetingId,
+    this.focusSegmentId,
+  });
 
   final int meetingId;
+
+  /// A transcript row to scroll to and mark, set when the screen is opened
+  /// from a search hit rather than from the list.
+  final int? focusSegmentId;
 
   /// Every push of this screen goes through [route], so the route carries a
   /// name — which is what lets the global recording banner tell "this meeting
   /// is already open, go back to it" from "it isn't, push it".
   static String routeNameFor(int meetingId) => 'meeting/$meetingId';
 
-  static Route<void> route(int meetingId) => MaterialPageRoute<void>(
-    settings: RouteSettings(name: routeNameFor(meetingId)),
-    builder: (_) => MeetingDetailScreen(meetingId: meetingId),
-  );
+  static Route<void> route(int meetingId, {int? focusSegmentId}) =>
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: routeNameFor(meetingId)),
+        builder: (_) => MeetingDetailScreen(
+          meetingId: meetingId,
+          focusSegmentId: focusSegmentId,
+        ),
+      );
 
   @override
   ConsumerState<MeetingDetailScreen> createState() =>
@@ -60,6 +74,40 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   /// `itemBuilder` runs lazily: marking a row seen only when it is first built
   /// would replay the entrance for every old row the user scrolls up to.
   final _seen = <String>{};
+
+  /// The row a search hit asked for, until it has been brought into view.
+  /// Scrolling to it is best-effort: a `ListView` builds lazily, so the target
+  /// is first approached by a proportional jump and only then, once the row
+  /// actually exists, aligned exactly.
+  final _focusKey = GlobalKey();
+  bool _focusDone = false;
+
+  void _bringFocusedIntoView(List<Object> items) {
+    final id = widget.focusSegmentId;
+    if (id == null || _focusDone) return;
+    final index = items.indexWhere(
+      (i) => i is TranscriptSegment && i.id == id,
+    );
+    if (index < 0) return;
+    _focusDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      _scrollController.jumpTo(
+        position.maxScrollExtent * (index / items.length),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _focusKey.currentContext;
+        if (ctx == null) return;
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -107,6 +155,29 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
   /// The app-bar toggle writes the same global preference Settings does — one
   /// setting, two places to reach it.
+  /// Sends the transcript out as plain text — refined windows where they
+  /// exist, live chunks where they do not, which is the same text the notes
+  /// are written from.
+  Future<void> _shareTranscript(BuildContext context, Meeting meeting) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final segments = await ref
+        .read(appDatabaseProvider)
+        .transcriptSegmentsDao
+        .segmentsForMeeting(widget.meetingId);
+    final refined = await ref
+        .read(refinedSegmentsDaoProvider)
+        .windows(widget.meetingId);
+    final text = refinedOrLiveTranscript(segments, refined);
+    if (!context.mounted) return;
+    if (text.trim().isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Přepis je zatím prázdný.')),
+      );
+      return;
+    }
+    await shareText(context, title: meeting.title, content: text);
+  }
+
   Future<void> _toggleLiveAnswers(bool enabled, bool recordingNow) async {
     await ref.read(preferencesDaoProvider).setLiveAnswersEnabled(enabled);
     if (!mounted || !enabled || !recordingNow) return;
@@ -185,6 +256,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   ref,
                   meeting.requireValue!,
                 ),
+                _MeetingAction.share => _shareTranscript(
+                  context,
+                  meeting.requireValue!,
+                ),
                 _MeetingAction.delete => confirmAndDeleteMeeting(
                   context,
                   ref,
@@ -205,6 +280,13 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   child: MenuRow(
                     icon: Icons.drive_file_rename_outline,
                     label: 'Přejmenovat',
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: _MeetingAction.share,
+                  child: MenuRow(
+                    icon: Icons.ios_share,
+                    label: 'Sdílet přepis',
                   ),
                 ),
                 PopupMenuItem(
@@ -364,6 +446,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
           _followTail();
         }
         _itemCount = items.length;
+        _bringFocusedIntoView(items);
 
         // Which rows are new *this* build, and in what order — so the first
         // paint of an already-recorded meeting reads as a sequence, while a
@@ -415,6 +498,8 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         ),
                 ),
                 TranscriptSegment() => TranscriptSegmentTile(
+                  key: item.id == widget.focusSegmentId ? _focusKey : null,
+                  highlighted: item.id == widget.focusSegmentId,
                   segment: item,
                   onRetry: () => _retry(item),
                   onLongPress: () => showWordFixSheet(

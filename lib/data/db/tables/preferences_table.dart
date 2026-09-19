@@ -136,6 +136,34 @@ enum AudioRetention {
   };
 }
 
+/// How long before a timetabled lesson the phone reminds the student.
+///
+/// Stored by index, so new steps are appended. [off] is the default: a
+/// reminder needs notification permission, and asking for it at first launch
+/// — before the student has a timetable at all — is a prompt nobody can
+/// answer sensibly. The switch in Nastavení asks at the moment it can explain
+/// what for.
+enum LessonReminder {
+  off,
+  fiveMinutes,
+  atStart;
+
+  static const ordered = [off, fiveMinutes, atStart];
+
+  /// How far ahead of the lesson the notification fires. Null for [off].
+  Duration? get lead => switch (this) {
+    LessonReminder.off => null,
+    LessonReminder.fiveMinutes => const Duration(minutes: 5),
+    LessonReminder.atStart => Duration.zero,
+  };
+
+  String get label => switch (this) {
+    LessonReminder.off => 'Vypnuto',
+    LessonReminder.fiveMinutes => '5 minut předem',
+    LessonReminder.atStart => 'Při začátku',
+  };
+}
+
 /// App settings that have to survive a restart but are not secrets.
 ///
 /// A single row, always id 0. The API key lives in the platform keystore
@@ -194,6 +222,10 @@ class Preferences extends Table {
   /// touched by this.
   IntColumn get audioRetention =>
       intEnum<AudioRetention>().withDefault(const Constant(1))(); // sevenDays
+
+  /// Whether the phone says a timetabled lesson is about to start, and when.
+  IntColumn get lessonReminder =>
+      intEnum<LessonReminder>().withDefault(const Constant(0))(); // off
 
   @override
   Set<Column> get primaryKey => {id};

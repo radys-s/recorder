@@ -240,7 +240,15 @@ bool _isArtifact(String sentence) {
 ///
 /// Exposed for the tests, which is also the only reason it is not private:
 /// matching on a normalised form is the part most likely to drift.
-String normalizeForArtifactMatch(String input) {
+String normalizeForArtifactMatch(String input) =>
+    foldAligned(input).trim().replaceAll(RegExp(r'\s+'), ' ');
+
+/// The same folding, one character in one character out.
+///
+/// Nothing is collapsed or trimmed, so an index into the result is an index
+/// into [input] — which is what lets search highlight a hit in the text the
+/// user actually wrote, diacritics and punctuation included.
+String foldAligned(String input) {
   final buffer = StringBuffer();
   for (final rune in input.toLowerCase().runes) {
     final ch = String.fromCharCode(rune);
@@ -252,10 +260,12 @@ String normalizeForArtifactMatch(String input) {
         ((c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39))) {
       buffer.write(folded);
     } else {
-      buffer.write(' ');
+      // A rune outside the BMP is two code units in the original string, so
+      // one space per code unit keeps the alignment exact.
+      buffer.write(' ' * ch.length);
     }
   }
-  return buffer.toString().trim().replaceAll(RegExp(r'\s+'), ' ');
+  return buffer.toString();
 }
 
 /// Czech letters plus the few others Whisper can emit for Czech audio.

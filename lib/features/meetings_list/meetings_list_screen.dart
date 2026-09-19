@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +20,7 @@ import '../../data/db/app_database.dart';
 import '../../data/db/daos/meetings_dao.dart';
 import '../../data/db/daos/subjects_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
+import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
 import '../subjects/subject_actions.dart';
 import '../subjects/subject_detail_screen.dart';
@@ -53,11 +56,15 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   /// someone who set everything up long ago never sees it at all.
   bool _onboardingActive = false;
 
-  Future<void> _startRecording() async {
+  Future<void> _startRecording({int? subjectId}) async {
     if (_starting) return;
     _starting = true;
     try {
-      final setup = await showStartRecordingSheet(context, ref);
+      final setup = await showStartRecordingSheet(
+        context,
+        ref,
+        preselectSubjectId: subjectId,
+      );
       if (setup == null || !mounted) return;
       HapticFeedback.mediumImpact();
       await ref
@@ -140,6 +147,14 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A tapped lesson reminder opens the start sheet with its own subject
+    // already chosen. It is consumed here, so it cannot fire twice.
+    ref.listen(pendingReminderSubjectProvider, (_, subjectId) {
+      if (subjectId == null) return;
+      ref.read(pendingReminderSubjectProvider.notifier).state = null;
+      unawaited(_startRecording(subjectId: subjectId));
+    });
+
     final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
     final summaries = ref
         .watch(meetingSummariesProvider)
@@ -169,6 +184,12 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           SliverAppBar.large(
             title: const Text('Nahrávky'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Hledat',
+                onPressed: () =>
+                    Navigator.of(context).push(SearchScreen.route()),
+              ),
               IconButton(
                 icon: const Icon(Icons.settings_outlined),
                 tooltip: 'Nastavení',

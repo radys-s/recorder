@@ -2107,6 +2107,16 @@ class $PreferencesTable extends Preferences
     defaultValue: const Constant(1),
   ).withConverter<AudioRetention>($PreferencesTable.$converteraudioRetention);
   @override
+  late final GeneratedColumnWithTypeConverter<LessonReminder, int>
+  lessonReminder = GeneratedColumn<int>(
+    'lesson_reminder',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  ).withConverter<LessonReminder>($PreferencesTable.$converterlessonReminder);
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     transcriptLanguage,
@@ -2123,6 +2133,7 @@ class $PreferencesTable extends Preferences
     studyField,
     studyYear,
     audioRetention,
+    lessonReminder,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2291,6 +2302,12 @@ class $PreferencesTable extends Preferences
           data['${effectivePrefix}audio_retention'],
         )!,
       ),
+      lessonReminder: $PreferencesTable.$converterlessonReminder.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}lesson_reminder'],
+        )!,
+      ),
     );
   }
 
@@ -2313,6 +2330,8 @@ class $PreferencesTable extends Preferences
       JsonTypeConverter2.asNullable($converterschoolType);
   static JsonTypeConverter2<AudioRetention, int, int> $converteraudioRetention =
       const EnumIndexConverter<AudioRetention>(AudioRetention.values);
+  static JsonTypeConverter2<LessonReminder, int, int> $converterlessonReminder =
+      const EnumIndexConverter<LessonReminder>(LessonReminder.values);
 }
 
 class Preference extends DataClass implements Insertable<Preference> {
@@ -2359,6 +2378,9 @@ class Preference extends DataClass implements Insertable<Preference> {
   /// How long a finished lesson's audio is kept. The transcript is never
   /// touched by this.
   final AudioRetention audioRetention;
+
+  /// Whether the phone says a timetabled lesson is about to start, and when.
+  final LessonReminder lessonReminder;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2375,6 +2397,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.studyField,
     this.studyYear,
     required this.audioRetention,
+    required this.lessonReminder,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2426,6 +2449,11 @@ class Preference extends DataClass implements Insertable<Preference> {
         $PreferencesTable.$converteraudioRetention.toSql(audioRetention),
       );
     }
+    {
+      map['lesson_reminder'] = Variable<int>(
+        $PreferencesTable.$converterlessonReminder.toSql(lessonReminder),
+      );
+    }
     return map;
   }
 
@@ -2458,6 +2486,7 @@ class Preference extends DataClass implements Insertable<Preference> {
           ? const Value.absent()
           : Value(studyYear),
       audioRetention: Value(audioRetention),
+      lessonReminder: Value(lessonReminder),
     );
   }
 
@@ -2495,6 +2524,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       audioRetention: $PreferencesTable.$converteraudioRetention.fromJson(
         serializer.fromJson<int>(json['audioRetention']),
       ),
+      lessonReminder: $PreferencesTable.$converterlessonReminder.fromJson(
+        serializer.fromJson<int>(json['lessonReminder']),
+      ),
     );
   }
   @override
@@ -2528,6 +2560,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       'audioRetention': serializer.toJson<int>(
         $PreferencesTable.$converteraudioRetention.toJson(audioRetention),
       ),
+      'lessonReminder': serializer.toJson<int>(
+        $PreferencesTable.$converterlessonReminder.toJson(lessonReminder),
+      ),
     };
   }
 
@@ -2547,6 +2582,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<String?> studyField = const Value.absent(),
     Value<int?> studyYear = const Value.absent(),
     AudioRetention? audioRetention,
+    LessonReminder? lessonReminder,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2565,6 +2601,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     studyField: studyField.present ? studyField.value : this.studyField,
     studyYear: studyYear.present ? studyYear.value : this.studyYear,
     audioRetention: audioRetention ?? this.audioRetention,
+    lessonReminder: lessonReminder ?? this.lessonReminder,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2609,6 +2646,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       audioRetention: data.audioRetention.present
           ? data.audioRetention.value
           : this.audioRetention,
+      lessonReminder: data.lessonReminder.present
+          ? data.lessonReminder.value
+          : this.lessonReminder,
     );
   }
 
@@ -2629,7 +2669,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('schoolType: $schoolType, ')
           ..write('studyField: $studyField, ')
           ..write('studyYear: $studyYear, ')
-          ..write('audioRetention: $audioRetention')
+          ..write('audioRetention: $audioRetention, ')
+          ..write('lessonReminder: $lessonReminder')
           ..write(')'))
         .toString();
   }
@@ -2651,6 +2692,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     studyField,
     studyYear,
     audioRetention,
+    lessonReminder,
   );
   @override
   bool operator ==(Object other) =>
@@ -2670,7 +2712,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.schoolType == this.schoolType &&
           other.studyField == this.studyField &&
           other.studyYear == this.studyYear &&
-          other.audioRetention == this.audioRetention);
+          other.audioRetention == this.audioRetention &&
+          other.lessonReminder == this.lessonReminder);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -2689,6 +2732,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<String?> studyField;
   final Value<int?> studyYear;
   final Value<AudioRetention> audioRetention;
+  final Value<LessonReminder> lessonReminder;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -2705,6 +2749,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.studyField = const Value.absent(),
     this.studyYear = const Value.absent(),
     this.audioRetention = const Value.absent(),
+    this.lessonReminder = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -2722,6 +2767,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.studyField = const Value.absent(),
     this.studyYear = const Value.absent(),
     this.audioRetention = const Value.absent(),
+    this.lessonReminder = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -2739,6 +2785,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<String>? studyField,
     Expression<int>? studyYear,
     Expression<int>? audioRetention,
+    Expression<int>? lessonReminder,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -2759,6 +2806,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (studyField != null) 'study_field': studyField,
       if (studyYear != null) 'study_year': studyYear,
       if (audioRetention != null) 'audio_retention': audioRetention,
+      if (lessonReminder != null) 'lesson_reminder': lessonReminder,
     });
   }
 
@@ -2778,6 +2826,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<String?>? studyField,
     Value<int?>? studyYear,
     Value<AudioRetention>? audioRetention,
+    Value<LessonReminder>? lessonReminder,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -2795,6 +2844,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       studyField: studyField ?? this.studyField,
       studyYear: studyYear ?? this.studyYear,
       audioRetention: audioRetention ?? this.audioRetention,
+      lessonReminder: lessonReminder ?? this.lessonReminder,
     );
   }
 
@@ -2860,6 +2910,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
         $PreferencesTable.$converteraudioRetention.toSql(audioRetention.value),
       );
     }
+    if (lessonReminder.present) {
+      map['lesson_reminder'] = Variable<int>(
+        $PreferencesTable.$converterlessonReminder.toSql(lessonReminder.value),
+      );
+    }
     return map;
   }
 
@@ -2880,7 +2935,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('schoolType: $schoolType, ')
           ..write('studyField: $studyField, ')
           ..write('studyYear: $studyYear, ')
-          ..write('audioRetention: $audioRetention')
+          ..write('audioRetention: $audioRetention, ')
+          ..write('lessonReminder: $lessonReminder')
           ..write(')'))
         .toString();
   }
@@ -10271,6 +10327,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<String?> studyField,
       Value<int?> studyYear,
       Value<AudioRetention> audioRetention,
+      Value<LessonReminder> lessonReminder,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -10289,6 +10346,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<String?> studyField,
       Value<int?> studyYear,
       Value<AudioRetention> audioRetention,
+      Value<LessonReminder> lessonReminder,
     });
 
 class $$PreferencesTableFilterComposer
@@ -10379,6 +10437,12 @@ class $$PreferencesTableFilterComposer
     column: $table.audioRetention,
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<LessonReminder, LessonReminder, int>
+  get lessonReminder => $composableBuilder(
+    column: $table.lessonReminder,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -10462,6 +10526,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<int> get audioRetention => $composableBuilder(
     column: $table.audioRetention,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lessonReminder => $composableBuilder(
+    column: $table.lessonReminder,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -10550,6 +10619,12 @@ class $$PreferencesTableAnnotationComposer
         column: $table.audioRetention,
         builder: (column) => column,
       );
+
+  GeneratedColumnWithTypeConverter<LessonReminder, int> get lessonReminder =>
+      $composableBuilder(
+        column: $table.lessonReminder,
+        builder: (column) => column,
+      );
 }
 
 class $$PreferencesTableTableManager
@@ -10599,6 +10674,7 @@ class $$PreferencesTableTableManager
                 Value<String?> studyField = const Value.absent(),
                 Value<int?> studyYear = const Value.absent(),
                 Value<AudioRetention> audioRetention = const Value.absent(),
+                Value<LessonReminder> lessonReminder = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10615,6 +10691,7 @@ class $$PreferencesTableTableManager
                 studyField: studyField,
                 studyYear: studyYear,
                 audioRetention: audioRetention,
+                lessonReminder: lessonReminder,
               ),
           createCompanionCallback:
               ({
@@ -10634,6 +10711,7 @@ class $$PreferencesTableTableManager
                 Value<String?> studyField = const Value.absent(),
                 Value<int?> studyYear = const Value.absent(),
                 Value<AudioRetention> audioRetention = const Value.absent(),
+                Value<LessonReminder> lessonReminder = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -10650,6 +10728,7 @@ class $$PreferencesTableTableManager
                 studyField: studyField,
                 studyYear: studyYear,
                 audioRetention: audioRetention,
+                lessonReminder: lessonReminder,
               ),
           withReferenceMapper: (p0) => p0
               .map(

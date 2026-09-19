@@ -170,6 +170,16 @@ void main() {
       (await db.select(db.meetings).getSingle()).audioClearedAt,
       DateTime(2026, 9, 18),
     );
+    // v20 adds the lesson reminder, off until the student turns it on.
+    expect(
+      (await db.preferencesDao.current()).lessonReminder,
+      LessonReminder.off,
+    );
+    await db.preferencesDao.setLessonReminder(LessonReminder.fiveMinutes);
+    expect(
+      (await db.preferencesDao.current()).lessonReminder,
+      LessonReminder.fiveMinutes,
+    );
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

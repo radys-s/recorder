@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/formatting.dart';
 import '../../core/pending_deletions.dart';
+import '../../core/share.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/dialogs.dart';
@@ -17,7 +18,7 @@ import '../meeting_detail/meeting_detail_screen.dart';
 import 'notes_library_providers.dart';
 import 'widgets/folder_sheets.dart';
 
-enum _NoteAction { move, openMeeting, delete }
+enum _NoteAction { share, move, openMeeting, delete }
 
 /// One saved note, read in full.
 class SavedNoteScreen extends ConsumerWidget {
@@ -35,6 +36,9 @@ class SavedNoteScreen extends ConsumerWidget {
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Zkopírováno.')));
   }
+
+  Future<void> _share(BuildContext context, SavedNote note) =>
+      shareText(context, title: note.title, content: note.content);
 
   Future<void> _move(
     BuildContext context,
@@ -72,6 +76,8 @@ class SavedNoteScreen extends ConsumerWidget {
     _NoteAction action,
   ) {
     switch (action) {
+      case _NoteAction.share:
+        _share(context, note);
       case _NoteAction.move:
         _move(context, ref, note);
       case _NoteAction.openMeeting:
@@ -108,6 +114,10 @@ class SavedNoteScreen extends ConsumerWidget {
                   tooltip: 'Další akce',
                   onSelected: (action) => _onAction(context, ref, note, action),
                   itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: _NoteAction.share,
+                      child: MenuRow(icon: Icons.ios_share, label: 'Sdílet'),
+                    ),
                     const PopupMenuItem(
                       value: _NoteAction.move,
                       child: MenuRow(

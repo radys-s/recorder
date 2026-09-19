@@ -19,10 +19,15 @@ class TranscriptSegmentTile extends StatelessWidget {
     required this.segment,
     required this.onRetry,
     this.onLongPress,
+    this.highlighted = false,
   });
 
   final TranscriptSegment segment;
   final VoidCallback onRetry;
+
+  /// Set when the screen was opened on this row from a search hit: the row is
+  /// tinted so the eye finds it after the scroll lands.
+  final bool highlighted;
 
   /// Opens the word fix sheet. The text is then plain rather than selectable,
   /// because selection would swallow the long-press; the sheet copies it.
@@ -41,8 +46,18 @@ class TranscriptSegmentTile extends StatelessWidget {
     final theme = Theme.of(context);
     final reduced = reducedMotion(context);
 
-    final tile = Padding(
-      padding: const EdgeInsets.symmetric(vertical: Gap.md),
+    final tile = Container(
+      padding: highlighted
+          ? const EdgeInsets.symmetric(vertical: Gap.md, horizontal: Gap.sm)
+          : const EdgeInsets.symmetric(vertical: Gap.md),
+      decoration: highlighted
+          ? BoxDecoration(
+              color: theme.colorScheme.secondaryContainer.withValues(
+                alpha: 0.55,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

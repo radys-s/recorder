@@ -23,6 +23,7 @@ Future<LessonSetup?> showStartRecordingSheet(
   BuildContext context,
   WidgetRef ref, {
   DateTime? now,
+  int? preselectSubjectId,
 }) async {
   final dao = ref.read(subjectsDaoProvider);
   final subjects = await dao.allSubjects();
@@ -32,14 +33,19 @@ Future<LessonSetup?> showStartRecordingSheet(
   // recording — and the cards that subject pinned last time, so starting is
   // one tap when nothing changed.
   bool known(int? id) => id != null && subjects.any((s) => s.subject.id == id);
-  final scheduled =
-      pickSubjectForNow(await dao.allSlots(), now ?? DateTime.now());
+  final scheduled = pickSubjectForNow(
+    await dao.allSlots(),
+    now ?? DateTime.now(),
+  );
   final last = await dao.lastUsedSubjectId();
-  final subjectId = known(scheduled)
+  // A tapped reminder named the lesson outright, so it wins over both guesses.
+  final subjectId = known(preselectSubjectId)
+      ? preselectSubjectId
+      : known(scheduled)
       ? scheduled
       : known(last)
-          ? last
-          : null;
+      ? last
+      : null;
   final cardIds = subjectId == null
       ? const <int>[]
       : await dao.lastPinnedCardIds(subjectId);
@@ -133,8 +139,7 @@ class _LessonSheetState extends ConsumerState<_LessonSheet> {
       _cardIds.clear();
     });
     if (id == null || !widget.proposeLastCards) return;
-    final proposed =
-        await ref.read(subjectsDaoProvider).lastPinnedCardIds(id);
+    final proposed = await ref.read(subjectsDaoProvider).lastPinnedCardIds(id);
     if (mounted && _subjectId == id) setState(() => _cardIds.addAll(proposed));
   }
 
@@ -202,8 +207,9 @@ class _LessonSheetState extends ConsumerState<_LessonSheet> {
                 Text(
                   'AI je má v hodině vždy po ruce. Ostatní karty předmětu '
                   'použije, když na ně řeč přijde.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: Gap.sm),
                 _CardChips(
