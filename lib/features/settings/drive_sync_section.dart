@@ -508,9 +508,11 @@ class _SetupGuide extends ConsumerWidget {
           'Přihlašovací obrazovka',
           'Google Auth Platform › Get started: název aplikace, tvůj e-mail, '
               'typ External. V Data access přidej rozsah '
-              '„…/auth/drive.file". V Audience klepni na Publish app — bez '
-              'toho přihlášení po 7 dnech vyprší. Google ji kvůli tomuhle '
-              'rozsahu nekontroluje.',
+              '„…/auth/drive.file". V Audience › Test users přidej svůj '
+              'e-mail. V režimu Testing přihlášení po 7 dnech vyprší — pak '
+              'se jen znovu přihlas. Publish app jde až s vyplněnou domovskou '
+              'stránkou, zásadami ochrany soukromí a ověřenou doménou '
+              'v Branding.',
         ),
         step(
           4,
