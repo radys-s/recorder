@@ -722,6 +722,17 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _cutReasonMeta = const VerificationMeta(
+    'cutReason',
+  );
+  @override
+  late final GeneratedColumn<String> cutReason = GeneratedColumn<String>(
+    'cut_reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -736,6 +747,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     voicedMs,
     rawContent,
     confidence,
+    cutReason,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -827,6 +839,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         confidence.isAcceptableOrUnknown(data['confidence']!, _confidenceMeta),
       );
     }
+    if (data.containsKey('cut_reason')) {
+      context.handle(
+        _cutReasonMeta,
+        cutReason.isAcceptableOrUnknown(data['cut_reason']!, _cutReasonMeta),
+      );
+    }
     return context;
   }
 
@@ -886,6 +904,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.double,
         data['${effectivePrefix}confidence'],
       ),
+      cutReason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cut_reason'],
+      ),
     );
   }
 
@@ -922,6 +944,9 @@ class TranscriptSegment extends DataClass
   /// How sure Whisper was: the duration-weighted mean `avg_logprob` of the
   /// segments it kept. Null when it reported none, or for rows before v17.
   final double? confidence;
+
+  /// How the PCM chunk ended. Null only for rows written before v22.
+  final String? cutReason;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -935,6 +960,7 @@ class TranscriptSegment extends DataClass
     this.voicedMs,
     this.rawContent,
     this.confidence,
+    this.cutReason,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -963,6 +989,9 @@ class TranscriptSegment extends DataClass
     if (!nullToAbsent || confidence != null) {
       map['confidence'] = Variable<double>(confidence);
     }
+    if (!nullToAbsent || cutReason != null) {
+      map['cut_reason'] = Variable<String>(cutReason);
+    }
     return map;
   }
 
@@ -988,6 +1017,9 @@ class TranscriptSegment extends DataClass
       confidence: confidence == null && nullToAbsent
           ? const Value.absent()
           : Value(confidence),
+      cutReason: cutReason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cutReason),
     );
   }
 
@@ -1011,6 +1043,7 @@ class TranscriptSegment extends DataClass
       voicedMs: serializer.fromJson<int?>(json['voicedMs']),
       rawContent: serializer.fromJson<String?>(json['rawContent']),
       confidence: serializer.fromJson<double?>(json['confidence']),
+      cutReason: serializer.fromJson<String?>(json['cutReason']),
     );
   }
   @override
@@ -1031,6 +1064,7 @@ class TranscriptSegment extends DataClass
       'voicedMs': serializer.toJson<int?>(voicedMs),
       'rawContent': serializer.toJson<String?>(rawContent),
       'confidence': serializer.toJson<double?>(confidence),
+      'cutReason': serializer.toJson<String?>(cutReason),
     };
   }
 
@@ -1047,6 +1081,7 @@ class TranscriptSegment extends DataClass
     Value<int?> voicedMs = const Value.absent(),
     Value<String?> rawContent = const Value.absent(),
     Value<double?> confidence = const Value.absent(),
+    Value<String?> cutReason = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -1060,6 +1095,7 @@ class TranscriptSegment extends DataClass
     voicedMs: voicedMs.present ? voicedMs.value : this.voicedMs,
     rawContent: rawContent.present ? rawContent.value : this.rawContent,
     confidence: confidence.present ? confidence.value : this.confidence,
+    cutReason: cutReason.present ? cutReason.value : this.cutReason,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -1081,6 +1117,7 @@ class TranscriptSegment extends DataClass
       confidence: data.confidence.present
           ? data.confidence.value
           : this.confidence,
+      cutReason: data.cutReason.present ? data.cutReason.value : this.cutReason,
     );
   }
 
@@ -1098,7 +1135,8 @@ class TranscriptSegment extends DataClass
           ..write('createdAt: $createdAt, ')
           ..write('voicedMs: $voicedMs, ')
           ..write('rawContent: $rawContent, ')
-          ..write('confidence: $confidence')
+          ..write('confidence: $confidence, ')
+          ..write('cutReason: $cutReason')
           ..write(')'))
         .toString();
   }
@@ -1117,6 +1155,7 @@ class TranscriptSegment extends DataClass
     voicedMs,
     rawContent,
     confidence,
+    cutReason,
   );
   @override
   bool operator ==(Object other) =>
@@ -1133,7 +1172,8 @@ class TranscriptSegment extends DataClass
           other.createdAt == this.createdAt &&
           other.voicedMs == this.voicedMs &&
           other.rawContent == this.rawContent &&
-          other.confidence == this.confidence);
+          other.confidence == this.confidence &&
+          other.cutReason == this.cutReason);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -1149,6 +1189,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<int?> voicedMs;
   final Value<String?> rawContent;
   final Value<double?> confidence;
+  final Value<String?> cutReason;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -1162,6 +1203,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.voicedMs = const Value.absent(),
     this.rawContent = const Value.absent(),
     this.confidence = const Value.absent(),
+    this.cutReason = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -1176,6 +1218,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.voicedMs = const Value.absent(),
     this.rawContent = const Value.absent(),
     this.confidence = const Value.absent(),
+    this.cutReason = const Value.absent(),
   }) : meetingId = Value(meetingId),
        sequence = Value(sequence),
        startMs = Value(startMs),
@@ -1196,6 +1239,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<int>? voicedMs,
     Expression<String>? rawContent,
     Expression<double>? confidence,
+    Expression<String>? cutReason,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1210,6 +1254,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (voicedMs != null) 'voiced_ms': voicedMs,
       if (rawContent != null) 'raw_content': rawContent,
       if (confidence != null) 'confidence': confidence,
+      if (cutReason != null) 'cut_reason': cutReason,
     });
   }
 
@@ -1226,6 +1271,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<int?>? voicedMs,
     Value<String?>? rawContent,
     Value<double?>? confidence,
+    Value<String?>? cutReason,
   }) {
     return TranscriptSegmentsCompanion(
       id: id ?? this.id,
@@ -1240,6 +1286,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       voicedMs: voicedMs ?? this.voicedMs,
       rawContent: rawContent ?? this.rawContent,
       confidence: confidence ?? this.confidence,
+      cutReason: cutReason ?? this.cutReason,
     );
   }
 
@@ -1284,6 +1331,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (confidence.present) {
       map['confidence'] = Variable<double>(confidence.value);
     }
+    if (cutReason.present) {
+      map['cut_reason'] = Variable<String>(cutReason.value);
+    }
     return map;
   }
 
@@ -1301,7 +1351,8 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('createdAt: $createdAt, ')
           ..write('voicedMs: $voicedMs, ')
           ..write('rawContent: $rawContent, ')
-          ..write('confidence: $confidence')
+          ..write('confidence: $confidence, ')
+          ..write('cutReason: $cutReason')
           ..write(')'))
         .toString();
   }
@@ -10381,6 +10432,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       Value<int?> voicedMs,
       Value<String?> rawContent,
       Value<double?> confidence,
+      Value<String?> cutReason,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -10396,6 +10448,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<int?> voicedMs,
       Value<String?> rawContent,
       Value<double?> confidence,
+      Value<String?> cutReason,
     });
 
 class $$TranscriptSegmentsTableFilterComposer
@@ -10465,6 +10518,11 @@ class $$TranscriptSegmentsTableFilterComposer
 
   ColumnFilters<double> get confidence => $composableBuilder(
     column: $table.confidence,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cutReason => $composableBuilder(
+    column: $table.cutReason,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10537,6 +10595,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     column: $table.confidence,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get cutReason => $composableBuilder(
+    column: $table.cutReason,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TranscriptSegmentsTableAnnotationComposer
@@ -10589,6 +10652,9 @@ class $$TranscriptSegmentsTableAnnotationComposer
     column: $table.confidence,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get cutReason =>
+      $composableBuilder(column: $table.cutReason, builder: (column) => column);
 }
 
 class $$TranscriptSegmentsTableTableManager
@@ -10643,6 +10709,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<int?> voicedMs = const Value.absent(),
                 Value<String?> rawContent = const Value.absent(),
                 Value<double?> confidence = const Value.absent(),
+                Value<String?> cutReason = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -10656,6 +10723,7 @@ class $$TranscriptSegmentsTableTableManager
                 voicedMs: voicedMs,
                 rawContent: rawContent,
                 confidence: confidence,
+                cutReason: cutReason,
               ),
           createCompanionCallback:
               ({
@@ -10671,6 +10739,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<int?> voicedMs = const Value.absent(),
                 Value<String?> rawContent = const Value.absent(),
                 Value<double?> confidence = const Value.absent(),
+                Value<String?> cutReason = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -10684,6 +10753,7 @@ class $$TranscriptSegmentsTableTableManager
                 voicedMs: voicedMs,
                 rawContent: rawContent,
                 confidence: confidence,
+                cutReason: cutReason,
               ),
           withReferenceMapper: (p0) => p0
               .map(

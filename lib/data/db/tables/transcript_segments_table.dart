@@ -28,4 +28,7 @@ class TranscriptSegments extends Table {
   /// How sure Whisper was: the duration-weighted mean `avg_logprob` of the
   /// segments it kept. Null when it reported none, or for rows before v17.
   RealColumn get confidence => real().nullable()();
+
+  /// How the PCM chunk ended. Null only for rows written before v22.
+  TextColumn get cutReason => text().nullable()();
 }

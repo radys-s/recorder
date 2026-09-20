@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../audio/recording_controller.dart';
 import '../../core/motion.dart';
+import '../../core/listening_diagnostics.dart';
 import '../../core/providers.dart';
 import '../../core/share.dart';
 import '../../core/spacing.dart';
@@ -74,6 +75,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   /// `itemBuilder` runs lazily: marking a row seen only when it is first built
   /// would replay the entrance for every old row the user scrolls up to.
   final _seen = <String>{};
+  final _presentedAnswerCards = <int>{};
 
   /// The row a search hit asked for, until it has been brought into view.
   /// Scrolling to it is best-effort: a `ListView` builds lazily, so the target
@@ -85,9 +87,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   void _bringFocusedIntoView(List<Object> items) {
     final id = widget.focusSegmentId;
     if (id == null || _focusDone) return;
-    final index = items.indexWhere(
-      (i) => i is TranscriptSegment && i.id == id,
-    );
+    final index = items.indexWhere((i) => i is TranscriptSegment && i.id == id);
     if (index < 0) return;
     _focusDone = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -200,6 +200,36 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Presentation is the final observable hop. The listener has no UI side
+    // effects; it only tells diagnostics whether a persisted card reached an
+    // open detail screen. A card can still be read later in the timeline.
+    ref.listen(answerCardsProvider(widget.meetingId), (_, next) {
+      if (next.hasError) {
+        ref
+            .read(listeningDiagnosticsProvider)
+            .record(
+              ListeningStage.presentation,
+              ListeningOutcome.failed,
+              'answer_cards_stream_error',
+              meetingId: widget.meetingId,
+            );
+        return;
+      }
+      for (final card in next.valueOrNull ?? const <AnswerCard>[]) {
+        if (_presentedAnswerCards.add(card.id)) {
+          ref
+              .read(listeningDiagnosticsProvider)
+              .record(
+                ListeningStage.presentation,
+                ListeningOutcome.accepted,
+                'ui_presented',
+                meetingId: widget.meetingId,
+                segmentId: card.segmentId,
+                metrics: {'card': card.id},
+              );
+        }
+      }
+    });
     final meeting = ref.watch(meetingProvider(widget.meetingId));
     final isThisOneRecording = ref.watch(
       recordingControllerProvider.select(
@@ -284,10 +314,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                 ),
                 const PopupMenuItem(
                   value: _MeetingAction.share,
-                  child: MenuRow(
-                    icon: Icons.ios_share,
-                    label: 'Sdílet přepis',
-                  ),
+                  child: MenuRow(icon: Icons.ios_share, label: 'Sdílet přepis'),
                 ),
                 PopupMenuItem(
                   value: _MeetingAction.delete,

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../core/logging.dart';
+import '../core/listening_diagnostics.dart';
 import '../core/paths.dart';
 import '../data/db/app_database.dart';
 import '../data/db/daos/preferences_dao.dart';
@@ -45,6 +46,7 @@ class TranscriptionQueueWorker {
     this.listeningFor,
     this.corrector,
     this.onTermsUsed,
+    this.diagnostics,
     this.tick = const Duration(seconds: 5),
   }) : _connectivity = connectivity ?? Connectivity();
 
@@ -62,11 +64,14 @@ class TranscriptionQueueWorker {
   /// Called after a segment's text is written, with the sanitized text.
   ///
   /// This is how live answering hangs off the transcript without the worker
-  /// knowing anything about it: the callback is expected to return
-  /// immediately (the wiring fires it with `unawaited`), so the drain loop
-  /// never waits on an LLM call. A throw from it is caught here rather than
-  /// killing the pass.
-  final void Function(TranscriptSegment segment, String text)? onTranscribed;
+  /// knowing anything about it. A returned future is observed for failures,
+  /// but never awaited: transcription must keep draining while an answer is
+  /// being decided.
+  final FutureOr<void> Function(TranscriptSegment segment, String text)?
+  onTranscribed;
+
+  /// Optional so focused queue tests do not need UI-level plumbing.
+  final ListeningDiagnostics? diagnostics;
 
   /// What the lesson is about: the lead-in for Whisper's prompt, the
   /// corrections the student taught it and the words to spell right. A
@@ -214,6 +219,14 @@ class TranscriptionQueueWorker {
       row.segmentId,
       SegmentStatus.uploading,
     );
+    diagnostics?.record(
+      ListeningStage.transcription,
+      ListeningOutcome.progress,
+      'started',
+      queueId: row.id,
+      segmentId: row.segmentId,
+      metrics: {'attempt': attempt},
+    );
 
     try {
       final segment = await _segmentsDao.segmentById(row.segmentId);
@@ -271,10 +284,12 @@ class TranscriptionQueueWorker {
       }
       // A glossary is prompt too, and a silent chunk can come back as a list
       // of the lesson's names.
+      var promptEcho = false;
       if (isPromptEcho(text, prompt) ||
           isPromptEcho(text, [?glossary, ?prompt].join(' '))) {
         AppLog.d(_tag, 'row ${row.id}: prompt echo dropped: ${_preview(text)}');
         text = '';
+        promptEcho = true;
       }
 
       // A word the student already fixed once is fixed again, for free.
@@ -298,6 +313,14 @@ class TranscriptionQueueWorker {
           row.segmentId,
           SegmentStatus.transcribed,
         );
+        diagnostics?.record(
+          ListeningStage.transcription,
+          ListeningOutcome.rejected,
+          promptEcho ? 'prompt_echo' : 'transcript_empty',
+          meetingId: row.meetingId,
+          queueId: row.id,
+          segmentId: row.segmentId,
+        );
       } else {
         await _segmentsDao.updateSegmentText(
           row.segmentId,
@@ -305,6 +328,15 @@ class TranscriptionQueueWorker {
           SegmentStatus.transcribed,
           confidence: result.confidence,
           rawContent: heard,
+        );
+        diagnostics?.record(
+          ListeningStage.transcription,
+          ListeningOutcome.accepted,
+          'transcript_written',
+          meetingId: row.meetingId,
+          queueId: row.id,
+          segmentId: row.segmentId,
+          metrics: {'chars': text.length, 'confidence': result.confidence},
         );
       }
       await _queueDao.markSucceeded(row.id);
@@ -330,13 +362,39 @@ class TranscriptionQueueWorker {
         'row ${row.id} transcribed (${text.length} chars, lang=${prefs.transcriptLanguage.code ?? 'auto'}/${result.language})',
       );
     } on SttPermanentException catch (e) {
+      diagnostics?.record(
+        ListeningStage.transcription,
+        ListeningOutcome.failed,
+        'transcription_failed',
+        meetingId: row.meetingId,
+        queueId: row.id,
+        segmentId: row.segmentId,
+      );
       await _park(row, e.message);
     } on SttTransientException catch (e) {
+      diagnostics?.record(
+        ListeningStage.transcription,
+        ListeningOutcome.failed,
+        'transcription_retry',
+        meetingId: row.meetingId,
+        queueId: row.id,
+        segmentId: row.segmentId,
+        metrics: {'attempt': attempt},
+      );
       await _scheduleRetry(row, attempt, e.message);
     } catch (e, st) {
       // An unclassified failure (a disk error, a bug in parsing) is treated as
       // transient: the attempt counter still bounds it, so it cannot spin.
       AppLog.e(_tag, 'row ${row.id} failed unexpectedly', e, st);
+      diagnostics?.record(
+        ListeningStage.transcription,
+        ListeningOutcome.failed,
+        'processing_error',
+        meetingId: row.meetingId,
+        queueId: row.id,
+        segmentId: row.segmentId,
+        metrics: {'attempt': attempt},
+      );
       await _scheduleRetry(row, attempt, '$e');
     }
   }
@@ -381,12 +439,44 @@ class TranscriptionQueueWorker {
     // nobody asked for; the student can still ask.
     if (isVeryLowConfidence(confidence)) {
       AppLog.d(_tag, 'segment ${segment.id}: too uncertain to answer from');
+      diagnostics?.record(
+        ListeningStage.candidate,
+        ListeningOutcome.rejected,
+        'stt_confidence_below_threshold',
+        meetingId: segment.meetingId,
+        sequence: segment.sequence,
+        segmentId: segment.id,
+        metrics: {'confidence': confidence},
+      );
       return;
     }
     try {
-      onTranscribed?.call(segment, text);
+      final result = onTranscribed?.call(segment, text);
+      if (result is Future<void>) {
+        unawaited(
+          result.catchError((Object e, StackTrace st) {
+            AppLog.e(_tag, 'onTranscribed callback failed', e, st);
+            diagnostics?.record(
+              ListeningStage.candidate,
+              ListeningOutcome.failed,
+              'processing_error',
+              meetingId: segment.meetingId,
+              sequence: segment.sequence,
+              segmentId: segment.id,
+            );
+          }),
+        );
+      }
     } catch (e, st) {
       AppLog.e(_tag, 'onTranscribed callback threw', e, st);
+      diagnostics?.record(
+        ListeningStage.candidate,
+        ListeningOutcome.failed,
+        'processing_error',
+        meetingId: segment.meetingId,
+        sequence: segment.sequence,
+        segmentId: segment.id,
+      );
     }
   }
 

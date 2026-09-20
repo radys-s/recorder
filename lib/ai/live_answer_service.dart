@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../core/constants.dart';
 import '../core/logging.dart';
+import '../core/listening_diagnostics.dart';
 import '../data/db/app_database.dart';
 import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
@@ -39,9 +40,10 @@ class LiveAnswerService {
     this._gemini,
     this._hasGeminiKey,
     this.pollInterval = const Duration(milliseconds: 500),
+    this.diagnostics,
   })
-      // ignore: prefer_initializing_formals
-      : _lessonContext = lessonContext;
+    // ignore: prefer_initializing_formals
+    : _lessonContext = lessonContext;
 
   static const _tag = 'ai.answers';
 
@@ -50,6 +52,7 @@ class LiveAnswerService {
   final AnswerCardsDao _answerCardsDao;
   final PreferencesDao _prefsDao;
   final WebAnswerService _webAnswers;
+  final ListeningDiagnostics? diagnostics;
   final LessonContextSource? _lessonContext;
 
   /// Answers in a lesson when the student has a Gemini key; Groq otherwise,
@@ -66,19 +69,45 @@ class LiveAnswerService {
       // Read per segment rather than once per recording: the app-bar toggle
       // has to take effect on the next chunk, not the next meeting.
       final prefs = await _prefsDao.current();
-      if (!prefs.liveAnswersEnabled) return;
+      if (!prefs.liveAnswersEnabled) {
+        _trace(
+          segment,
+          ListeningStage.candidate,
+          ListeningOutcome.rejected,
+          'live_answers_disabled',
+        );
+        return;
+      }
 
       // The chunker cuts on silence, so a chunk that came in under the cap is
       // the room having gone quiet right after this passage — which is exactly
       // the rhetorical-question case the pre-filter otherwise misses.
-      final endedOnPause = chunkEndedOnPause(
-        Duration(milliseconds: segment.endMs - segment.startMs),
-        kPauseCutMaxChunkDuration,
-      );
+      final endedOnPause = switch (segment.cutReason) {
+        'silence' || 'dip' => true,
+        'hardCap' || 'manual' || 'flush' => false,
+        _ => chunkEndedOnPause(
+          Duration(milliseconds: segment.endMs - segment.startMs),
+          kPauseCutMaxChunkDuration,
+        ),
+      };
       if (!looksLikeQuestion(text, endedOnPause: endedOnPause)) {
         AppLog.d(_tag, 'segment ${segment.id}: no question, no call');
+        _trace(
+          segment,
+          ListeningStage.candidate,
+          ListeningOutcome.rejected,
+          'not_question_candidate',
+          metrics: {'ended_on_pause': endedOnPause},
+        );
         return;
       }
+      _trace(
+        segment,
+        ListeningStage.candidate,
+        ListeningOutcome.progress,
+        'candidate_detected',
+        metrics: {'ended_on_pause': endedOnPause},
+      );
 
       final previous = await _segmentsDao.previousTranscript(
         segment.meetingId,
@@ -92,18 +121,42 @@ class LiveAnswerService {
       );
       if (decision == null) {
         AppLog.e(_tag, 'segment ${segment.id}: unparseable response');
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'unparseable_decision',
+        );
         return;
       }
       if (!decision.isQuestion) {
         AppLog.d(_tag, 'segment ${segment.id}: model says not a question');
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'model_not_question',
+        );
         return;
       }
       if (!decision.onTopic) {
         AppLog.d(_tag, 'segment ${segment.id}: off topic, no card');
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'off_topic',
+        );
         return;
       }
       if (decision.shortAnswer.isEmpty) {
         AppLog.d(_tag, 'segment ${segment.id}: question but no answer');
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'empty_answer',
+        );
         return;
       }
 
@@ -112,7 +165,16 @@ class LiveAnswerService {
       // the search query, which is exactly the transcript slice the web hop
       // promises never to send.
       if (decision.quote.isEmpty && decision.question.isEmpty) {
-        AppLog.d(_tag, 'segment ${segment.id}: question with no wording, no card');
+        AppLog.d(
+          _tag,
+          'segment ${segment.id}: question with no wording, no card',
+        );
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'missing_wording',
+        );
         return;
       }
 
@@ -125,7 +187,7 @@ class LiveAnswerService {
       // letting it through here puts the same card in the timeline twice.
       final quoteHolds = decision.quote.isNotEmpty
           ? isGroundedIn(decision.quote, spoken) &&
-              isGroundedIn(decision.quote, text, minShare: 1 / 3)
+                isGroundedIn(decision.quote, text, minShare: 1 / 3)
           : isGroundedIn(decision.question, text, minShare: 1 / 3);
       // The quote vouches for the passage, not for the card's heading. A quote
       // of a word or two ("A kolik?") passes any check, and the tidied question
@@ -133,7 +195,8 @@ class LiveAnswerService {
       // may borrow the subject from earlier in the meeting — or, in a lesson,
       // from the student's own material — so that is what the question is held
       // to; but its words must have been said or written somewhere.
-      final grounded = quoteHolds &&
+      final grounded =
+          quoteHolds &&
           isGroundedIn(
             decision.question,
             '${request.groundingText} $spoken',
@@ -145,6 +208,12 @@ class LiveAnswerService {
           'segment ${segment.id}: ungrounded question dropped '
           '(quote "${decision.quote}", question "${decision.question}")',
         );
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'ungrounded_question',
+        );
         return;
       }
       if (decision.confidence < kAnswerMinConfidence) {
@@ -152,12 +221,25 @@ class LiveAnswerService {
           _tag,
           'segment ${segment.id}: dropped, confidence ${decision.confidence}',
         );
+        _trace(
+          segment,
+          ListeningStage.decision,
+          ListeningOutcome.rejected,
+          'answer_confidence_below_threshold',
+          metrics: {'confidence': decision.confidence},
+        );
         return;
       }
 
       await _insert(segment, decision, request, prefs.webAnswersEnabled);
     } catch (e, st) {
       AppLog.e(_tag, 'segment ${segment.id} failed', e, st);
+      _trace(
+        segment,
+        ListeningStage.decision,
+        ListeningOutcome.failed,
+        'processing_error',
+      );
     }
   }
 
@@ -224,15 +306,17 @@ class LiveAnswerService {
   }
 
   static bool _waitingOn(List<TranscriptSegment> segments, int? cutAtMs) =>
-      segments.any((s) =>
-          (s.status == SegmentStatus.pending ||
-              s.status == SegmentStatus.uploading) &&
-          (cutAtMs == null || s.startMs < cutAtMs));
+      segments.any(
+        (s) =>
+            (s.status == SegmentStatus.pending ||
+                s.status == SegmentStatus.uploading) &&
+            (cutAtMs == null || s.startMs < cutAtMs),
+      );
 
-  static const _pauseNote =
-      '\n\nThe room went quiet right after this passage.';
+  static const _pauseNote = '\n\nThe room went quiet right after this passage.';
 
-  static const _answerNowNote = '\n\nThe student pressed "answer now": a '
+  static const _answerNowNote =
+      '\n\nThe student pressed "answer now": a '
       'question was asked in this passage, most likely near its end, and '
       'nobody has answered it. Find the most recent one and answer it. Do not '
       'judge whether it is on topic, and set "is_question" to false only if '
@@ -261,8 +345,14 @@ class LiveAnswerService {
     final earlier = await _earlierTranscript(segment);
 
     if (material != null && material.isLesson && await _geminiAvailable()) {
-      final wide = _request(material, earlier, text,
-          previous: previous, note: note, budget: ContextBudget.geminiLive);
+      final wide = _request(
+        material,
+        earlier,
+        text,
+        previous: previous,
+        note: note,
+        budget: ContextBudget.geminiLive,
+      );
       try {
         final raw = await _gemini!.complete(
           model: kGeminiModel,
@@ -280,8 +370,14 @@ class LiveAnswerService {
       }
     }
 
-    final request = _request(material, earlier, text,
-        previous: previous, note: note, budget: ContextBudget.automatic);
+    final request = _request(
+      material,
+      earlier,
+      text,
+      previous: previous,
+      note: note,
+      budget: ContextBudget.automatic,
+    );
     return (request: request, decision: await _ask(request));
   }
 
@@ -315,9 +411,11 @@ class LiveAnswerService {
     );
     final heading = material.isLesson ? 'Lesson so far' : 'Meeting so far';
     return _Request(
-      system: '$_systemPrompt\n\n'
+      system:
+          '$_systemPrompt\n\n'
           '${material.isLesson ? _lessonPrompt : _rulesPrompt}',
-      user: '${built.material}\n\n$heading:\n${built.tail}\n\n'
+      user:
+          '${built.material}\n\n$heading:\n${built.tail}\n\n'
           'Newest passage:\n$text$note',
       groundingText: '${built.material} ${built.tail}',
       lesson: built,
@@ -357,14 +455,15 @@ class LiveAnswerService {
     return parseAnswerDecision(raw);
   }
 
-  Future<void> _insert(
+  Future<bool> _insert(
     TranscriptSegment segment,
     AnswerDecision decision,
     _Request request,
     bool webEnabled,
   ) async {
-    final question =
-        decision.question.isNotEmpty ? decision.question : decision.quote;
+    final question = decision.question.isNotEmpty
+        ? decision.question
+        : decision.quote;
 
     var answer = decision.shortAnswer;
     String? detail = decision.detail.isEmpty ? null : decision.detail;
@@ -400,7 +499,7 @@ class LiveAnswerService {
       }
     }
 
-    final id = await _answerCardsDao.insertCard(
+    final inserted = await _answerCardsDao.insertCardIfAbsentForSegment(
       AnswerCardsCompanion.insert(
         meetingId: segment.meetingId,
         segmentId: segment.id,
@@ -414,16 +513,53 @@ class LiveAnswerService {
         dismissed: const Value(false),
       ),
     );
+    if (!inserted.inserted) {
+      _trace(
+        segment,
+        ListeningStage.card,
+        ListeningOutcome.rejected,
+        'duplicate_segment',
+      );
+      return false;
+    }
     if (cardId != null) {
-      unawaited(_lessonContext?.markUsed(cardId).catchError((Object e) {
-        AppLog.e(_tag, 'could not mark card $cardId used', e);
-      }));
+      unawaited(
+        _lessonContext?.markUsed(cardId).catchError((Object e) {
+          AppLog.e(_tag, 'could not mark card $cardId used', e);
+        }),
+      );
     }
     AppLog.d(
       _tag,
-      'segment ${segment.id}: card $id (${answer.length} chars, '
+      'segment ${segment.id}: card ${inserted.id} (${answer.length} chars, '
       'basis $basis, ${sources.length} source(s), '
       'confidence ${decision.confidence})',
+    );
+    _trace(
+      segment,
+      ListeningStage.card,
+      ListeningOutcome.accepted,
+      'accepted',
+      metrics: {'basis': basis, 'confidence': decision.confidence},
+    );
+    return true;
+  }
+
+  void _trace(
+    TranscriptSegment segment,
+    ListeningStage stage,
+    ListeningOutcome outcome,
+    String reason, {
+    Map<String, Object?> metrics = const {},
+  }) {
+    diagnostics?.record(
+      stage,
+      outcome,
+      reason,
+      meetingId: segment.meetingId,
+      sequence: segment.sequence,
+      segmentId: segment.id,
+      metrics: metrics,
     );
   }
 

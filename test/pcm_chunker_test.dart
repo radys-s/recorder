@@ -54,6 +54,7 @@ void main() {
     expect(chunks.single.startMs, 0);
     expect(chunks.single.endMs, 30000);
     expect(chunks.single.byteLength, 30000 * _bytesPerMs);
+    expect(chunks.single.cutReason, ChunkCutReason.hardCap);
   });
 
   test('cuts on sustained silence between the minimum and the target', () {
@@ -62,6 +63,7 @@ void main() {
 
     expect(chunks, hasLength(1));
     expect(chunks.single.endMs, 16600);
+    expect(chunks.single.cutReason, ChunkCutReason.silence);
   });
 
   test('ignores a short gap between words before the target', () {
@@ -105,11 +107,18 @@ void main() {
     chunker.flush();
     expect(chunks, hasLength(1));
     expect(chunks.single.duration, const Duration(seconds: 3));
+    expect(chunks.single.cutReason, ChunkCutReason.flush);
   });
 
   test('flush on an empty chunker emits nothing', () {
     chunker.flush();
     expect(chunks, isEmpty);
+  });
+
+  test('manual cut retains its cause for downstream diagnostics', () {
+    _feed(chunker, _loud(7000));
+    expect(chunker.cut(), isTrue);
+    expect(chunks.single.cutReason, ChunkCutReason.manual);
   });
 
   test('odd-sized stream events produce identical cuts', () {

@@ -3,6 +3,10 @@ import 'dart:typed_data';
 
 import '../core/constants.dart';
 
+/// Why the chunker closed a slice. A question detector can use an actual
+/// silence/dip boundary rather than guessing one from the chunk duration.
+enum ChunkCutReason { silence, dip, hardCap, manual, flush, unknown }
+
 /// One finalized slice of the recording, ready to be WAV-wrapped and uploaded.
 class PcmChunk {
   const PcmChunk({
@@ -13,6 +17,7 @@ class PcmChunk {
     required this.byteLength,
     required this.voicedMs,
     this.voicedFrames = const [],
+    this.cutReason = ChunkCutReason.unknown,
   });
 
   /// 0-based position of this chunk within its meeting.
@@ -37,6 +42,7 @@ class PcmChunk {
   /// Per frame, index for index with [frames]: whether it counted as voiced.
   /// What the loudness gain averages over, so pauses do not drag it down.
   final List<bool> voicedFrames;
+  final ChunkCutReason cutReason;
 
   Duration get duration => Duration(milliseconds: endMs - startMs);
 
@@ -86,9 +92,13 @@ class PcmChunker {
     this.cutLookback = kCutLookbackDuration,
     this.sampleRate = kSampleRateHz,
     this.channels = kChannels,
-  })  : _bytesPerSecond = sampleRate * channels * (kBitsPerSample ~/ 8),
-        _frameBytes =
-            (sampleRate * channels * (kBitsPerSample ~/ 8) * frameDuration.inMilliseconds) ~/ 1000 {
+  }) : _bytesPerSecond = sampleRate * channels * (kBitsPerSample ~/ 8),
+       _frameBytes =
+           (sampleRate *
+               channels *
+               (kBitsPerSample ~/ 8) *
+               frameDuration.inMilliseconds) ~/
+           1000 {
     _frame = Uint8List(_frameBytes);
   }
 
@@ -146,7 +156,8 @@ class PcmChunker {
   double _speechLevel = 0;
 
   int get bufferedBytes => _bufferedBytes;
-  Duration get bufferedDuration => Duration(milliseconds: _msForBytes(_bufferedBytes));
+  Duration get bufferedDuration =>
+      Duration(milliseconds: _msForBytes(_bufferedBytes));
   int get nextSequence => _sequence;
   int get frameBytes => _frameBytes;
 
@@ -190,7 +201,7 @@ class PcmChunker {
       _frameFill = 0;
     }
     if (_bufferedBytes == 0) return;
-    _emit(_frames.length);
+    _emit(_frames.length, ChunkCutReason.flush);
   }
 
   /// Closes the current chunk now, mid-recording — „Odpověz teď" wants the
@@ -202,7 +213,7 @@ class PcmChunker {
   /// emitted.
   bool cut() {
     if (_bufferedBytes == 0) return false;
-    _emit(_frames.length);
+    _emit(_frames.length, ChunkCutReason.manual);
     return true;
   }
 
@@ -246,28 +257,37 @@ class PcmChunker {
 
     final chunkMs = _msForBytes(_bufferedBytes);
     if (chunkMs >= hardCapDuration.inMilliseconds) {
-      _emit(_quietestCut());
+      _emit(_quietestCut(), ChunkCutReason.hardCap);
       return;
     }
     if (chunkMs < minDuration.inMilliseconds || !isDip) return;
 
     final pastTarget = chunkMs >= targetDuration.inMilliseconds;
-    final silenceEnough = _silentRunMs >=
+    final silenceEnough =
+        _silentRunMs >=
         (pastTarget ? frameMs : confidentSilenceDuration.inMilliseconds);
     // A run of nothing but silence is the silence rule's to judge; the dip
     // rule is for the pause that never gets that quiet.
-    final dipEnough = _dipRunMs > _silentRunMs &&
+    final dipEnough =
+        _dipRunMs > _silentRunMs &&
         _dipRunMs >=
             (pastTarget ? shortPauseDuration : sentencePauseDuration)
                 .inMilliseconds;
-    if (silenceEnough || dipEnough) _emit(_frames.length);
+    if (silenceEnough || dipEnough) {
+      _emit(
+        _frames.length,
+        silenceEnough ? ChunkCutReason.silence : ChunkCutReason.dip,
+      );
+    }
   }
 
   void _track(double rms) {
     final floor = _noiseFloor;
     // Falls at once, rises over ~20 s: a pause resets it, speech barely moves
     // it.
-    _noiseFloor = floor == null || rms < floor ? rms : floor + (rms - floor) * 0.005;
+    _noiseFloor = floor == null || rms < floor
+        ? rms
+        : floor + (rms - floor) * 0.005;
     if (rms >= voicedRmsThreshold && rms >= silenceRmsThreshold) {
       _speechLevel = _speechLevel == 0 ? rms : _speechLevel * 0.95 + rms * 0.05;
     }
@@ -280,7 +300,10 @@ class PcmChunker {
     final frameMs = frameDuration.inMilliseconds;
     final count = _frames.length;
     final minFrames = minDuration.inMilliseconds ~/ frameMs;
-    final start = math.max(minFrames, count - cutLookback.inMilliseconds ~/ frameMs);
+    final start = math.max(
+      minFrames,
+      count - cutLookback.inMilliseconds ~/ frameMs,
+    );
     if (start >= count - 1) return count;
 
     var best = count - 1;
@@ -296,7 +319,7 @@ class PcmChunker {
   }
 
   /// Emits the first [count] buffered frames; the rest start the next chunk.
-  void _emit(int count) {
+  void _emit(int count, ChunkCutReason cutReason) {
     final head = _frames.sublist(0, count);
     final headBytes = head.fold<int>(0, (sum, f) => sum + f.length);
     final voicedFlags = List<bool>.unmodifiable(_voiced.take(count));
@@ -310,6 +333,7 @@ class PcmChunker {
       byteLength: headBytes,
       voicedMs: voicedFrames * frameDuration.inMilliseconds,
       voicedFrames: voicedFlags,
+      cutReason: cutReason,
     );
 
     _sequence++;

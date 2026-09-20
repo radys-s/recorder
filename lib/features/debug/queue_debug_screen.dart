@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../audio/recording_controller.dart';
 import '../../core/logging.dart';
+import '../../core/listening_diagnostics.dart';
 import '../../core/paths.dart';
 import '../../core/providers.dart';
 import '../../data/db/app_database.dart';
@@ -35,8 +36,10 @@ final _meetingsProvider = StreamProvider<List<Meeting>>((ref) {
   return ref.watch(appDatabaseProvider).meetingsDao.watchAllMeetings();
 });
 
-final _segmentsProvider =
-    StreamProvider.family<List<TranscriptSegment>, int>((ref, meetingId) {
+final _segmentsProvider = StreamProvider.family<List<TranscriptSegment>, int>((
+  ref,
+  meetingId,
+) {
   return ref
       .watch(appDatabaseProvider)
       .transcriptSegmentsDao
@@ -87,7 +90,9 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
       final docs = await getApplicationDocumentsDirectory();
       final source = File(p.join(docs.path, 'test_speech.wav'));
       if (!source.existsSync()) {
-        setState(() => _localError = 'test_speech.wav not found in app documents.');
+        setState(
+          () => _localError = 'test_speech.wav not found in app documents.',
+        );
         return;
       }
 
@@ -96,7 +101,8 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
 
       final meetingId = await db.meetingsDao.insertMeeting(
         MeetingsCompanion.insert(
-          title: 'Seeded test ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+          title:
+              'Seeded test ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
           createdAt: now,
           endedAt: Value(now),
         ),
@@ -134,7 +140,10 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
         ),
       );
 
-      AppLog.d(_tag, 'seeded meeting $meetingId / segment $segmentId from test_speech.wav');
+      AppLog.d(
+        _tag,
+        'seeded meeting $meetingId / segment $segmentId from test_speech.wav',
+      );
       unawaited(ref.read(queueWorkerProvider).poke());
     } catch (e, st) {
       AppLog.e(_tag, 'failed to seed test chunk', e, st);
@@ -228,11 +237,16 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Text(
                   error,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
                 ),
               ),
             ),
-          _StatRow(label: 'Recording', value: recording.isRecording ? 'yes' : 'no'),
+          _StatRow(
+            label: 'Recording',
+            value: recording.isRecording ? 'yes' : 'no',
+          ),
           _StatRow(label: 'Meeting', value: '${recording.meetingId ?? '—'}'),
           _StatRow(label: 'Elapsed', value: '${recording.elapsed.inSeconds}s'),
           _StatRow(label: 'Chunks', value: '${recording.chunkCount}'),
@@ -240,15 +254,16 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
           const SizedBox(height: 8),
           ValueListenableBuilder<({double rms, double peak})>(
             valueListenable: controller.level,
-            builder: (_, levels, _) => LinearProgressIndicator(
-              value: levels.rms.clamp(0.0, 1.0),
-            ),
+            builder: (_, levels, _) =>
+                LinearProgressIndicator(value: levels.rms.clamp(0.0, 1.0)),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () => controller.toggle(),
             icon: Icon(recording.isRecording ? Icons.stop : Icons.mic),
-            label: Text(recording.isRecording ? 'Stop recording' : 'Start recording'),
+            label: Text(
+              recording.isRecording ? 'Stop recording' : 'Start recording',
+            ),
           ),
           const SizedBox(height: 8),
           Row(
@@ -273,9 +288,57 @@ class QueueDebugScreenState extends ConsumerState<QueueDebugScreen> {
           const SizedBox(height: 8),
           _QueueList(),
           const Divider(height: 32),
+          _ListeningTrace(ref.read(listeningDiagnosticsProvider)),
+          const Divider(height: 32),
           Text('Transcripts', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           const _TranscriptList(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Development-only view of the causal trace. It never renders transcript
+/// text, audio paths or API payloads: the purpose is to identify the stage
+/// that dropped a question without making the debug screen a privacy leak.
+class _ListeningTrace extends StatelessWidget {
+  const _ListeningTrace(this.diagnostics);
+
+  final ListeningDiagnostics diagnostics;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<ListeningDiagnostic>>(
+      valueListenable: diagnostics.events,
+      builder: (context, events, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Listening trace',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              TextButton(
+                onPressed: diagnostics.clear,
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+          if (events.isEmpty)
+            const Text('No pipeline events yet.')
+          else
+            for (final event in events.reversed.take(80))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  event.line,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
         ],
       ),
     );
@@ -367,8 +430,10 @@ class _TranscriptList extends ConsumerWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(meeting.title,
-                        style: Theme.of(context).textTheme.titleSmall),
+                    child: Text(
+                      meeting.title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                   ),
                   const Icon(Icons.chevron_right, size: 18),
                 ],
@@ -391,7 +456,9 @@ class _TranscriptList extends ConsumerWidget {
                                 children: [
                                   TextSpan(
                                     text: '[${s.sequence}] ${s.status.name}  ',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
                                   ),
                                   TextSpan(text: s.content ?? '…'),
                                 ],
@@ -422,7 +489,10 @@ class _StatRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label),
-          Text(value, style: TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+          Text(
+            value,
+            style: TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+          ),
         ],
       ),
     );

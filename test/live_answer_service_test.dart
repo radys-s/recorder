@@ -8,6 +8,7 @@ import 'package:recorder/ai/live_answer_service.dart';
 import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/ai/web_answer_service.dart';
 import 'package:recorder/core/constants.dart';
+import 'package:recorder/core/listening_diagnostics.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/daos/answer_cards_dao.dart';
 import 'package:recorder/data/db/daos/preferences_dao.dart';
@@ -73,6 +74,18 @@ class _Cards implements AnswerCardsDao {
   Future<int> insertCard(AnswerCardsCompanion entry) async {
     inserted.add(entry);
     return inserted.length;
+  }
+
+  @override
+  Future<({int id, bool inserted})> insertCardIfAbsentForSegment(
+    AnswerCardsCompanion entry,
+  ) async {
+    final existing = inserted.indexWhere(
+      (card) => card.segmentId.value == entry.segmentId.value,
+    );
+    if (existing >= 0) return (id: existing + 1, inserted: false);
+    inserted.add(entry);
+    return (id: inserted.length, inserted: true);
   }
 
   @override
@@ -204,6 +217,7 @@ class _World {
     this.lesson,
     Object? geminiReply,
     bool geminiKey = false,
+    ListeningDiagnostics? diagnostics,
   }) : llm = _Llm(reply),
        gemini = geminiReply == null ? null : _Llm(geminiReply),
        segments =
@@ -219,6 +233,7 @@ class _World {
       gemini: gemini,
       hasGeminiKey: () async => geminiKey,
       pollInterval: const Duration(milliseconds: 1),
+      diagnostics: diagnostics,
     );
   }
 
@@ -444,6 +459,68 @@ void main() {
     await world.handle(1);
     expect(world.llm.calls, isEmpty);
   });
+
+  test('a short teacher question is accepted and traceable', () async {
+    final trace = ListeningDiagnostics(enabled: true);
+    final world = _World(
+      reply: _verdict(set: {'quote': 'Kdo', 'question': 'Kdo?'}),
+      segments: [_seg(0, 'Kdo?', durationMs: 7000)],
+      diagnostics: trace,
+    );
+    await world.handle(0);
+    expect(world.cards.inserted, hasLength(1));
+    expect(
+      trace.events.value.map((e) => e.reason),
+      containsAll(['candidate_detected', 'accepted']),
+    );
+    trace.dispose();
+  });
+
+  test(
+    'a duplicate callback for one segment creates one card and records why',
+    () async {
+      final trace = ListeningDiagnostics(enabled: true);
+      final world = _World(reply: _verdict(), diagnostics: trace);
+      await world.handle(2);
+      await world.handle(2);
+      expect(world.cards.inserted, hasLength(1));
+      expect(
+        trace.events.value.map((e) => e.reason),
+        contains('duplicate_segment'),
+      );
+      trace.dispose();
+    },
+  );
+
+  test('the answer confidence threshold accepts exactly 0.5', () async {
+    final accepted = _World(reply: _verdict(set: {'confidence': 0.5}));
+    await accepted.handle(2);
+    expect(accepted.cards.inserted, hasLength(1));
+
+    final rejected = _World(reply: _verdict(set: {'confidence': 0.49}));
+    await rejected.handle(2);
+    expect(rejected.cards.inserted, isEmpty);
+  });
+
+  test(
+    'an imperfect transcription without a question mark is still a candidate',
+    () async {
+      final trace = ListeningDiagnostics(enabled: true);
+      final world = _World(
+        reply: _verdict(),
+        segments: [
+          _seg(0, _budget),
+          _seg(1, _spent),
+          _seg(2, 'Kolik nam tedy jeste zbyva v rozpoctu', durationMs: 7000),
+        ],
+        diagnostics: trace,
+      );
+      await world.handle(2);
+      expect(world.cards.inserted, hasLength(1));
+      expect(trace.events.value.last.reason, 'accepted');
+      trace.dispose();
+    },
+  );
 
   test(
     'a grounded question becomes a card with the meeting as its basis',

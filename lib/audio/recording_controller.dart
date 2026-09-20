@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
 import '../core/logging.dart';
+import '../core/listening_diagnostics.dart';
 import '../core/paths.dart';
 import '../core/providers.dart';
 import '../core/sensitivity.dart';
@@ -447,19 +448,46 @@ class RecordingController extends Notifier<RecordingState> {
   /// Chunk writes still in flight; the refined pass waits for the tail.
   final Set<Future<void>> _persisting = {};
 
+  /// File writes finish at different times. Chaining them prevents a later
+  /// short chunk reaching the queue before an earlier long one, which would
+  /// reverse the transcript context seen by live answers.
+  Future<void> _persistTail = Future<void>.value();
+
   void _onChunk(PcmChunk chunk) {
     AppLog.d(_tag, 'chunk closed: $chunk');
+    ref
+        .read(listeningDiagnosticsProvider)
+        .record(
+          ListeningStage.capture,
+          ListeningOutcome.progress,
+          'audio_received',
+          meetingId: _meetingId,
+          sequence: chunk.sequence,
+          metrics: {'bytes': chunk.byteLength, 'voiced_ms': chunk.voicedMs},
+        );
+    ref
+        .read(listeningDiagnosticsProvider)
+        .record(
+          ListeningStage.chunk,
+          ListeningOutcome.progress,
+          'closed_${chunk.cutReason.name}',
+          meetingId: _meetingId,
+          sequence: chunk.sequence,
+          metrics: {
+            'duration_ms': chunk.duration.inMilliseconds,
+            'voiced_ms': chunk.voicedMs,
+          },
+        );
     state = state.copyWith(totalBytes: _totalBytes);
     // The profile is captured now: the thresholds that measured this chunk
     // are the ones that should judge it.
     final meetingId = _meetingId;
-    final pending = _persistChunk(
-      chunk,
-      meetingId,
-      _sessionDir,
-      _docsPath,
-      _profile,
-    );
+    final pending = _persistTail = _persistTail
+        .catchError((_) {})
+        .then(
+          (_) =>
+              _persistChunk(chunk, meetingId, _sessionDir, _docsPath, _profile),
+        );
     _persisting.add(pending);
     unawaited(
       pending.whenComplete(() {
@@ -535,10 +563,25 @@ class RecordingController extends Notifier<RecordingState> {
           localAudioPath: storedPath,
           createdAt: DateTime.now(),
           voicedMs: Value(chunk.voicedMs),
+          cutReason: Value(chunk.cutReason.name),
         ),
       );
 
       if (skip) {
+        ref
+            .read(listeningDiagnosticsProvider)
+            .record(
+              ListeningStage.capture,
+              ListeningOutcome.rejected,
+              tooShort ? 'too_short' : 'insufficient_voice',
+              meetingId: meetingId,
+              sequence: chunk.sequence,
+              segmentId: segmentId,
+              metrics: {
+                'duration_ms': chunk.duration.inMilliseconds,
+                'voiced_ms': chunk.voicedMs,
+              },
+            );
         state = state.copyWith(chunkCount: state.chunkCount + 1);
         AppLog.d(
           _tag,
@@ -562,6 +605,21 @@ class RecordingController extends Notifier<RecordingState> {
         ),
       );
 
+      ref
+          .read(listeningDiagnosticsProvider)
+          .record(
+            ListeningStage.capture,
+            ListeningOutcome.accepted,
+            'enqueued',
+            meetingId: meetingId,
+            sequence: chunk.sequence,
+            segmentId: segmentId,
+            metrics: {
+              'duration_ms': chunk.duration.inMilliseconds,
+              'voiced_ms': chunk.voicedMs,
+            },
+          );
+
       AppLog.d(
         _tag,
         'chunk ${chunk.sequence} -> $name ($size B, ${chunk.duration.inMilliseconds}ms, '
@@ -577,6 +635,15 @@ class RecordingController extends Notifier<RecordingState> {
       unawaited(ref.read(queueWorkerProvider).poke());
     } catch (e, st) {
       AppLog.e(_tag, 'failed to persist chunk ${chunk.sequence}', e, st);
+      ref
+          .read(listeningDiagnosticsProvider)
+          .record(
+            ListeningStage.capture,
+            ListeningOutcome.failed,
+            'persistence_error',
+            meetingId: meetingId,
+            sequence: chunk.sequence,
+          );
       state = state.copyWith(error: 'chunk write failed: $e');
     }
   }

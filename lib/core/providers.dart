@@ -45,6 +45,7 @@ import '../data/card_deleter.dart';
 import '../data/lesson_reminder_service.dart';
 import '../data/secure/api_key_store.dart';
 import 'logging.dart';
+import 'listening_diagnostics.dart';
 import '../queue/refined_transcript_service.dart';
 import '../queue/transcription_queue_worker.dart';
 import '../data/db/daos/refined_segments_dao.dart';
@@ -70,6 +71,14 @@ import 'photo_picker.dart';
 /// `MaterialApp.builder`, so it has no route context of its own and
 /// `Navigator.of` would find nothing — this key is how it navigates.
 final appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Internal, privacy-safe trace for the capture-to-answer path. The detailed
+/// in-memory history is only retained in debug builds.
+final listeningDiagnosticsProvider = Provider<ListeningDiagnostics>((ref) {
+  final diagnostics = ListeningDiagnostics();
+  ref.onDispose(diagnostics.dispose);
+  return diagnostics;
+});
 
 final apiKeyStoreProvider = Provider<ApiKeyStore>((ref) => ApiKeyStore());
 
@@ -283,6 +292,7 @@ final liveAnswerServiceProvider = Provider<LiveAnswerService>((ref) {
     lessonContext: ref.watch(lessonContextSourceProvider),
     gemini: ref.watch(geminiProvider),
     hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    diagnostics: ref.watch(listeningDiagnosticsProvider),
   );
 });
 
@@ -466,10 +476,9 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
     // on an LLM call, and a slow answer must never delay the next chunk's
     // transcription.
     onTranscribed: (segment, text) {
-      unawaited(
-        ref.read(liveAnswerServiceProvider).handleSegment(segment, text),
-      );
+      return ref.read(liveAnswerServiceProvider).handleSegment(segment, text);
     },
+    diagnostics: ref.watch(listeningDiagnosticsProvider),
   );
   ref.onDispose(worker.stop);
   return worker;
