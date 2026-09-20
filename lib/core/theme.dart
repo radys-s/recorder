@@ -277,23 +277,28 @@ ThemeData _build(Brightness brightness) {
 
 /// Sizes and weights on top of Material's defaults.
 ///
-/// Two things are being fixed: body text set slightly larger with a generous
-/// line height, because a transcript is a wall of text people actually read;
-/// and titles at w600 rather than w400, so hierarchy comes from weight instead
-/// of from more size steps.
+/// Three things are being fixed: body text set slightly larger with a
+/// generous line height, because a transcript is a wall of text people
+/// actually read; titles at w600 rather than w400, so hierarchy comes from
+/// weight instead of from more size steps; and the largest titles switch to
+/// Bricolage Grotesque, a display face with more character than Inter at
+/// heading size — Inter stays on everything actually read at length.
 TextTheme _tuneText(TextTheme t) => t.copyWith(
       // Large collapsing titles on the root tabs: heavy and tight, the way a
       // native large title reads.
       headlineMedium: t.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w700,
+        fontFamily: 'BricolageGrotesque',
+        fontWeight: FontWeight.w800,
         letterSpacing: -0.8,
       ),
       headlineSmall: t.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w600,
+        fontFamily: 'BricolageGrotesque',
+        fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
       titleLarge: t.titleLarge?.copyWith(
-        fontWeight: FontWeight.w600,
+        fontFamily: 'BricolageGrotesque',
+        fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
       ),
       titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),

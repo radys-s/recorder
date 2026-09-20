@@ -133,6 +133,11 @@ flutter:
   # General Punctuation with the `tnum` feature kept, which covers every Czech
   # glyph and the tabular figures the transcript timestamps depend on; 64 KB per
   # weight instead of ~320 KB. OFL.txt is the licence and must ship with them.
+  #
+  # Bricolage Grotesque, same reasoning, for display/heading text (wordmark,
+  # screen titles, card/tile titles) — Inter stays for body text. Instanced
+  # from the variable font at wght 700/800, opsz 96, then subsetted the same
+  # way as Inter; ~66 KB per weight. OFL-BricolageGrotesque.txt is its licence.
   fonts:
     - family: Inter
       fonts:
@@ -142,6 +147,12 @@ flutter:
           weight: 500
         - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
+    - family: BricolageGrotesque
+      fonts:
+        - asset: assets/fonts/BricolageGrotesque-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/BricolageGrotesque-ExtraBold.ttf
+          weight: 800
 
   # To add assets to your application, add an assets section, like this:
   # assets:
