@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../ai/ai_router.dart';
+import '../../ai/llm_provider.dart';
 import '../../ai/openai_compatible_provider.dart';
 import '../../core/constants.dart';
 import '../../core/providers.dart';
@@ -129,7 +130,7 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
     try {
       await action();
     } catch (e) {
-      _notify('Nepodařilo se: $e');
+      _notify('Nepodařilo se: ${_friendly(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -202,9 +203,12 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
             : 'Připojeno · ${found.first}',
       );
     } catch (e) {
-      setState(() => _verified = 'Ověření selhalo: $e');
+      setState(() => _verified = 'Ověření selhalo: ${_friendly(e)}');
     }
   });
+
+  String _friendly(Object e) =>
+      e is AiException ? e.message : 'Nastala neočekávaná chyba.';
 
   String _status() {
     final health = ref.read(aiRouteHealthProvider);

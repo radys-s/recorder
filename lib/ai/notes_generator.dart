@@ -125,7 +125,7 @@ class NotesGenerator {
       await _fail(meetingId, e.message);
     } catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
-      await _fail(meetingId, '$e');
+      await _fail(meetingId, 'Nastala neočekávaná chyba. Zkus to prosím znovu.');
     }
   }
 

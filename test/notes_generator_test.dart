@@ -178,7 +178,8 @@ void main() {
   test('any other failure lands on the row too, never thrown', () async {
     final (notes, _) = await _run(['Něco.'], reply: (_) => StateError('boom'));
     expect(notes.events, ['generating', 'failed']);
-    expect(notes.error, contains('boom'));
+    expect(notes.error, isNot(contains('boom')));
+    expect(notes.error, contains('neočekávaná chyba'));
   });
 
   test('if the row cannot be claimed, the model is never called', () async {
