@@ -55,7 +55,7 @@ class _Doc {
   final String html;
 }
 
-/// Mirrors every subject into Google Docs in a „Schůzky" Drive folder, so
+/// Mirrors every subject into Google Docs in an „Aftermind" Drive folder, so
 /// NotebookLM can use them as sources: one doc with the výpisky, and when
 /// the student wants it, one with the transcripts.
 ///

@@ -496,7 +496,7 @@ class _SetupGuide extends ConsumerWidget {
           1,
           'Projekt',
           'Na console.cloud.google.com se přihlas účtem, kam se mají '
-              'výpisky ukládat, a vytvoř nový projekt (třeba „Schůzky").',
+              'výpisky ukládat, a vytvoř nový projekt (třeba „Aftermind").',
         ),
         step(
           2,
@@ -561,7 +561,7 @@ class _SetupGuide extends ConsumerWidget {
         step(
           6,
           'NotebookLM',
-          'Po první synchronizaci je na Disku složka „Schůzky" s dokumentem '
+          'Po první synchronizaci je na Disku složka „Aftermind" s dokumentem '
               'pro každý předmět. V NotebookLM: Přidat zdroj › Disk Google. '
               'NotebookLM se sám neobnovuje — po nových hodinách klepni '
               'u zdroje na „Synchronizovat".',

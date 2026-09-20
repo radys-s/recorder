@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Schůzky</string>
+	<string>Aftermind</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,11 +29,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Schůzky potřebují mikrofon, aby mohly nahrávat a přepisovat jednání.</string>
+	<string>Aftermind potřebuje mikrofon, aby mohl nahrávat a přepisovat hodiny.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Schůzky potřebují fotoaparát, aby mohly vyfotit tabuli nebo stránky knihy a přečíst z nich text.</string>
+	<string>Aftermind potřebuje fotoaparát, aby mohl vyfotit tabuli nebo stránky knihy a přečíst z nich text.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Schůzky potřebují přístup k fotkám, abys mohl vybrat stránky, ze kterých se přečte text do karty.</string>
+	<string>Aftermind potřebuje přístup k fotkám, abys mohl vybrat stránky, ze kterých se přečte text do karty.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.pravera.flutter_foreground_task.refresh</string>

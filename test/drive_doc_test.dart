@@ -47,7 +47,7 @@ void main() {
         notes: const [DocNote(title: 'Shrnutí předmětu', content: 'Vše.')],
       );
       expect(html, startsWith('<!DOCTYPE html>'));
-      expect(html, contains('<title>Schůzky – Počítačové sítě</title>'));
+      expect(html, contains('<title>Aftermind – Počítačové sítě</title>'));
       expect(html, contains('<h1>Počítačové sítě</h1><p><i>SOŠ, 3. ročník'));
       expect(
         html.indexOf('Hodina 2. 9. 2026 · Směrování'),
@@ -124,7 +124,7 @@ void main() {
         lessons: [DocTranscript(date: DateTime(2026, 9, 1), text: 'Ahoj.')],
       );
       expect(html, isNot(contains('nevešly')));
-      expect(html, contains('<title>Schůzky – Sítě – přepisy</title>'));
+      expect(html, contains('<title>Aftermind – Sítě – přepisy</title>'));
     });
   });
 }

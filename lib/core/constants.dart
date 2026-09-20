@@ -413,7 +413,7 @@ const String kDriveUploadUrl =
     'https://www.googleapis.com/upload/drive/v3/files';
 
 /// The Drive folder every subject's doc lives in.
-const String kDriveFolderName = 'Schůzky';
+const String kDriveFolderName = 'Aftermind';
 
 /// Quiet time after the last change before an automatic sync.
 const Duration kDriveSyncDebounce = Duration(seconds: 20);

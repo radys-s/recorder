@@ -163,7 +163,7 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     });
 
     return MaterialApp(
-      title: 'Recorder',
+      title: 'Aftermind',
       navigatorKey: appNavigatorKey,
       theme: appLightTheme,
       darkTheme: appDarkTheme,
