@@ -42,25 +42,25 @@ jobs:
 
       - name: Package IPA
         run: |
-          rm -rf Payload Aftermind-1.0.0-build2-unsigned.ipa Aftermind-1.0.0-build2-unsigned.ipa.sha256
+          rm -rf Payload Aftermind-1.0.0-build3-unsigned.ipa Aftermind-1.0.0-build3-unsigned.ipa.sha256
           mkdir Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -qry Aftermind-1.0.0-build2-unsigned.ipa Payload
-          shasum -a 256 Aftermind-1.0.0-build2-unsigned.ipa > Aftermind-1.0.0-build2-unsigned.ipa.sha256
+          zip -qry Aftermind-1.0.0-build3-unsigned.ipa Payload
+          shasum -a 256 Aftermind-1.0.0-build3-unsigned.ipa > Aftermind-1.0.0-build3-unsigned.ipa.sha256
 
       - name: Verify IPA
         run: |
-          unzip -t Aftermind-1.0.0-build2-unsigned.ipa
+          unzip -t Aftermind-1.0.0-build3-unsigned.ipa
           test -d Payload/Runner.app
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Payload/Runner.app/Info.plist)" = "com.tomasradek.recorder.recorder"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/Runner.app/Info.plist)" = "1.0.0"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/Runner.app/Info.plist)" = "2"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Payload/Runner.app/Info.plist)" = "3"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Aftermind-iOS-1.0.0-build2
+          name: Aftermind-iOS-1.0.0-build3
           path: |
-            Aftermind-1.0.0-build2-unsigned.ipa
-            Aftermind-1.0.0-build2-unsigned.ipa.sha256
+            Aftermind-1.0.0-build3-unsigned.ipa
+            Aftermind-1.0.0-build3-unsigned.ipa.sha256
           retention-days: 14
           if-no-files-found: error

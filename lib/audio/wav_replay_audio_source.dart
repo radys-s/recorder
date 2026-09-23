@@ -56,9 +56,12 @@ class WavReplayAudioSource implements PcmAudioSource {
   Uint8List? _pcm;
   int _offset = 0;
   int _loops = 0;
+  bool _paused = false;
 
   int get _sliceBytes =>
-      (kSampleRateHz * kChannels * (kBitsPerSample ~/ 8) *
+      (kSampleRateHz *
+          kChannels *
+          (kBitsPerSample ~/ 8) *
           sliceDuration.inMilliseconds) ~/
       1000;
 
@@ -76,22 +79,38 @@ class WavReplayAudioSource implements PcmAudioSource {
     _pcm = pcm;
     _offset = 0;
     _loops = 0;
+    _paused = false;
 
-    final seconds = pcm.length / (kSampleRateHz * kChannels * (kBitsPerSample ~/ 8));
+    final seconds =
+        pcm.length / (kSampleRateHz * kChannels * (kBitsPerSample ~/ 8));
     AppLog.d(
       _tag,
       'replaying ${p.basename(file.path)}: ${pcm.length} B '
       '(${seconds.toStringAsFixed(1)}s), loop=$loop',
     );
 
-    // No onListen/onPause handling: the controller is created and consumed by
-    // the recording controller in the same turn, and pausing a live audio
-    // source has no meaning.
     final controller = StreamController<Uint8List>();
     _controller = controller;
     _timer = Timer.periodic(sliceDuration, (_) => _emitSlice());
 
     return controller.stream;
+  }
+
+  @override
+  Future<void> pause() async {
+    if (_controller == null || _paused) return;
+    _timer?.cancel();
+    _timer = null;
+    _paused = true;
+    AppLog.d(_tag, 'replay paused');
+  }
+
+  @override
+  Future<void> resume() async {
+    if (_controller == null || !_paused) return;
+    _paused = false;
+    _timer = Timer.periodic(sliceDuration, (_) => _emitSlice());
+    AppLog.d(_tag, 'replay resumed');
   }
 
   void _emitSlice() {
@@ -125,6 +144,7 @@ class WavReplayAudioSource implements PcmAudioSource {
     final controller = _controller;
     _controller = null;
     _pcm = null;
+    _paused = false;
     if (controller != null && !controller.isClosed) {
       await controller.close();
     }

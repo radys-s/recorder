@@ -18,6 +18,15 @@ abstract class PcmAudioSource {
   /// Int16 math must carry a remainder byte across events.
   Future<Stream<Uint8List>> start();
 
+  /// Temporarily stops delivering audio while keeping this source and its
+  /// stream alive. A resumed source continues the same recording rather than
+  /// starting a second one.
+  Future<void> pause();
+
+  /// Continues a source previously paused by [pause]. Safe to call when it is
+  /// already running, so a double tap cannot create a second stream.
+  Future<void> resume();
+
   /// Stops producing audio. Safe to call when not started.
   Future<void> stop();
 

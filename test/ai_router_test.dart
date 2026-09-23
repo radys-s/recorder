@@ -112,10 +112,6 @@ void main() {
         AiVendor.custom,
         AiVendor.mistral,
       ]);
-      expect(
-        RoutedLlmProvider.orderFor(kGroqWebAnswerModel, 10, AiTier.strong),
-        [AiVendor.groq],
-      );
     });
 
     test('tier and token estimate', () {

@@ -23,13 +23,14 @@ class MicrophonePermissionDeniedException implements Exception {
 /// lost in the gap a stop/start would create.
 class AudioCaptureService implements PcmAudioSource {
   AudioCaptureService({AudioRecorder? recorder})
-      : _recorder = recorder ?? AudioRecorder();
+    : _recorder = recorder ?? AudioRecorder();
 
   final AudioRecorder _recorder;
 
   static const _tag = 'audio.capture';
 
   bool _isCapturing = false;
+  bool _isPaused = false;
   bool get isCapturing => _isCapturing;
 
   /// Asks for microphone access, requesting it from the user if not yet
@@ -72,9 +73,29 @@ class AudioCaptureService implements PcmAudioSource {
 
     final stream = await _recorder.startStream(config);
     _isCapturing = true;
-    AppLog.d(_tag, 'capture started (${kSampleRateHz}Hz, $kChannels ch, PCM16)');
+    _isPaused = false;
+    AppLog.d(
+      _tag,
+      'capture started (${kSampleRateHz}Hz, $kChannels ch, PCM16)',
+    );
 
     return stream;
+  }
+
+  @override
+  Future<void> pause() async {
+    if (!_isCapturing || _isPaused) return;
+    await _recorder.pause();
+    _isPaused = true;
+    AppLog.d(_tag, 'capture paused');
+  }
+
+  @override
+  Future<void> resume() async {
+    if (!_isCapturing || !_isPaused) return;
+    await _recorder.resume();
+    _isPaused = false;
+    AppLog.d(_tag, 'capture resumed');
   }
 
   /// Stops the microphone. Safe to call when not capturing.
@@ -84,6 +105,7 @@ class AudioCaptureService implements PcmAudioSource {
 
     await _recorder.stop();
     _isCapturing = false;
+    _isPaused = false;
     AppLog.d(_tag, 'capture stopped');
   }
 

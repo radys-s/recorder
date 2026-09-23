@@ -63,11 +63,12 @@ const String kGroqCorrectionModel = 'openai/gpt-oss-20b';
 /// How long a transcript waits for its correction before it is used as heard.
 const Duration kCorrectionTimeout = Duration(seconds: 5);
 
-/// An hour of speech is roughly 30-40k characters, which fits in one call.
-/// Past this the transcript is summarised in windows and the window summaries
-/// merged in a second pass, so a two-hour meeting degrades rather than fails.
-const int kNotesWindowThreshold = 48000;
-const int kNotesWindowSize = 20000;
+/// Keep every model request comfortably below the free providers' practical
+/// context limits. A 38-minute lesson can already exceed a model's reliable
+/// one-shot budget, even though it is far below an hour of audio; smaller
+/// windows degrade to a second merge pass instead of failing at the end.
+const int kNotesWindowThreshold = 12000;
+const int kNotesWindowSize = 10000;
 
 /// How much of the meeting so far the answer model is given as context. Enough
 /// for the model to answer from what was already said, short enough that the
@@ -190,51 +191,10 @@ const List<String> kReplayAudioFileNames = [
   'test_speech.wav',
 ];
 
-/// Groq's agentic model: it runs a web search server-side inside an ordinary
-/// `/chat/completions` call and answers from what it found.
-///
-/// Confirmed available to this account on 2026-09-08 via Settings →
-/// Diagnostika → „Dostupné modely", alongside `groq/compound`. The `-mini`
-/// variant makes a single tool call rather than several, which is both what a
-/// one-sentence factual question needs and what keeps the extra hop from
-/// doubling the wait for a card. If answers start coming back thin, the larger
-/// `groq/compound` is a one-word change here.
-///
-/// Two known habits of the mini variant are handled in code rather than by
-/// switching: it sometimes answers from training data without searching (the
-/// hop then returns null, so no card claims a web source — see
-/// `WebAnswerService.lookUp`), and it sometimes trips `request_too_large` once
-/// fetched pages are folded into its context (re-tossed, see
-/// [kWebRetryBudget]).
-const String kGroqWebAnswerModel = 'groq/compound-mini';
-
 /// Longer than [kAnswerTimeout] because this call includes a real web round
-/// trip. It is off the critical path — transcription never waits on it, and a
-/// timeout falls back to the answer the first call already produced — so the
-/// only thing a generous budget costs is how long a card can lag its question.
+/// trip. It is off the critical path — transcription never waits on it, and
+/// failure falls back to the answer the first call already produced.
 const Duration kWebAnswerTimeout = Duration(seconds: 25);
-
-/// How long [WebAnswerService] keeps re-tossing a call that came back `413`.
-///
-/// The web model shares an 8 000-token-per-minute ceiling with the pages its
-/// own search fetched, so roughly two calls in three are rejected outright —
-/// but the rejection arrives in four or five seconds, and which pages the
-/// backend opens differs every time, so simply asking again is a real fix
-/// rather than a hope. Three tosses inside this budget get the answer through
-/// about three times in four, and it leaves room for the ten-second wait a
-/// `429` sometimes asks for.
-///
-/// It is a wall-clock budget rather than an attempt count on purpose: what
-/// M15's "no retries" rule actually protects is the user not reading an answer
-/// long after the room moved on, and that is a matter of seconds elapsed, not
-/// of how many requests were spent. A call that is merely slow therefore gets
-/// no second attempt at all — the budget is already gone by the time it fails.
-const Duration kWebRetryBudget = Duration(seconds: 18);
-
-/// A hard cap on tosses inside [kWebRetryBudget]. The budget assumes each
-/// rejection takes a few seconds to arrive; one that comes back instantly
-/// would otherwise be re-sent dozens of times before the clock ran out.
-const int kWebMaxAttempts = 4;
 
 /// How many sources a card shows. Three fits one row of chips on a phone, and
 /// a wall of links is not what someone glancing at their phone mid-meeting is

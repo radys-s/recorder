@@ -34,6 +34,9 @@ class RecordingState {
     this.isRecording = false,
     this.meetingId,
     this.startedAt,
+    this.isPaused = false,
+    this.pausedAt,
+    this.pausedDuration = Duration.zero,
     this.chunkCount = 0,
     this.totalBytes = 0,
     this.error,
@@ -44,6 +47,13 @@ class RecordingState {
   final bool isRecording;
   final int? meetingId;
   final DateTime? startedAt;
+
+  /// The microphone is intentionally paused, not disconnected. Keeping this
+  /// separate from [isRecording] lets the UI retain the same lesson and offer
+  /// a real Continue action instead of pretending the lesson ended.
+  final bool isPaused;
+  final DateTime? pausedAt;
+  final Duration pausedDuration;
   final int chunkCount;
 
   /// Bytes captured so far, as of the last closed chunk. Not updated per
@@ -59,13 +69,28 @@ class RecordingState {
   /// The signal has been too weak for long enough to be worth saying so.
   final bool weakSignal;
 
-  Duration get elapsed =>
-      startedAt == null ? Duration.zero : DateTime.now().difference(startedAt!);
+  /// Active recording time at [now]. Exposed separately from [elapsed] so the
+  /// pause accounting is deterministic in tests instead of depending on the
+  /// wall clock that happens to run during a test frame.
+  Duration elapsedAt(DateTime now) {
+    final started = startedAt;
+    if (started == null) return Duration.zero;
+    final activePause = isPaused && pausedAt != null
+        ? now.difference(pausedAt!)
+        : Duration.zero;
+    final elapsed = now.difference(started) - pausedDuration - activePause;
+    return elapsed.isNegative ? Duration.zero : elapsed;
+  }
+
+  Duration get elapsed => elapsedAt(DateTime.now());
 
   RecordingState copyWith({
     bool? isRecording,
     int? meetingId,
     DateTime? startedAt,
+    bool? isPaused,
+    DateTime? pausedAt,
+    Duration? pausedDuration,
     int? chunkCount,
     int? totalBytes,
     String? error,
@@ -73,11 +98,17 @@ class RecordingState {
     bool? weakSignal,
     bool clearError = false,
     bool clearMeeting = false,
+    bool clearPause = false,
   }) {
     return RecordingState(
       isRecording: isRecording ?? this.isRecording,
       meetingId: clearMeeting ? null : (meetingId ?? this.meetingId),
       startedAt: clearMeeting ? null : (startedAt ?? this.startedAt),
+      isPaused: clearMeeting ? false : (isPaused ?? this.isPaused),
+      pausedAt: clearMeeting || clearPause ? null : (pausedAt ?? this.pausedAt),
+      pausedDuration: clearMeeting
+          ? Duration.zero
+          : (pausedDuration ?? this.pausedDuration),
       chunkCount: chunkCount ?? this.chunkCount,
       totalBytes: totalBytes ?? this.totalBytes,
       error: clearError ? null : (error ?? this.error),
@@ -135,6 +166,9 @@ class RecordingController extends Notifier<RecordingState> {
   /// microphone twice or flush and close the same meeting twice.
   bool _starting = false;
   bool _stopping = false;
+  bool _pausing = false;
+  DateTime? _pauseStarted;
+  Duration _pausedDuration = Duration.zero;
 
   @override
   RecordingState build() {
@@ -152,6 +186,75 @@ class RecordingController extends Notifier<RecordingState> {
 
   Future<void> toggle({String? title}) =>
       state.isRecording ? stop() : start(title: title);
+
+  /// Pauses the microphone without ending the meeting. The current chunk is
+  /// flushed after the source stops, so words already captured before the tap
+  /// cannot be stranded in the chunker.
+  Future<void> pause() async {
+    if (!state.isRecording || state.isPaused || _pausing || _stopping) return;
+    _pausing = true;
+    try {
+      await _source?.pause();
+      _chunker?.flush();
+      _levelTimer?.cancel();
+      _levelTimer = null;
+      level.value = (rms: 0, peak: 0);
+      final pausedAt = DateTime.now();
+      _pauseStarted = pausedAt;
+      state = state.copyWith(
+        isPaused: true,
+        pausedAt: pausedAt,
+        pausedDuration: _pausedDuration,
+      );
+      await _foregroundService.updateNotification(
+        title: 'Nahrávání pozastaveno',
+        text: 'Hodina zůstává otevřená. Klepni na Pokračovat.',
+      );
+      AppLog.d(_tag, 'meeting $_meetingId paused');
+    } catch (e, st) {
+      AppLog.e(_tag, 'failed to pause recording', e, st);
+      state = state.copyWith(error: 'Nahrávání se nepodařilo pozastavit.');
+    } finally {
+      _pausing = false;
+    }
+  }
+
+  /// Continues the same meeting after [pause]. Audio time resumes where the
+  /// chunker left off; wall-clock time spent paused is excluded from the UI.
+  Future<void> resume() async {
+    if (!state.isRecording || !state.isPaused || _pausing || _stopping) return;
+    _pausing = true;
+    try {
+      await _source?.resume();
+      final started = _pauseStarted ?? state.pausedAt;
+      if (started != null) {
+        _pausedDuration += DateTime.now().difference(started);
+      }
+      _pauseStarted = null;
+      _meter.reset();
+      _highPass.reset();
+      _levelTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        level.value = (rms: _meter.rms, peak: _meter.peak);
+        _meter.reset();
+      });
+      state = state.copyWith(
+        isPaused: false,
+        pausedDuration: _pausedDuration,
+        clearPause: true,
+        clearError: true,
+      );
+      await _foregroundService.updateNotification(
+        title: 'Nahrávání běží',
+        text: 'Zvuk se ukládá a přepisuje.',
+      );
+      AppLog.d(_tag, 'meeting $_meetingId resumed');
+    } catch (e, st) {
+      AppLog.e(_tag, 'failed to resume recording', e, st);
+      state = state.copyWith(error: 'V nahrávání se nepodařilo pokračovat.');
+    } finally {
+      _pausing = false;
+    }
+  }
 
   /// [subjectId], [cardIds] and [rules] come from the start sheet: the lesson's
   /// subject, the cards pinned for it, and rules for this lesson only.
@@ -238,6 +341,8 @@ class RecordingController extends Notifier<RecordingState> {
       _meter.reset();
       _highPass.reset();
       _totalBytes = 0;
+      _pauseStarted = null;
+      _pausedDuration = Duration.zero;
 
       _subscription = stream.listen(
         _onData,
@@ -264,6 +369,7 @@ class RecordingController extends Notifier<RecordingState> {
         isRecording: true,
         meetingId: meetingId,
         startedAt: startedAt,
+        pausedDuration: _pausedDuration,
       );
     } on MicrophonePermissionDeniedException {
       AppLog.e(_tag, 'microphone permission denied');
@@ -335,6 +441,7 @@ class RecordingController extends Notifier<RecordingState> {
         unawaited(_refineWhenPersisted(meetingId));
       }
       _meetingId = null;
+      _pauseStarted = null;
     } catch (e, st) {
       // The recording is over either way; a state stuck on "recording" would
       // leave the banner up with a stop button that does nothing.
@@ -347,6 +454,7 @@ class RecordingController extends Notifier<RecordingState> {
         isRecording: false,
         totalBytes: _totalBytes,
         weakSignal: false,
+        clearMeeting: true,
       );
       _stopping = false;
     }

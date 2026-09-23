@@ -8,12 +8,28 @@ import 'spacing.dart';
 
 /// The app's visual identity.
 ///
-/// Slate blue, deliberately restrained: the one thing that must always be the
-/// most salient element on screen is the red recording state, and a loud brand
-/// colour would compete with it. Everything else — cards, app bars, list rows —
-/// is defined once here rather than styled per widget, which is what keeps two
-/// screens from quietly drifting apart.
-const _seed = Color(0xFF38547A);
+/// Titanium surfaces, ink typography and a glacial blue signal. The accent
+/// names actions; recording and errors retain a separate, unmistakable red.
+const _seed = Color(0xFF0B6A99);
+
+abstract final class AftermindPalette {
+  const AftermindPalette._();
+
+  static const lightCanvas = Color(0xFFF4F6F8);
+  static const lightSurface = Color(0xFFFFFFFF);
+  static const lightInk = Color(0xFF18242C);
+  static const lightMuted = Color(0xFF53636C);
+  static const lightAccent = Color(0xFF0B6A99);
+  static const lightAccentSoft = Color(0xFFDDF3FC);
+  static const darkCanvas = Color(0xFF101418);
+  static const darkSurface = Color(0xFF1B2228);
+  static const darkInk = Color(0xFFEAF2F6);
+  static const darkMuted = Color(0xFFB0BEC5);
+  static const darkAccent = Color(0xFF85D8FF);
+  static const darkAccentSoft = Color(0xFF123849);
+  static const record = Color(0xFFB3261E);
+  static const recordDark = Color(0xFFFFB4AB);
+}
 
 /// Digits that keep their width as they change. The recording clock and the
 /// transcript timestamps both update every second; without this the text
@@ -24,7 +40,53 @@ ThemeData get appLightTheme => _build(Brightness.light);
 ThemeData get appDarkTheme => _build(Brightness.dark);
 
 ThemeData _build(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness);
+  final dark = brightness == Brightness.dark;
+  final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness)
+      .copyWith(
+        primary: dark
+            ? AftermindPalette.darkAccent
+            : AftermindPalette.lightAccent,
+        onPrimary: dark ? const Color(0xFF00354E) : Colors.white,
+        primaryContainer: dark
+            ? AftermindPalette.darkAccentSoft
+            : AftermindPalette.lightAccentSoft,
+        onPrimaryContainer: dark
+            ? const Color(0xFFDDF3FC)
+            : const Color(0xFF082B3D),
+        secondary: dark ? const Color(0xFFB8CDD6) : const Color(0xFF45636F),
+        onSecondary: dark ? const Color(0xFF20323A) : Colors.white,
+        secondaryContainer: dark
+            ? const Color(0xFF26363E)
+            : const Color(0xFFE2EBEF),
+        onSecondaryContainer: dark
+            ? const Color(0xFFE0EDF2)
+            : const Color(0xFF1B303A),
+        surface: dark ? const Color(0xFF151A1E) : AftermindPalette.lightSurface,
+        onSurface: dark ? AftermindPalette.darkInk : AftermindPalette.lightInk,
+        surfaceContainerLowest: dark
+            ? AftermindPalette.darkCanvas
+            : AftermindPalette.lightCanvas,
+        surfaceContainerLow: dark
+            ? const Color(0xFF171D22)
+            : const Color(0xFFF0F3F5),
+        surfaceContainer: dark
+            ? const Color(0xFF1B2228)
+            : const Color(0xFFEBEFF2),
+        surfaceContainerHigh: dark
+            ? const Color(0xFF252E34)
+            : const Color(0xFFE4E9EC),
+        surfaceContainerHighest: dark
+            ? const Color(0xFF303A41)
+            : const Color(0xFFDCE3E7),
+        onSurfaceVariant: dark
+            ? AftermindPalette.darkMuted
+            : AftermindPalette.lightMuted,
+        outline: dark ? const Color(0xFF9BAAB2) : AftermindPalette.lightMuted,
+        outlineVariant: dark
+            ? const Color(0xFF46535A)
+            : const Color(0xFFC5D0D5),
+        error: dark ? AftermindPalette.recordDark : AftermindPalette.record,
+      );
 
   // fontFamily at construction time so the family reaches every default text
   // style; the tuning below then only touches size, weight and line height.
@@ -40,7 +102,9 @@ ThemeData _build(Brightness brightness) {
     // Three steps of depth on one hue: the page is the lowest surface, cards
     // sit one step up, sheets and dialogs one more. Hierarchy from tone, not
     // from shadows.
-    scaffoldBackgroundColor: scheme.surfaceContainerLowest,
+    scaffoldBackgroundColor: dark
+        ? AftermindPalette.darkCanvas
+        : AftermindPalette.lightCanvas,
 
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.surfaceContainerLowest,
@@ -108,9 +172,7 @@ ThemeData _build(Brightness brightness) {
       style: ButtonStyle(
         textStyle: WidgetStatePropertyAll(text.labelLarge),
         shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Gap.sm),
-          ),
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(Gap.sm)),
         ),
       ),
     ),
@@ -131,6 +193,13 @@ ThemeData _build(Brightness brightness) {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Gap.sm),
         ),
+      ),
+    ),
+
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        tapTargetSize: MaterialTapTargetSize.padded,
       ),
     ),
 
@@ -156,7 +225,9 @@ ThemeData _build(Brightness brightness) {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(Gap.lg),
-        borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+        borderSide: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: 0.6),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(Gap.lg),
@@ -213,8 +284,9 @@ ThemeData _build(Brightness brightness) {
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
       shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(Gap.sheetRadius)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(Gap.sheetRadius),
+        ),
       ),
     ),
 
@@ -258,7 +330,7 @@ ThemeData _build(Brightness brightness) {
       thumbColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? scheme.onPrimary
-            : scheme.outline,
+            : scheme.onSurfaceVariant,
       ),
     ),
 
@@ -284,28 +356,28 @@ ThemeData _build(Brightness brightness) {
 /// Bricolage Grotesque, a display face with more character than Inter at
 /// heading size — Inter stays on everything actually read at length.
 TextTheme _tuneText(TextTheme t) => t.copyWith(
-      // Large collapsing titles on the root tabs: heavy and tight, the way a
-      // native large title reads.
-      headlineMedium: t.headlineMedium?.copyWith(
-        fontFamily: 'BricolageGrotesque',
-        fontWeight: FontWeight.w800,
-        letterSpacing: -0.8,
-      ),
-      headlineSmall: t.headlineSmall?.copyWith(
-        fontFamily: 'BricolageGrotesque',
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.3,
-      ),
-      titleLarge: t.titleLarge?.copyWith(
-        fontFamily: 'BricolageGrotesque',
-        fontWeight: FontWeight.w700,
-        letterSpacing: -0.2,
-      ),
-      titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-      titleSmall: t.titleSmall?.copyWith(fontWeight: FontWeight.w500),
-      bodyLarge: t.bodyLarge?.copyWith(fontSize: 16, height: 1.45),
-      bodyMedium: t.bodyMedium?.copyWith(height: 1.4),
-      bodySmall: t.bodySmall?.copyWith(height: 1.35),
-      labelLarge: t.labelLarge?.copyWith(fontWeight: FontWeight.w500),
-      labelSmall: t.labelSmall?.copyWith(letterSpacing: 0.3),
-    );
+  // Large collapsing titles on the root tabs: heavy and tight, the way a
+  // native large title reads.
+  headlineMedium: t.headlineMedium?.copyWith(
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: FontWeight.w800,
+    letterSpacing: -0.8,
+  ),
+  headlineSmall: t.headlineSmall?.copyWith(
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.3,
+  ),
+  titleLarge: t.titleLarge?.copyWith(
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.2,
+  ),
+  titleMedium: t.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+  titleSmall: t.titleSmall?.copyWith(fontWeight: FontWeight.w500),
+  bodyLarge: t.bodyLarge?.copyWith(fontSize: 16, height: 1.45),
+  bodyMedium: t.bodyMedium?.copyWith(height: 1.4),
+  bodySmall: t.bodySmall?.copyWith(height: 1.35),
+  labelLarge: t.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+  labelSmall: t.labelSmall?.copyWith(letterSpacing: 0.3),
+);

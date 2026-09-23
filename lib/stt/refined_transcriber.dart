@@ -140,7 +140,11 @@ String cleanGeminiTranscript(String raw) {
   }
   if (text.toLowerCase() == kRefinedSilenceMarker) return '';
   text = text.replaceAll(kRefinedSilenceMarker, '').trim();
-  return collapseRepeats(text);
+  // The refined Gemini pass is another source of plausible-looking text, so
+  // it must pass through the same narrow silence-artifact guard as live
+  // Whisper. Otherwise a known standalone URL could disappear live and come
+  // back when the final transcript replaces it.
+  return sanitizeTranscript(collapseRepeats(text));
 }
 
 /// The two ways a window can be heard again.

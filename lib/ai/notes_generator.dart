@@ -64,12 +64,17 @@ class NotesGenerator {
     } catch (e, st) {
       AppLog.e(_tag, 'meeting $meetingId: lesson material failed', e, st);
     }
-    final onGemini =
-        lesson != null && gemini != null && await _geminiAvailable();
+    // Gemini's long context is useful for an ordinary meeting too. Restricting
+    // it to lessons meant a 38-minute meeting was pushed through the smaller
+    // fallback path even when the user had already configured the free key.
+    final onGemini = gemini != null && await _geminiAvailable();
 
     try {
       await _notesDao.markGenerating(
-          meetingId, depth, onGemini ? kGeminiModel : kGroqNotesModel);
+        meetingId,
+        depth,
+        onGemini ? kGeminiModel : kGroqNotesModel,
+      );
     } catch (e, st) {
       AppLog.e(_tag, 'meeting $meetingId: could not start generation', e, st);
       return;
@@ -85,8 +90,10 @@ class NotesGenerator {
         return;
       }
 
-      AppLog.d(_tag,
-          'meeting $meetingId: ${transcript.length} chars, depth=${depth.name}');
+      AppLog.d(
+        _tag,
+        'meeting $meetingId: ${transcript.length} chars, depth=${depth.name}',
+      );
 
       // Trimmed here rather than trusted to the provider: a reply of nothing but
       // whitespace would otherwise be stored as "ready" notes the user cannot
@@ -100,10 +107,11 @@ class NotesGenerator {
           await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
         }
       }
-      notes ??= (transcript.length > kNotesWindowThreshold
-              ? await _generateWindowed(transcript, depth, lesson)
-              : await _generateSingle(transcript, depth, lesson))
-          .trim();
+      notes ??=
+          (transcript.length > kNotesWindowThreshold
+                  ? await _generateWindowed(transcript, depth, lesson)
+                  : await _generateSingle(transcript, depth, lesson))
+              .trim();
 
       if (notes.isEmpty) {
         await _notesDao.markFailed(meetingId, 'Model vrátil prázdnou odpověď.');
@@ -125,7 +133,10 @@ class NotesGenerator {
       await _fail(meetingId, e.message);
     } catch (e) {
       AppLog.e(_tag, 'meeting $meetingId failed: $e');
-      await _fail(meetingId, 'Nastala neočekávaná chyba. Zkus to prosím znovu.');
+      await _fail(
+        meetingId,
+        'Nastala neočekávaná chyba. Zkus to prosím znovu.',
+      );
     }
   }
 
@@ -156,7 +167,8 @@ class NotesGenerator {
     }
     final parts = <String>[
       for (final s in segments)
-        if (s.content != null && s.content!.trim().isNotEmpty) s.content!.trim(),
+        if (s.content != null && s.content!.trim().isNotEmpty)
+          s.content!.trim(),
     ];
     return parts.join(' ');
   }
@@ -175,8 +187,13 @@ class NotesGenerator {
             ]
           : [
               LlmMessage.system(lessonNotesPrompt(depth)),
-              LlmMessage.user(lessonUserMessage(transcript, lesson,
-                  maxExtraChars: kNotesExtrasGroqChars)),
+              LlmMessage.user(
+                lessonUserMessage(
+                  transcript,
+                  lesson,
+                  maxExtraChars: kNotesExtrasGroqChars,
+                ),
+              ),
             ],
       temperature: 0.2,
       maxTokens: _maxTokens(depth),
@@ -188,14 +205,19 @@ class NotesGenerator {
   Future<String> _generateGemini(
     String transcript,
     NotesDepth depth,
-    LessonNotesInput lesson,
+    LessonNotesInput? lesson,
   ) {
     return gemini!.complete(
       model: kGeminiModel,
-      messages: [
-        LlmMessage.system(lessonNotesPrompt(depth)),
-        LlmMessage.user(lessonUserMessage(transcript, lesson)),
-      ],
+      messages: lesson == null
+          ? [
+              LlmMessage.system(_systemPrompt(depth)),
+              LlmMessage.user(transcript),
+            ]
+          : [
+              LlmMessage.system(lessonNotesPrompt(depth)),
+              LlmMessage.user(lessonUserMessage(transcript, lesson)),
+            ],
       temperature: 0.2,
       // Thinking counts against the cap too.
       maxTokens: _maxTokens(depth) + 4000,
@@ -249,9 +271,13 @@ class NotesGenerator {
                 'removing repetition and keeping the lesson in order. Do not '
                 'mention the parts or their numbering.',
               ),
-              LlmMessage.user(lessonUserMessage(
-                  summaries.join('\n\n'), lesson,
-                  maxExtraChars: kNotesExtrasGroqChars)),
+              LlmMessage.user(
+                lessonUserMessage(
+                  summaries.join('\n\n'),
+                  lesson,
+                  maxExtraChars: kNotesExtrasGroqChars,
+                ),
+              ),
             ],
       temperature: 0.2,
       maxTokens: _maxTokens(depth),
@@ -281,12 +307,12 @@ class NotesGenerator {
   /// there. Being stingy here does not save money — only used tokens are
   /// billed — it just truncates the end of the notes.
   static int _maxTokens(NotesDepth depth) => switch (depth) {
-        NotesDepth.keywords => 1200,
-        NotesDepth.brief => 1500,
-        NotesDepth.standard => 3000,
-        NotesDepth.detailed => 4500,
-        NotesDepth.full => 6000,
-      };
+    NotesDepth.keywords => 1200,
+    NotesDepth.brief => 1500,
+    NotesDepth.standard => 3000,
+    NotesDepth.detailed => 4500,
+    NotesDepth.full => 6000,
+  };
 
   /// Written in English deliberately: the instruction-following is noticeably
   /// steadier, and the language of the *output* is pinned by its own rule
@@ -351,7 +377,8 @@ ${_depthPrompt(depth)}''';
   /// length itself, and „Vyvážené" came out nearly as short as „Jen to hlavní"
   /// while „Podrobné" ran on.
   static String _depthPrompt(NotesDepth depth) => switch (depth) {
-        NotesDepth.keywords => '''
+    NotesDepth.keywords =>
+      '''
 At most 5 lines, about 40 words in total, and nothing else: no opening sentence,
 no headings. This depth is the one exception to the rule about whole sentences:
 each line begins with "- " and is a short keyword phrase. The shape, from an
@@ -364,7 +391,8 @@ unrelated meeting — take the form, never the content:
 Only outcomes: decisions, accepted tasks with owner and deadline, dates. An
 accepted task is never dropped; background and discussion always are. If
 nothing was concluded, one line naming the topic and "bez závěru".''',
-        NotesDepth.brief => '''
+    NotesDepth.brief =>
+      '''
 Write 3 to 6 bullets, at most 80 words in total, and nothing else: no opening
 sentence, no headings. The
 shape, from an unrelated meeting — take the form, never the content:
@@ -390,7 +418,8 @@ plain. If a date was agreed for the next meeting, one of the lines is that.
 
 No background, no discussion. If the meeting concluded nothing at all, write one
 line saying what it was about and that nothing was decided.''',
-        NotesDepth.standard => '''
+    NotesDepth.standard =>
+      '''
 120 to 250 words — clearly more than a list of outcomes, for a reader who is
 through it in a minute or two. The shape:
 
@@ -416,7 +445,8 @@ the meeting spent real time on gets its line, including one that ended without
 a decision. Skip any other section the meeting produced nothing for. Each fact
 belongs to one section only. If the meeting was too short to reach 120 words
 without padding, write less — never pad.''',
-        NotesDepth.detailed => '''
+    NotesDepth.detailed =>
+      '''
 300 to 550 words. The shape:
 
   <two or three sentences, no heading above them: what the meeting was about
@@ -440,7 +470,8 @@ grouped under one heading. Keep what a reader needs to understand each outcome;
 leave out asides, repetition and minor examples — that is what separates this
 depth from the complete write-up. Leave out the last line if no next meeting was
 agreed.''',
-        NotesDepth.full => '''
+    NotesDepth.full =>
+      '''
 As long as the meeting needs: keep every argument, objection, example and number
 that was said. The shape:
 
@@ -465,9 +496,10 @@ points grouped under one heading rather than each getting its own. A topic
 section says where that topic stands; the task list at the end collects the
 same commitments as instructions, and at this depth that restatement is wanted.
 Leave out the last line if no next meeting was agreed.''',
-      };
+  };
 
-  static String _windowPrompt(int index, int total) => '''
+  static String _windowPrompt(int index, int total) =>
+      '''
 You are given part $index of $total of one long recording's transcript, produced by
 automatic speech recognition.
 

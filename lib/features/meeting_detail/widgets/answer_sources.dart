@@ -64,22 +64,38 @@ class AnswerSources extends StatelessWidget {
                 // tooltip says which page.
                 child: Tooltip(
                   message: source.title,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Gap.sm,
-                      vertical: Gap.xs,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new, size: 12, color: foreground),
-                        const SizedBox(width: Gap.xs),
-                        Text(
-                          source.domain,
-                          style: theme.textTheme.labelSmall
-                              ?.copyWith(color: foreground),
+                  child: Semantics(
+                    button: true,
+                    label: 'Otevřít zdroj ${source.title}, ${source.domain}',
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Gap.sm,
+                          vertical: Gap.xs,
                         ),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.open_in_new,
+                              size: 14,
+                              color: foreground,
+                            ),
+                            const SizedBox(width: Gap.xs),
+                            Text(
+                              source.domain,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: foreground,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),

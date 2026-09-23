@@ -38,6 +38,7 @@ import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
+import '../data/db/tables/meeting_notes_table.dart';
 import '../data/db/tables/subject_terms_table.dart';
 import '../audio/recording_controller.dart';
 import '../data/audio_cleaner.dart';
@@ -273,10 +274,13 @@ final answerCardsDaoProvider = Provider<AnswerCardsDao>((ref) {
 });
 
 /// The second hop of live answering, when the meeting cannot answer the
-/// question itself. Same client and same key as every other Groq call — the
-/// search happens server-side inside the completion.
+/// question itself. Gemini Search grounding supplies the evidence behind the
+/// sources shown on the answer card.
 final webAnswerServiceProvider = Provider<WebAnswerService>((ref) {
-  return WebAnswerService(ref.watch(llmProvider));
+  return WebAnswerService(
+    ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+  );
 });
 
 /// Live answering. Reads the enabled flags itself, per segment, so the app-bar
@@ -560,6 +564,23 @@ final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
       );
     },
     waitForTurn: _waitUntilOnline,
+    onMeetingReady: (meetingId) async {
+      final existing = await db.meetingNotesDao.forMeeting(meetingId);
+      // A finished set of notes is the user's deliberate result. Do not
+      // overwrite it merely because a transcript was refined again.
+      if (existing?.status == NotesStatus.ready ||
+          existing?.status == NotesStatus.generating) {
+        return;
+      }
+      final preferences = await db.preferencesDao.current();
+      // Fire and forget by design: refinement is the bottleneck that holds
+      // audio retention and should never wait minutes for an AI summary.
+      unawaited(
+        ref
+            .read(notesGeneratorProvider)
+            .generate(meetingId: meetingId, depth: preferences.notesDepth),
+      );
+    },
     // The pass is the last thing that needs the chunk files, so this is the
     // moment their retention clock is worth checking.
     onPassFinished: () => ref.read(audioCleanerProvider).sweep(),

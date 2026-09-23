@@ -30,11 +30,21 @@ void main() {
     });
   }
 
-  Future<void> pumpLibrary(WidgetTester tester) async {
+  Future<void> pumpLibrary(
+    WidgetTester tester, {
+    bool largeText = false,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [appDatabaseProvider.overrideWithValue(db)],
-        child: const MaterialApp(home: NotesLibraryScreen()),
+        child: MaterialApp(
+          home: const NotesLibraryScreen(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(largeText ? 2 : 1)),
+            child: child!,
+          ),
+        ),
       ),
     );
     await settle(tester);
@@ -86,8 +96,27 @@ void main() {
     expect(find.text('Nic nenalezeno'), findsOneWidget);
   });
 
-  libraryTest('a folder deleted while selected falls back to everything',
-      (tester) async {
+  libraryTest('folder filters remain visible at 200% text scale', (
+    tester,
+  ) async {
+    final id = await db.savedNotesDao.createFolder(
+      'Velmi dlouhý název předmětu',
+    );
+    await db.savedNotesDao.saveNote(
+      title: 'Zápisky z hodiny',
+      content: 'Obsah poznámek',
+      folderId: id,
+    );
+
+    await pumpLibrary(tester, largeText: true);
+
+    expect(find.text('Velmi dlouhý název předmětu'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  libraryTest('a folder deleted while selected falls back to everything', (
+    tester,
+  ) async {
     final dao = db.savedNotesDao;
     final cz = await dao.createFolder('Čeština');
     await dao.saveNote(title: 'Slovní druhy', content: 'a', folderId: cz);

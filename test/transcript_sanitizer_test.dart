@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:recorder/stt/refined_transcriber.dart';
 import 'package:recorder/stt/transcript_sanitizer.dart';
 
 void main() {
@@ -8,10 +9,7 @@ void main() {
         normalizeForArtifactMatch('Děkuji za pozornost.'),
         'dekuji za pozornost',
       );
-      expect(
-        normalizeForArtifactMatch('Překlad titulků'),
-        'preklad titulku',
-      );
+      expect(normalizeForArtifactMatch('Překlad titulků'), 'preklad titulku');
     });
 
     test('collapses whitespace and strips punctuation', () {
@@ -51,6 +49,11 @@ void main() {
     test('empty and whitespace-only input', () {
       expect(sanitizeTranscript(''), '');
       expect(sanitizeTranscript('   \n  '), '');
+    });
+
+    test('drops the known standalone URL hallucination', () {
+      expect(sanitizeTranscript('www.hradeckralove.org'), '');
+      expect(sanitizeTranscript('WWW.HRADECKRALOVE.ORG.'), '');
     });
   });
 
@@ -103,6 +106,43 @@ void main() {
 
     test('a single non-artifact sentence survives', () {
       expect(sanitizeTranscript('Ano.'), 'Ano.');
+    });
+
+    test('keeps a URL said as part of a sentence', () {
+      const text = 'Materiály najdete na www.example.org po hodině.';
+      expect(sanitizeTranscript(text), text);
+    });
+  });
+
+  group('filterTranscriptUrlArtifact', () {
+    test('drops a generic standalone domain only with weak evidence', () {
+      final filtered = filterTranscriptUrlArtifact(
+        'www.example.org',
+        confidence: -1.1,
+        voicedMs: 100,
+        durationMs: 4000,
+      );
+
+      expect(filtered.text, '');
+      expect(filtered.reason, 'suspect_url_artifact');
+    });
+
+    test('keeps a generic standalone domain when the audio is credible', () {
+      final filtered = filterTranscriptUrlArtifact(
+        'www.example.org',
+        confidence: -0.2,
+        voicedMs: 3000,
+        durationMs: 4000,
+      );
+
+      expect(filtered.text, 'www.example.org');
+      expect(filtered.removed, isFalse);
+    });
+  });
+
+  group('cleanGeminiTranscript', () {
+    test('applies the same known URL artifact guard after refinement', () {
+      expect(cleanGeminiTranscript('www.hradeckralove.org'), '');
     });
   });
 }

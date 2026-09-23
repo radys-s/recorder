@@ -88,6 +88,13 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (id != null) Navigator.of(context).push(MeetingDetailScreen.route(id));
   }
 
+  Future<void> _resumeRecording() async {
+    await ref.read(recordingControllerProvider.notifier).resume();
+    if (!mounted) return;
+    final recording = ref.read(recordingControllerProvider);
+    if (recording.isRecording && !recording.isPaused) _openRecording();
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
@@ -169,20 +176,24 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     final isRecording = ref.watch(
       recordingControllerProvider.select((s) => s.isRecording),
     );
+    final isPaused = ref.watch(
+      recordingControllerProvider.select((s) => s.isPaused),
+    );
     final recordingError = ref.watch(
       recordingControllerProvider.select((s) => s.error),
     );
     final keyKnown = ref.watch(hasApiKeyProvider).valueOrNull;
     final hasKey = keyKnown ?? true;
     final onboarding = _onboarding(keyKnown);
-    // The navigation bar floats over the list; its height arrives as padding.
+    // The system inset is still needed below the final row on devices with a
+    // home indicator, even though navigation is no longer a floating overlay.
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar.large(
-            title: const Text('Nahrávky'),
+            title: const Text('Dnes'),
             actions: [
               IconButton(
                 icon: const Icon(Icons.search),
@@ -239,8 +250,10 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
               ),
               child: _RecordHero(
                 isRecording: isRecording,
+                isPaused: isPaused,
                 onStart: _startRecording,
                 onOpen: _openRecording,
+                onResume: _resumeRecording,
               ),
             ),
           ),
@@ -323,13 +336,17 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 class _RecordHero extends ConsumerStatefulWidget {
   const _RecordHero({
     required this.isRecording,
+    required this.isPaused,
     required this.onStart,
     required this.onOpen,
+    required this.onResume,
   });
 
   final bool isRecording;
+  final bool isPaused;
   final VoidCallback onStart;
   final VoidCallback onOpen;
+  final VoidCallback onResume;
 
   @override
   ConsumerState<_RecordHero> createState() => _RecordHeroState();
@@ -374,6 +391,7 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final recording = widget.isRecording;
+    final paused = widget.isPaused;
     final hint = recording
         ? null
         : _hint(
@@ -381,7 +399,13 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
             ref.watch(subjectsProvider).valueOrNull ?? const [],
           );
 
-    final (start, end, fg) = recording
+    final (start, end, fg) = paused
+        ? (
+            scheme.surfaceContainerHigh,
+            scheme.surfaceContainerLow,
+            scheme.onSurface,
+          )
+        : recording
         ? (
             scheme.errorContainer,
             Color.alphaBlend(
@@ -399,9 +423,22 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
             scheme.onPrimaryContainer,
           );
 
+    final label = paused
+        ? 'Pokračovat v nahrávání'
+        : recording
+        ? 'Otevřít probíhající nahrávání'
+        : 'Nahrát hodinu';
+
     return Pressable(
       child: Semantics(
         button: true,
+        label: label,
+        hint: paused
+            ? 'Obnoví záznam a otevře jeho přepis.'
+            : recording
+            ? 'Otevře živý přepis.'
+            : 'Otevře nastavení nové nahrávky.',
+        excludeSemantics: true,
         child: Material(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(Gap.sheetRadius),
@@ -415,7 +452,11 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
               ),
             ),
             child: InkWell(
-              onTap: recording ? widget.onOpen : widget.onStart,
+              onTap: paused
+                  ? widget.onResume
+                  : recording
+                  ? widget.onOpen
+                  : widget.onStart,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
                   Gap.xl,
@@ -434,7 +475,11 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
                             const SizedBox(height: Gap.sm),
                           ],
                           Text(
-                            recording ? 'Nahrává se' : 'Nahrát hodinu',
+                            paused
+                                ? 'Pozastaveno'
+                                : recording
+                                ? 'Nahrává se'
+                                : 'Nahrát hodinu',
                             style: theme.textTheme.headlineSmall?.copyWith(
                               color: fg,
                               fontWeight: FontWeight.w700,
@@ -443,7 +488,9 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
                           ),
                           const SizedBox(height: Gap.xs),
                           Text(
-                            recording
+                            paused
+                                ? 'Klepni a pokračuj v hodině.'
+                                : recording
                                 ? 'Klepni a vrať se k přepisu.'
                                 : 'Přepis začne přibývat během pár vteřin.',
                             style: theme.textTheme.bodyMedium?.copyWith(
@@ -454,7 +501,10 @@ class _RecordHeroState extends ConsumerState<_RecordHero>
                       ),
                     ),
                     const SizedBox(width: Gap.sm),
-                    _BreathingButton(recording: recording),
+                    _BreathingButton(
+                      recording: recording && !paused,
+                      paused: paused,
+                    ),
                   ],
                 ),
               ),
@@ -506,9 +556,10 @@ class _HintPill extends StatelessWidget {
 /// The round record button with a soft halo that slowly swells and settles.
 /// Under reduced motion the halo is drawn once, at rest.
 class _BreathingButton extends StatefulWidget {
-  const _BreathingButton({required this.recording});
+  const _BreathingButton({required this.recording, required this.paused});
 
   final bool recording;
+  final bool paused;
 
   @override
   State<_BreathingButton> createState() => _BreathingButtonState();
@@ -526,8 +577,20 @@ class _BreathingButtonState extends State<_BreathingButton>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (reducedMotion(context)) {
-      _breath.stop();
+    _syncBreath();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BreathingButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.recording != widget.recording) _syncBreath();
+  }
+
+  void _syncBreath() {
+    if (reducedMotion(context) || !widget.recording) {
+      _breath
+        ..stop()
+        ..value = 0;
     } else if (!_breath.isAnimating) {
       _breath.repeat(reverse: true);
     }
@@ -544,12 +607,24 @@ class _BreathingButtonState extends State<_BreathingButton>
     final scheme = Theme.of(context).colorScheme;
     final reduced = reducedMotion(context);
 
+    final signal = widget.recording ? scheme.error : scheme.primary;
+    final buttonColor = widget.recording
+        ? scheme.error
+        : widget.paused
+        ? scheme.surfaceContainerHighest
+        : scheme.primary;
+    final iconColor = widget.recording
+        ? scheme.onError
+        : widget.paused
+        ? scheme.onSurface
+        : scheme.onPrimary;
+
     Widget halo(double t) => Container(
       width: _size * (1.16 + 0.16 * t),
       height: _size * (1.16 + 0.16 * t),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: scheme.error.withValues(alpha: 0.18 - 0.1 * t),
+        color: signal.withValues(alpha: 0.14 - 0.08 * t),
       ),
     );
 
@@ -558,7 +633,7 @@ class _BreathingButtonState extends State<_BreathingButton>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          if (reduced)
+          if (reduced || !widget.recording)
             halo(0)
           else
             AnimatedBuilder(
@@ -570,19 +645,23 @@ class _BreathingButtonState extends State<_BreathingButton>
             width: _size,
             height: _size,
             decoration: BoxDecoration(
-              color: scheme.error,
+              color: buttonColor,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: scheme.error.withValues(alpha: 0.35),
+                  color: signal.withValues(alpha: 0.24),
                   blurRadius: 16,
                   offset: const Offset(0, 6),
                 ),
               ],
             ),
             child: Icon(
-              widget.recording ? Icons.graphic_eq : Icons.mic,
-              color: scheme.onError,
+              widget.recording
+                  ? Icons.graphic_eq
+                  : widget.paused
+                  ? Icons.play_arrow_rounded
+                  : Icons.mic_none_rounded,
+              color: iconColor,
               size: 28,
             ),
           ),

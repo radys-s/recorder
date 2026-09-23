@@ -116,33 +116,27 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, 0),
-      sliver: SliverGrid.builder(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 240,
-          mainAxisSpacing: Gap.md,
-          crossAxisSpacing: Gap.md,
-          childAspectRatio: 0.92,
-        ),
-        itemCount: list.length,
-        itemBuilder: (_, i) {
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate((context, i) {
           final summary = list[i];
           final order = entering[summary.subject.id];
-          return Entrance(
-            enabled: order != null,
-            delay: firstPaint && order != null
-                ? AppMotion.staggerDelay(order)
-                : Duration.zero,
-            child: Pressable(child: _SubjectTile(summary: summary)),
+          return Padding(
+            padding: const EdgeInsets.only(bottom: Gap.sm),
+            child: Entrance(
+              enabled: order != null,
+              delay: firstPaint && order != null
+                  ? AppMotion.staggerDelay(order)
+                  : Duration.zero,
+              child: Pressable(child: _SubjectTile(summary: summary)),
+            ),
           );
-        },
+        }, childCount: list.length),
       ),
     );
   }
 }
 
-/// A subject as a coloured tile: its initial large, the name, and what it
-/// holds. The colour is the same one the subject's badge uses everywhere else,
-/// so a lesson in the list and its subject here read as one thing.
+/// A compact neutral row; the subject colour is an identifier, not a surface.
 class _SubjectTile extends StatelessWidget {
   const _SubjectTile({required this.summary});
 
@@ -151,88 +145,57 @@ class _SubjectTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final subject = summary.subject;
     final base = subjectColor(context, subject.colorIndex);
-    final deep = Color.lerp(base, Colors.black, 0.28)!;
-    const fg = Colors.white;
-    final initial = subject.name.trim().isEmpty
-        ? '?'
-        : subject.name.trim()[0].toUpperCase();
     final counts = [
       czechCount(summary.cardCount, 'karta', 'karty', 'karet'),
       czechCount(summary.lessonCount, 'hodina', 'hodiny', 'hodin'),
     ].join(' · ');
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(Gap.radius + 4),
-      clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [base, deep],
-          ),
-        ),
-        child: InkWell(
-          onTap: () =>
-              Navigator.of(context).push(SubjectDetailScreen.route(subject.id)),
-          child: Stack(
+    return Card(
+      color: scheme.surfaceContainerLow,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Gap.radius),
+        onTap: () =>
+            Navigator.of(context).push(SubjectDetailScreen.route(subject.id)),
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.md),
+          child: Row(
             children: [
-              // A soft disc bleeding off the corner; decoration only.
-              Positioned(
-                right: -36,
-                top: -36,
-                child: ExcludeSemantics(
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: fg.withValues(alpha: 0.12),
-                    ),
-                  ),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: base.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(Gap.md),
                 ),
+                child: Icon(Icons.menu_book_outlined, color: base),
               ),
-              Padding(
-                padding: const EdgeInsets.all(Gap.lg),
+              const SizedBox(width: Gap.md),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    ExcludeSemantics(
-                      child: Text(
-                        initial,
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          color: fg.withValues(alpha: 0.95),
-                          fontWeight: FontWeight.w700,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
                     Text(
                       subject.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        color: fg,
-                        fontWeight: FontWeight.w700,
-                        height: 1.15,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: Gap.xs),
                     Text(
                       counts,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: fg.withValues(alpha: 0.85),
+                        color: scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: Gap.sm),
+              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
             ],
           ),
         ),

@@ -49,19 +49,19 @@ class _Segments implements TranscriptSegmentsDao {
 
   @override
   Future<List<TranscriptSegment>> segmentsForMeeting(int meetingId) async => [
-        for (var i = 0; i < contents.length; i++)
-          TranscriptSegment(
-            id: i,
-            meetingId: meetingId,
-            sequence: i,
-            startMs: i * 10000,
-            endMs: (i + 1) * 10000,
-            content: contents[i],
-            status: SegmentStatus.transcribed,
-            localAudioPath: 'recordings/meeting_$meetingId/chunk_$i.wav',
-            createdAt: DateTime(2026, 9, 14),
-          ),
-      ];
+    for (var i = 0; i < contents.length; i++)
+      TranscriptSegment(
+        id: i,
+        meetingId: meetingId,
+        sequence: i,
+        startMs: i * 10000,
+        endMs: (i + 1) * 10000,
+        content: contents[i],
+        status: SegmentStatus.transcribed,
+        localAudioPath: 'recordings/meeting_$meetingId/chunk_$i.wav',
+        createdAt: DateTime(2026, 9, 14),
+      ),
+  ];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -106,30 +106,63 @@ Future<(_Notes, _Llm)> _run(
 }) async {
   final dao = notes ?? _Notes();
   final llm = _Llm(reply ?? (_) => '- Petr pošle nabídku do pátku.');
-  await NotesGenerator(llm, _Segments(contents), dao)
-      .generate(meetingId: 7, depth: depth);
+  await NotesGenerator(
+    llm,
+    _Segments(contents),
+    dao,
+  ).generate(meetingId: 7, depth: depth);
   return (dao, llm);
 }
 
 void main() {
-  test('notes from the transcript: segments joined, trimmed, blanks dropped',
-      () async {
-    final (notes, llm) =
-        await _run(['  Ahoj všem. ', null, '   ', '', 'Petr pošle nabídku.']);
+  test(
+    'notes from the transcript: segments joined, trimmed, blanks dropped',
+    () async {
+      final (notes, llm) = await _run([
+        '  Ahoj všem. ',
+        null,
+        '   ',
+        '',
+        'Petr pošle nabídku.',
+      ]);
 
-    expect(notes.events, ['generating', 'ready']);
-    expect(notes.content, '- Petr pošle nabídku do pátku.');
-    expect(notes.model, kGroqNotesModel);
-    expect(notes.depth, NotesDepth.standard);
-    expect(llm.calls, hasLength(1));
-    expect(llm.calls.single.model, kGroqNotesModel);
-    expect(llm.calls.single.user, 'Ahoj všem. Petr pošle nabídku.');
-  });
+      expect(notes.events, ['generating', 'ready']);
+      expect(notes.content, '- Petr pošle nabídku do pátku.');
+      expect(notes.model, kGroqNotesModel);
+      expect(notes.depth, NotesDepth.standard);
+      expect(llm.calls, hasLength(1));
+      expect(llm.calls.single.model, kGroqNotesModel);
+      expect(llm.calls.single.user, 'Ahoj všem. Petr pošle nabídku.');
+    },
+  );
 
   test('the reply is trimmed before it is stored', () async {
     final (notes, _) = await _run(['Něco.'], reply: (_) => '\n  - Bod.  \n');
     expect(notes.content, '- Bod.');
   });
+
+  test(
+    'a configured Gemini key serves an ordinary meeting, not just lessons',
+    () async {
+      final notes = _Notes();
+      final fallback = _Llm((_) => '- Záložní poznámky.');
+      final gemini = _Llm((_) => '- Poznámky z celé hodiny.');
+
+      await NotesGenerator(
+        fallback,
+        _Segments(['Dlouhá běžná porada bez přiřazeného předmětu.']),
+        notes,
+        gemini: gemini,
+        hasGeminiKey: () async => true,
+      ).generate(meetingId: 7, depth: NotesDepth.standard);
+
+      expect(notes.events, ['generating', 'ready']);
+      expect(notes.model, kGeminiModel);
+      expect(notes.content, '- Poznámky z celé hodiny.');
+      expect(gemini.calls.single.model, kGeminiModel);
+      expect(fallback.calls, isEmpty);
+    },
+  );
 
   test('each depth has its own token budget and its own shape', () async {
     const budgets = {
@@ -156,20 +189,23 @@ void main() {
     expect(notes.error, contains('prázdný'));
   });
 
-  test('a blank reply fails instead of replacing the notes with nothing',
-      () async {
-    for (final blank in ['', '   \n\t ']) {
-      final (notes, _) = await _run(['Něco.'], reply: (_) => blank);
-      expect(notes.events, ['generating', 'failed'], reason: '"$blank"');
-      expect(notes.content, isNull);
-      expect(notes.error, 'Model vrátil prázdnou odpověď.');
-    }
-  });
+  test(
+    'a blank reply fails instead of replacing the notes with nothing',
+    () async {
+      for (final blank in ['', '   \n\t ']) {
+        final (notes, _) = await _run(['Něco.'], reply: (_) => blank);
+        expect(notes.events, ['generating', 'failed'], reason: '"$blank"');
+        expect(notes.content, isNull);
+        expect(notes.error, 'Model vrátil prázdnou odpověď.');
+      }
+    },
+  );
 
   test('an AI failure lands on the row with its own message', () async {
     final (notes, _) = await _run(
       ['Něco.'],
-      reply: (_) => const AiPermanentException('Invalid API Key', statusCode: 401),
+      reply: (_) =>
+          const AiPermanentException('Invalid API Key', statusCode: 401),
     );
     expect(notes.events, ['generating', 'failed']);
     expect(notes.error, 'Invalid API Key');
@@ -183,8 +219,9 @@ void main() {
   });
 
   test('if the row cannot be claimed, the model is never called', () async {
-    final (notes, llm) =
-        await _run(['Něco.'], notes: _Notes(failGenerating: true));
+    final (notes, llm) = await _run([
+      'Něco.',
+    ], notes: _Notes(failGenerating: true));
     expect(llm.calls, isEmpty);
     expect(notes.events, isEmpty);
   });
@@ -231,14 +268,19 @@ void main() {
 
       for (var i = 0; i < windows.length; i++) {
         expect(windows[i].maxTokens, 1200);
-        expect(windows[i].system, contains('part ${i + 1} of ${windows.length}'));
+        expect(
+          windows[i].system,
+          contains('part ${i + 1} of ${windows.length}'),
+        );
       }
 
       expect(merge.maxTokens, 6000);
       expect(merge.system, contains('series of summaries'));
       for (var i = 0; i < windows.length; i++) {
-        expect(merge.user,
-            contains('--- ${i + 1}/${windows.length} ---\nshrnutí $i'));
+        expect(
+          merge.user,
+          contains('--- ${i + 1}/${windows.length} ---\nshrnutí $i'),
+        );
       }
       expect(notes.events, ['generating', 'ready']);
       expect(notes.content, 'shrnutí ${windows.length}');
@@ -255,10 +297,12 @@ void main() {
       expect(notes.error, 'rate limited');
     });
 
-    test('a transcript just under the threshold still goes in one call',
-        () async {
-      final (_, llm) = await _run(['a' * kNotesWindowThreshold]);
-      expect(llm.calls, hasLength(1));
-    });
+    test(
+      'a transcript just under the threshold still goes in one call',
+      () async {
+        final (_, llm) = await _run(['a' * kNotesWindowThreshold]);
+        expect(llm.calls, hasLength(1));
+      },
+    );
   });
 }

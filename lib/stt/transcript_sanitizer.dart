@@ -27,6 +27,81 @@
 /// exists to prevent.
 library;
 
+/// The result of removing a likely URL hallucination from a Whisper response.
+///
+/// A URL is intentionally removed only when it is the entire response. A
+/// teacher can genuinely say "najdete to na example.cz"; treating that as an
+/// artifact would make the transcript less trustworthy than the hallucination
+/// it prevents.
+class TranscriptUrlFilterResult {
+  const TranscriptUrlFilterResult({required this.text, this.reason});
+
+  final String text;
+
+  /// A privacy-safe diagnostic reason, or null when no URL was removed.
+  final String? reason;
+
+  bool get removed => reason != null;
+}
+
+/// Removes a standalone URL that is much more likely to be a Whisper artifact
+/// than something said in the room.
+///
+/// The known Hradec Králové domain is a repeatedly observed silence
+/// hallucination, so an otherwise empty response containing exactly that URL is
+/// always dropped. A generic domain is only dropped with weak evidence: very
+/// low transcription confidence or little voiced audio. This keeps a genuine
+/// spoken address intact unless the audio itself gives us a reason to distrust
+/// it.
+TranscriptUrlFilterResult filterTranscriptUrlArtifact(
+  String text, {
+  double? confidence,
+  int? voicedMs,
+  int? durationMs,
+}) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return TranscriptUrlFilterResult(text: trimmed);
+
+  final normalized = trimmed
+      .toLowerCase()
+      .replaceFirst(RegExp(r'''^["'“”„(\[]+'''), '')
+      .replaceFirst(RegExp(r'''[.,!?;:…"'”\])]+$'''), '');
+  if (_kKnownUrlArtifacts.contains(normalized)) {
+    return const TranscriptUrlFilterResult(
+      text: '',
+      reason: 'known_url_artifact',
+    );
+  }
+
+  if (!_standaloneUrl.hasMatch(normalized)) {
+    return TranscriptUrlFilterResult(text: trimmed);
+  }
+
+  final lowConfidence = confidence != null && confidence < -0.9;
+  final sparseVoice =
+      voicedMs != null &&
+      durationMs != null &&
+      durationMs > 0 &&
+      voicedMs * 5 < durationMs;
+  if (!lowConfidence && !sparseVoice) {
+    return TranscriptUrlFilterResult(text: trimmed);
+  }
+
+  return const TranscriptUrlFilterResult(
+    text: '',
+    reason: 'suspect_url_artifact',
+  );
+}
+
+const Set<String> _kKnownUrlArtifacts = {'www.hradeckralove.org'};
+
+/// Whole response only. It deliberately does not match a URL embedded in a
+/// sentence, which is far more likely to have been said deliberately.
+final RegExp _standaloneUrl = RegExp(
+  r'^(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,24}(?:/[^\s]*)?$',
+  caseSensitive: false,
+);
+
 /// Artifacts that only count when they are the entire sentence.
 ///
 /// Written in normalised form: lowercase, diacritics folded, punctuation gone.
@@ -88,13 +163,16 @@ String sanitizeTranscript(String raw) {
       .trim();
   if (text.isEmpty) return '';
 
+  final urlFiltered = filterTranscriptUrlArtifact(text);
+  if (urlFiltered.removed) return '';
+
   if (_isArtifact(text)) return '';
 
   final sentences = _splitSentences(text);
   if (sentences.length < 2) {
     // One sentence that is not an artifact: nothing to strip. Bailing out here
     // also stops the loop below from being able to empty out real speech.
-    return text;
+    return urlFiltered.text;
   }
 
   // Whisper sometimes stacks two of them ("Děkuji za pozornost. Titulky
@@ -270,19 +348,43 @@ String foldAligned(String input) {
 
 /// Czech letters plus the few others Whisper can emit for Czech audio.
 const Map<String, String> _diacritics = {
-  'á': 'a', 'ä': 'a', 'à': 'a', 'â': 'a',
-  'č': 'c', 'ć': 'c', 'ç': 'c',
+  'á': 'a',
+  'ä': 'a',
+  'à': 'a',
+  'â': 'a',
+  'č': 'c',
+  'ć': 'c',
+  'ç': 'c',
   'ď': 'd',
-  'é': 'e', 'ě': 'e', 'ë': 'e', 'è': 'e', 'ê': 'e',
-  'í': 'i', 'ï': 'i', 'ì': 'i', 'î': 'i',
-  'ň': 'n', 'ń': 'n',
-  'ó': 'o', 'ö': 'o', 'ô': 'o', 'ò': 'o',
+  'é': 'e',
+  'ě': 'e',
+  'ë': 'e',
+  'è': 'e',
+  'ê': 'e',
+  'í': 'i',
+  'ï': 'i',
+  'ì': 'i',
+  'î': 'i',
+  'ň': 'n',
+  'ń': 'n',
+  'ó': 'o',
+  'ö': 'o',
+  'ô': 'o',
+  'ò': 'o',
   'ř': 'r',
-  'š': 's', 'ś': 's',
+  'š': 's',
+  'ś': 's',
   'ť': 't',
-  'ú': 'u', 'ů': 'u', 'ü': 'u', 'ù': 'u', 'û': 'u',
-  'ý': 'y', 'ÿ': 'y',
-  'ž': 'z', 'ź': 'z', 'ż': 'z',
+  'ú': 'u',
+  'ů': 'u',
+  'ü': 'u',
+  'ù': 'u',
+  'û': 'u',
+  'ý': 'y',
+  'ÿ': 'y',
+  'ž': 'z',
+  'ź': 'z',
+  'ż': 'z',
   'ł': 'l',
 };
 

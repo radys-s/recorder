@@ -27,11 +27,21 @@ void main() {
     });
   }
 
-  Future<void> pumpSubjects(WidgetTester tester) async {
+  Future<void> pumpSubjects(
+    WidgetTester tester, {
+    bool largeText = false,
+  }) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [appDatabaseProvider.overrideWithValue(db)],
-        child: const MaterialApp(home: SubjectsScreen()),
+        child: MaterialApp(
+          home: const SubjectsScreen(),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(largeText ? 2 : 1)),
+            child: child!,
+          ),
+        ),
       ),
     );
     await settle(tester);
@@ -44,7 +54,7 @@ void main() {
     expect(find.text('Nový předmět'), findsOneWidget);
   });
 
-  subjectsTest('the tab has a collapsing large title and a tile grid', (
+  subjectsTest('the tab has a collapsing large title and a compact list', (
     tester,
   ) async {
     await db.savedNotesDao.createFolder('Čeština');
@@ -53,7 +63,17 @@ void main() {
     expect(find.byType(SliverAppBar), findsOneWidget);
     // The large variant renders the title twice: expanded and collapsed.
     expect(find.text('Předměty'), findsNWidgets(2));
-    expect(find.byType(SliverGrid), findsOneWidget);
+    expect(find.byType(SliverList), findsOneWidget);
+  });
+
+  subjectsTest('subject rows remain readable at 200% text scale', (
+    tester,
+  ) async {
+    await db.savedNotesDao.createFolder('Dějiny středověké Evropy');
+    await pumpSubjects(tester, largeText: true);
+
+    expect(find.text('Dějiny středověké Evropy'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   subjectsTest('the new-subject button stays above a floating bar', (

@@ -782,9 +782,9 @@ class _LiveAnswersSection extends ConsumerWidget {
               : null,
           title: const Text('Hledat i na internetu'),
           subtitle: const Text(
-            'Když na otázku neodpovídá samotná schůzka, aplikace ji vyhledá '
-            'na internetu a ukáže i zdroje. Odchází jen samotná otázka, '
-            'nikdy přepis schůzky.',
+            'Vyžaduje Gemini klíč. Když na otázku neodpovídá samotná'
+            ' schůzka, aplikace ji vyhledá na internetu a ukáže i zdroje.'
+            ' Odchází jen samotná otázka, nikdy přepis schůzky.',
           ),
         ),
       ],
@@ -928,8 +928,7 @@ class _DiagnosticsSection extends ConsumerWidget {
           leading: const Icon(Icons.travel_explore_outlined),
           title: const Text('Zkouška webové odpovědi'),
           subtitle: const Text(
-            'Projede varianty požadavku a ukáže, '
-            'která u Groqu projde.',
+            'Ověří Gemini vyhledávání včetně skutečných zdrojů.',
           ),
           onTap: () => _probeWebAnswers(context, ref),
         ),
@@ -947,20 +946,17 @@ class _DiagnosticsSection extends ConsumerWidget {
     );
   }
 
-  /// One tap, one fixed question, every request shape the web hop could use.
-  /// Reproducing a web-answer failure through the normal path costs two
-  /// minutes of replayed audio and gives one data point; this gives all of
-  /// them, which is what makes a limit on Groq's side distinguishable from a
-  /// bad request on ours.
+  /// One fixed question through the same grounded search as a live answer.
   Future<void> _probeWebAnswers(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(content: Text('Zkouším varianty, viz log…')),
+        const SnackBar(content: Text('Ověřuji vyhledávání a zdroje…')),
       );
 
-    final lines = await WebAnswerProbe(ref.read(llmProvider)).run();
+    final lines = await WebAnswerProbe(ref.read(webAnswerServiceProvider))
+        .run();
     if (!context.mounted) return;
     await showDialog<void>(
       context: context,

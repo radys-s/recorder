@@ -327,17 +327,21 @@ class _FolderBar extends StatelessWidget {
         onSelected: () => onSelected(FolderFilter.all),
       ),
       for (final summary in folders)
-        GestureDetector(
+        Semantics(
+          hint: 'Dlouhým stiskem lze předmět přejmenovat nebo smazat.',
           onLongPress: () => onLongPress(summary),
-          child: _FilterChip(
-            avatar: SubjectDot(
-              color: subjectColor(context, summary.folder.colorIndex),
+          child: GestureDetector(
+            onLongPress: () => onLongPress(summary),
+            child: _FilterChip(
+              avatar: SubjectDot(
+                color: subjectColor(context, summary.folder.colorIndex),
+              ),
+              label: summary.folder.name,
+              count: summary.noteCount,
+              selected: filter.folderId == summary.folder.id,
+              onSelected: () =>
+                  onSelected(FolderFilter.folder(summary.folder.id)),
             ),
-            label: summary.folder.name,
-            count: summary.noteCount,
-            selected: filter.folderId == summary.folder.id,
-            onSelected: () =>
-                onSelected(FolderFilter.folder(summary.folder.id)),
           ),
         ),
       // Only once there are subjects: before that every note is unfiled and the
@@ -357,8 +361,9 @@ class _FolderBar extends StatelessWidget {
       ),
     ];
 
+    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.0);
     return SizedBox(
-      height: 48,
+      height: 48 * scale,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: Gap.lg),

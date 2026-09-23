@@ -276,6 +276,17 @@ class TranscriptionQueueWorker {
           durationMs: segment.endMs - segment.startMs,
         );
       }
+      // The broad URL rule needs evidence from the recording itself. The
+      // sanitizer has already removed known standalone artifacts; this second
+      // pass only removes an arbitrary domain when Whisper was uncertain or
+      // almost no voice reached the microphone.
+      final urlFilter = filterTranscriptUrlArtifact(
+        text,
+        confidence: result.confidence,
+        voicedMs: segment?.voicedMs,
+        durationMs: segment == null ? null : segment.endMs - segment.startMs,
+      );
+      text = urlFilter.text;
       if (text != result.text.trim()) {
         AppLog.d(
           _tag,
@@ -316,7 +327,7 @@ class TranscriptionQueueWorker {
         diagnostics?.record(
           ListeningStage.transcription,
           ListeningOutcome.rejected,
-          promptEcho ? 'prompt_echo' : 'transcript_empty',
+          promptEcho ? 'prompt_echo' : (urlFilter.reason ?? 'transcript_empty'),
           meetingId: row.meetingId,
           queueId: row.id,
           segmentId: row.segmentId,

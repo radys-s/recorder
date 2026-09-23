@@ -48,6 +48,7 @@ class RefinedTranscriptService {
     required this.tempDir,
     this.lessonInfo,
     this.waitForTurn,
+    this.onMeetingReady,
     this.onPassFinished,
     this.retryDelays = kRefinedRetryDelays,
   });
@@ -63,6 +64,11 @@ class RefinedTranscriptService {
 
   /// Awaited before every request, e.g. to wait out a missing connection.
   final Future<void> Function()? waitForTurn;
+
+  /// Called after all refinement windows for one finished meeting settle.
+  /// This deliberately runs after the second pass: notes should use the best
+  /// text available, not race the live chunk transcription.
+  final Future<void> Function(int meetingId)? onMeetingReady;
 
   /// Called once the queue runs dry. The audio cleanup hangs off this: a
   /// window that still has to be re-heard is the one thing that must not have
@@ -219,7 +225,19 @@ class RefinedTranscriptService {
       final next = windows
           .where((w) => w.status == RefinedStatus.pending)
           .firstOrNull;
-      if (next == null) return;
+      if (next == null) {
+        try {
+          await onMeetingReady?.call(meetingId);
+        } catch (e, st) {
+          AppLog.e(
+            _tag,
+            'meeting $meetingId: after-refinement step failed',
+            e,
+            st,
+          );
+        }
+        return;
+      }
       await _processWindow(next, windows);
     }
   }

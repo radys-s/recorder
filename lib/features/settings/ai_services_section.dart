@@ -24,8 +24,15 @@ class AiServicesSection extends StatelessWidget {
         SectionHeader(
           title: 'Další AI služby',
           description:
-              'Nepovinné. Když jedné službě dojde limit nebo je přetížená, '
-              'aplikace hned použije další s klíčem. Nic se nenastavuje.',
+              'Nepovinné bezplatné zálohy. Když jedné službě dojde limit nebo '
+              'je přetížená, aplikace hned použije další uložený klíč.',
+        ),
+        _ServiceKeyCard(
+          vendor: AiVendor.cerebras,
+          hint:
+              'Klíč zdarma na cloud.cerebras.ai. Velmi rychlý, jen text — '
+              'je to nejlepší první záloha pro poznámky a opravy přepisu.',
+          privacy: 'Posílá se text přepisu a otázek, nikdy zvuk.',
         ),
         _ServiceKeyCard(
           vendor: AiVendor.mistral,
@@ -35,13 +42,6 @@ class AiServicesSection extends StatelessWidget {
           privacy:
               'Bezplatný tarif může vstupy použít k tréninku — vypnout '
               'to jde v nastavení účtu Mistral (Privacy).',
-        ),
-        _ServiceKeyCard(
-          vendor: AiVendor.cerebras,
-          hint:
-              'Klíč zdarma na cloud.cerebras.ai. Velmi rychlý, jen text — '
-              'hlavně pro opravy přepisu.',
-          privacy: 'Posílá se text přepisu a otázek, nikdy zvuk.',
         ),
         _ServiceKeyCard(
           vendor: AiVendor.custom,

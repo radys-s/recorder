@@ -152,41 +152,129 @@ class _BannerState extends ConsumerState<_Banner> {
 
     final name = MeetingDetailScreen.routeNameFor(meetingId);
 
-    // A predicate that is always true pops nothing; visiting the stack this way
-    // is the only reading of it the public Navigator API offers.
-    var alreadyOpen = false;
+    // `popUntil` evaluates each route from the top down. Returning true for
+    // every route only inspected the top one, so the old code pushed a second
+    // detail screen whenever Settings covered the original meeting.
+    var found = false;
     navigator.popUntil((route) {
-      if (route.settings.name == name) alreadyOpen = true;
-      return true;
+      if (route.settings.name == name) {
+        found = true;
+        return true;
+      }
+      return route.isFirst;
     });
 
-    if (alreadyOpen) {
-      navigator.popUntil((route) => route.settings.name == name);
-    } else {
+    if (!found) {
       navigator.push(MeetingDetailScreen.route(meetingId));
     }
   }
 
+  Future<void> _confirmStop(BuildContext context) async {
+    final stop = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.stop_circle_outlined),
+        title: const Text('Ukončit nahrávání?'),
+        content: const Text(
+          'Dosavadní zvuk se uloží a přepis doběhne. Nahrávání už nepůjde obnovit.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Pokračovat v hodině'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.stop),
+            label: const Text('Ukončit'),
+          ),
+        ],
+      ),
+    );
+    if (stop != true || !mounted) return;
+    HapticFeedback.mediumImpact();
+    await ref.read(recordingControllerProvider.notifier).stop();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Only the two fields this strip shows; the clock has its own ticker.
-    final meetingId = ref.watch(
-      recordingControllerProvider.select((s) => s.meetingId),
-    );
-    final startedAt = ref.watch(
-      recordingControllerProvider.select((s) => s.startedAt),
-    );
-    final weakSignal = ref.watch(
-      recordingControllerProvider.select((s) => s.weakSignal),
-    );
-    final elapsed = startedAt == null
-        ? Duration.zero
-        : DateTime.now().difference(startedAt);
+    // The clock has its own ticker, but pause state has to reach this strip
+    // immediately: it changes both the copy and the actions a user can take.
+    final recording = ref.watch(recordingControllerProvider);
+    final meetingId = recording.meetingId;
+    final paused = recording.isPaused;
+    final elapsed = recording.elapsed;
+    final weakSignal = recording.weakSignal;
     final scheme = Theme.of(context).colorScheme;
     final warn = weakSignal && _signalNoticeDismissed != meetingId;
+    final background = paused
+        ? scheme.secondaryContainer
+        : scheme.errorContainer;
+    final foreground = paused
+        ? scheme.onSecondaryContainer
+        : scheme.onErrorContainer;
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.3;
+
+    Widget status() => Row(
+      children: [
+        paused
+            ? Icon(Icons.pause_circle_filled, color: foreground)
+            : const _PulsingDot(),
+        const SizedBox(width: Gap.sm),
+        Expanded(
+          child: Text(
+            '${paused ? 'Pozastaveno' : 'Nahrává se'} · ${formatClock(elapsed)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: foreground,
+              fontWeight: FontWeight.w500,
+              fontFeatures: kTabularFigures,
+            ),
+          ),
+        ),
+        if (!paused && !largeText) ...[
+          const SizedBox(width: Gap.sm),
+          LevelWaveform(
+            level: ref.read(recordingControllerProvider.notifier).level,
+            color: foreground,
+          ),
+        ],
+      ],
+    );
+
+    Widget actions() => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextButton.icon(
+          style: TextButton.styleFrom(
+            foregroundColor: foreground,
+            minimumSize: const Size(44, 44),
+            tapTargetSize: MaterialTapTargetSize.padded,
+          ),
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            final controller = ref.read(recordingControllerProvider.notifier);
+            if (paused) {
+              controller.resume();
+            } else {
+              controller.pause();
+            }
+          },
+          icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
+          label: Text(paused ? 'Pokračovat' : 'Pozastavit'),
+        ),
+        IconButton(
+          tooltip: 'Ukončit nahrávání',
+          onPressed: () => _confirmStop(context),
+          icon: Icon(Icons.stop, size: 20, color: foreground),
+          style: IconButton.styleFrom(foregroundColor: foreground),
+        ),
+      ],
+    );
 
     return Material(
-      color: scheme.errorContainer,
+      color: background,
       child: InkWell(
         onTap: meetingId == null ? null : () => _openMeeting(meetingId),
         child: SafeArea(
@@ -196,41 +284,27 @@ class _BannerState extends ConsumerState<_Banner> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    const _PulsingDot(),
-                    const SizedBox(width: Gap.sm),
-                    Expanded(
-                      child: Text(
-                        'Nahrává se · ${formatClock(elapsed)}',
-                        style: TextStyle(
-                          color: scheme.onErrorContainer,
-                          fontWeight: FontWeight.w500,
-                          // The clock ticks every second; without tabular digits
-                          // the whole line shifts as they change width.
-                          fontFeatures: kTabularFigures,
-                        ),
-                      ),
-                    ),
-                    LevelWaveform(
-                      level: ref
-                          .read(recordingControllerProvider.notifier)
-                          .level,
-                      color: scheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: Gap.xs),
-                    TextButton.icon(
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        ref.read(recordingControllerProvider.notifier).stop();
-                      },
-                      icon: const Icon(Icons.stop, size: 18),
-                      label: const Text('Zastavit'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: scheme.onErrorContainer,
-                      ),
-                    ),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (largeText || constraints.maxWidth < 360) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          status(),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: actions(),
+                          ),
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: status()),
+                        actions(),
+                      ],
+                    );
+                  },
                 ),
                 if (warn)
                   _WeakSignalNotice(
@@ -276,7 +350,6 @@ class _WeakSignalNotice extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Skrýt',
-            visualDensity: VisualDensity.compact,
             onPressed: onDismiss,
             icon: Icon(Icons.close, size: 18, color: scheme.onErrorContainer),
           ),
