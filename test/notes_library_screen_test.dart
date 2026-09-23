@@ -110,7 +110,13 @@ void main() {
 
     await pumpLibrary(tester, largeText: true);
 
-    expect(find.text('Velmi dlouhý název předmětu'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(ChoiceChip),
+        matching: find.text('Velmi dlouhý název předmětu'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

@@ -26,7 +26,7 @@ void main() {
       );
     });
 
-    test('excludes the pause currently in progress', () {
+    test('excludes both completed and in-progress pauses', () {
       final state = RecordingState(
         startedAt: started,
         isPaused: true,
@@ -36,7 +36,7 @@ void main() {
 
       expect(
         state.elapsedAt(started.add(const Duration(minutes: 12))),
-        const Duration(minutes: 5),
+        const Duration(minutes: 3),
       );
     });
 

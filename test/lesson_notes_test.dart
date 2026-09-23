@@ -192,13 +192,18 @@ void main() {
     });
 
     test(
-      'a meeting without lesson material keeps the meeting prompt',
+      'a meeting without lesson material still uses Gemini when available',
       () async {
         final id = await meeting();
         final (groq, gemini, after) = await run(id: id, lesson: null);
-        expect(gemini.calls, isEmpty);
-        expect(groq.calls.single.user, 'Dnes Babička.');
-        expect(groq.calls.single.system, isNot(contains('výpisky')));
+        expect(groq.calls, isEmpty);
+        expect(gemini.calls.single.model, kGeminiModel);
+        expect(gemini.calls.single.user, 'Dnes Babička.');
+        expect(gemini.calls.single.system, isNot(contains('výpisky')));
+        expect(
+          (await db.meetingNotesDao.forMeeting(id))?.content,
+          '- Gemini výpisky',
+        );
         expect(after, isEmpty);
       },
     );
