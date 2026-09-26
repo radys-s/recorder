@@ -13,6 +13,38 @@ import '../../../core/theme.dart';
 import '../../../core/widgets/level_waveform.dart';
 import '../meeting_detail_screen.dart';
 
+/// Asks before ending a recording, since it cannot be resumed afterwards.
+/// Shared by this strip and the dashboard stage.
+Future<void> confirmAndStopRecording(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  final stop = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      icon: const Icon(Icons.stop_circle_outlined),
+      title: const Text('Ukončit nahrávání?'),
+      content: const Text(
+        'Dosavadní zvuk se uloží a přepis doběhne. Nahrávání už nepůjde obnovit.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Pokračovat v hodině'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          icon: const Icon(Icons.stop),
+          label: const Text('Ukončit'),
+        ),
+      ],
+    ),
+  );
+  if (stop != true || !context.mounted) return;
+  HapticFeedback.mediumImpact();
+  await ref.read(recordingControllerProvider.notifier).stop();
+}
+
 /// The "recording in progress" strip, mounted from `MaterialApp.builder` so it
 /// sits above the Navigator and therefore above *every* route — a recording is
 /// easy to forget about, and forgetting is the one failure this app must not
@@ -54,9 +86,9 @@ class _RecordingIndicatorBannerState
 
   @override
   Widget build(BuildContext context) {
-    final isRecording = ref.watch(
-      recordingControllerProvider.select((s) => s.isRecording),
-    );
+    final isRecording =
+        ref.watch(recordingControllerProvider.select((s) => s.isRecording)) &&
+        !ref.watch(dashboardStageVisibleProvider);
 
     // Reduced motion gets the end state on the spot; everyone else gets the
     // strip sliding the routes down instead of teleporting them.
@@ -169,32 +201,8 @@ class _BannerState extends ConsumerState<_Banner> {
     }
   }
 
-  Future<void> _confirmStop(BuildContext context) async {
-    final stop = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.stop_circle_outlined),
-        title: const Text('Ukončit nahrávání?'),
-        content: const Text(
-          'Dosavadní zvuk se uloží a přepis doběhne. Nahrávání už nepůjde obnovit.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Pokračovat v hodině'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.stop),
-            label: const Text('Ukončit'),
-          ),
-        ],
-      ),
-    );
-    if (stop != true || !mounted) return;
-    HapticFeedback.mediumImpact();
-    await ref.read(recordingControllerProvider.notifier).stop();
-  }
+  Future<void> _confirmStop(BuildContext context) =>
+      confirmAndStopRecording(context, ref);
 
   @override
   Widget build(BuildContext context) {

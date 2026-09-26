@@ -73,6 +73,14 @@ import 'photo_picker.dart';
 /// `Navigator.of` would find nothing — this key is how it navigates.
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
+/// Lets the home shell know when a route covers it.
+final appRouteObserver = RouteObserver<ModalRoute<void>>();
+
+/// True while the dashboard's stage is on screen. The stage then shows the
+/// recording itself, so the global strip stays closed instead of saying the
+/// same thing twice.
+final dashboardStageVisibleProvider = StateProvider<bool>((ref) => false);
+
 /// Internal, privacy-safe trace for the capture-to-answer path. The detailed
 /// in-memory history is only retained in debug builds.
 final listeningDiagnosticsProvider = Provider<ListeningDiagnostics>((ref) {

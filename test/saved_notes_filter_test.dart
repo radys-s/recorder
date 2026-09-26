@@ -78,18 +78,33 @@ void main() {
     test('drops bullet marks and blank lines', () {
       expect(
         notePreview('Rozhodnutí:\n- Jan pošle nabídku\n\n• Eva zavolá\n* hotovo'),
-        'Rozhodnutí: · Jan pošle nabídku · Eva zavolá · hotovo',
+        'Rozhodnutí: Jan pošle nabídku, Eva zavolá, hotovo.',
+      );
+    });
+
+    test('reads headings and their items as sentences', () {
+      expect(
+        notePreview(
+          '## Téma:\n- Babička\n- Božena Němcová.\n\n**Klíčové pojmy:**\n'
+          '- próza – souvislý text',
+        ),
+        'Téma: Babička, Božena Němcová. Klíčové pojmy: próza – souvislý text.',
       );
     });
 
     test('keeps a hyphen that is not a bullet', () {
-      expect(notePreview('Česko-slovenský tým'), 'Česko-slovenský tým');
+      expect(notePreview('Česko-slovenský tým'), 'Česko-slovenský tým.');
+    });
+
+    test('an empty note has no preview', () {
+      expect(notePreview('\n  \n'), '');
     });
   });
 
   group('isDefaultMeetingTitle', () {
     test('matches the generated title', () {
       expect(isDefaultMeetingTitle('Schůzka 08.09. 09:50'), isTrue);
+      expect(isDefaultMeetingTitle('Hodina 26.9. 8:00'), isTrue);
     });
 
     test('anything the user wrote is a custom title', () {

@@ -165,6 +165,7 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     return MaterialApp(
       title: 'Aftermind',
       navigatorKey: appNavigatorKey,
+      navigatorObservers: [appRouteObserver],
       theme: appLightTheme,
       darkTheme: appDarkTheme,
       // Follows the device. The Android launch window already has a night

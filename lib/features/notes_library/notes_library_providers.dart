@@ -87,14 +87,40 @@ bool _containsAll(SavedNote note, List<String> words) {
   return words.every(haystack.contains);
 }
 
-/// A one-paragraph preview of a note for a list row: bullet marks dropped and
-/// lines run together, so two preview lines carry two lines of content rather
-/// than one bullet and a blank.
+/// A one-paragraph prose preview of a note for a list row: bullet marks and
+/// Markdown emphasis dropped, a heading line („Téma:") runs into the items
+/// under it („Téma: Babička, Božena Němcová."), so two preview lines read as
+/// text rather than as flattened markup.
 String notePreview(String content) {
-  final bullet = RegExp(r'^\s*[-•*–]\s+');
-  return content
-      .split('\n')
-      .map((line) => line.replaceFirst(bullet, '').trim())
-      .where((line) => line.isNotEmpty)
-      .join(' · ');
+  final bullet = RegExp(r'^\s*(?:[-•*–]|#+)\s+');
+  final sentences = <String>[];
+  String? heading;
+  final items = <String>[];
+
+  void flush() {
+    if (heading == null && items.isEmpty) return;
+    final body = items.join(', ');
+    sentences.add(
+      heading == null ? body : (body.isEmpty ? heading! : '$heading $body'),
+    );
+    heading = null;
+    items.clear();
+  }
+
+  for (final raw in content.split('\n')) {
+    final line = raw
+        .replaceFirst(bullet, '')
+        .replaceAll('**', '')
+        .trim()
+        .replaceFirst(RegExp(r'[.;]+$'), '');
+    if (line.isEmpty) continue;
+    if (line.endsWith(':')) {
+      flush();
+      heading = line;
+    } else {
+      items.add(line);
+    }
+  }
+  flush();
+  return sentences.isEmpty ? '' : '${sentences.join('. ')}.';
 }

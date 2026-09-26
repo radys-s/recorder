@@ -26,7 +26,9 @@ final meetingDeleterProvider = Provider<MeetingDeleter>((ref) {
 /// The list shows the time instead of a title like this, since the day heading
 /// above the row already says the rest.
 bool isDefaultMeetingTitle(String title) =>
-    RegExp(r'^(?:Schůzka|Hodina) \d{2}\.\d{2}\. \d{2}:\d{2}$').hasMatch(title);
+    RegExp(
+      r'^(?:Schůzka|Hodina) \d{1,2}\. ?\d{1,2}\. \d{1,2}:\d{2}$',
+    ).hasMatch(title);
 
 /// Deletes the meeting with its audio, transcript, answers and notes after
 /// the undo window. Saved notes in the library stay.

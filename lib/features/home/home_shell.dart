@@ -1,7 +1,11 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/motion.dart';
+import '../../core/providers.dart';
 import '../../core/spacing.dart';
 import '../meetings_list/meetings_list_screen.dart';
 import '../notes_library/notes_library_screen.dart';
@@ -14,21 +18,59 @@ import '../subjects/subjects_screen.dart';
 /// app bar and button; the detail screens are pushed over the whole shell, so
 /// the bar underneath does not follow into a meeting.
 ///
-/// Navigation is a floating dock (see [_HomeNavigationBar]).
-class HomeShell extends StatefulWidget {
+/// The shell also tells the global recording banner when the dashboard stage
+/// is on screen: the stage *is* the recording then, and a second red strip
+/// above it would say the same thing twice.
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
   int _index = 0;
+
+  /// Whether a route is pushed over the shell.
+  bool _covered = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncStage());
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPushNext() {
+    _covered = true;
+    _syncStage();
+  }
+
+  @override
+  void didPopNext() {
+    _covered = false;
+    _syncStage();
+  }
+
+  void _syncStage() {
+    if (!mounted) return;
+    ref.read(dashboardStageVisibleProvider.notifier).state =
+        _index == 0 && !_covered;
+  }
 
   void _select(int i) {
     if (i == _index) return;
     HapticFeedback.selectionClick();
     setState(() => _index = i);
+    _syncStage();
   }
 
   @override
@@ -66,9 +108,8 @@ const _tabs = [
   _Tab('Knihovna', Icons.auto_stories_outlined, Icons.auto_stories),
 ];
 
-/// A quiet floating dock. It floats so content can run under it, but it is
-/// near-opaque (no blur — that costs frames over long lists) and carries only
-/// three destinations and one moving pill.
+/// A floating glass dock: content scrolls under it and shows through the blur.
+/// Only the selected destination carries colour — gold, the one accent.
 ///
 /// The Scaffold uses `extendBody`, so the dock's height reaches every tab as
 /// bottom padding; the root lists add that padding after their last row and
@@ -88,6 +129,7 @@ class _HomeNavigationBar extends StatelessWidget {
     final reduced = reducedMotion(context);
     final height = largeText ? 76.0 : 64.0;
     final bottom = MediaQuery.viewPaddingOf(context).bottom;
+    final radius = BorderRadius.circular(height / 2);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -96,61 +138,72 @@ class _HomeNavigationBar extends StatelessWidget {
         Gap.xl,
         bottom > 0 ? bottom : Gap.md,
       ),
-      child: Container(
-        height: height,
-        padding: const EdgeInsets.all(Gap.xs + 2),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: (dark ? const Color(0xFF1E1F23) : scheme.surface).withValues(
-            alpha: 0.97,
-          ),
-          borderRadius: BorderRadius.circular(height / 2),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: dark ? 0.8 : 0.9),
-          ),
+          borderRadius: radius,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: dark ? 0.45 : 0.10),
+              color: Colors.black.withValues(alpha: dark ? 0.40 : 0.08),
               blurRadius: 24,
               offset: const Offset(0, 8),
             ),
           ],
         ),
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final slot = box.maxWidth / _tabs.length;
-            return Stack(
-              children: [
-                // The moving pill behind the selected destination.
-                AnimatedPositioned(
-                  duration: reduced ? Duration.zero : AppDuration.base,
-                  curve: AppCurve.standard,
-                  left: slot * index,
-                  top: 0,
-                  bottom: 0,
-                  width: slot,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(height / 2),
-                    ),
-                  ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              height: height,
+              padding: const EdgeInsets.all(Gap.xs + 2),
+              decoration: BoxDecoration(
+                color: (dark ? const Color(0xFF1E1F23) : Colors.white)
+                    .withValues(alpha: 0.72),
+                borderRadius: radius,
+                border: Border.all(
+                  width: 0.5,
+                  color: scheme.outlineVariant.withValues(alpha: 0.8),
                 ),
-                Row(
-                  children: [
-                    for (var i = 0; i < _tabs.length; i++)
-                      Expanded(
-                        child: _DockItem(
-                          tab: _tabs[i],
-                          selected: i == index,
-                          onTap: () => onSelected(i),
-                          radius: height / 2,
+              ),
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final slot = box.maxWidth / _tabs.length;
+                  return Stack(
+                    children: [
+                      // A faint pill behind the selected destination.
+                      AnimatedPositioned(
+                        duration: reduced ? Duration.zero : AppDuration.base,
+                        curve: AppCurve.standard,
+                        left: slot * index,
+                        top: 0,
+                        bottom: 0,
+                        width: slot,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: scheme.onSurface.withValues(alpha: 0.07),
+                            borderRadius: radius,
+                          ),
                         ),
                       ),
-                  ],
-                ),
-              ],
-            );
-          },
+                      Row(
+                        children: [
+                          for (var i = 0; i < _tabs.length; i++)
+                            Expanded(
+                              child: _DockItem(
+                                tab: _tabs[i],
+                                selected: i == index,
+                                onTap: () => onSelected(i),
+                                radius: height / 2,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -174,7 +227,7 @@ class _DockItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final color = selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
+    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
     return Semantics(
       selected: selected,
       button: true,

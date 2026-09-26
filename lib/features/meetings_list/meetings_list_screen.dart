@@ -7,35 +7,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/formatting.dart';
 import '../../core/motion.dart';
+import '../../core/pending_deletions.dart';
 import '../../core/providers.dart';
 import '../../core/spacing.dart';
 import '../../core/theme.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
+import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/menu_row.dart';
-import '../../core/widgets/pressable.dart';
 import '../../core/widgets/status_chip.dart';
-import '../../data/db/app_database.dart';
 import '../../data/db/daos/meetings_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
+import '../notes_library/notes_library_providers.dart';
+import '../notes_library/saved_note_screen.dart';
 import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
 import '../subjects/subject_actions.dart';
 import '../subjects/subject_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
 import '../subjects/widgets/lesson_sheet.dart';
-import '../subjects/widgets/subject_badge.dart';
 import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
-import 'widgets/latest_notes_card.dart';
+import 'widgets/dashboard_stage.dart';
 import 'widgets/onboarding_card.dart';
-import 'widgets/record_hero.dart';
-import '../notes_library/notes_library_providers.dart';
-import '../notes_library/saved_note_screen.dart';
-import '../../core/pending_deletions.dart';
 
-/// Home screen: a big start card, then every recorded meeting, newest first.
+/// Home screen: a dark stage with the record control (and, while a lesson
+/// runs, the recording itself), then the latest notes and every lesson as
+/// iOS-style inset groups, newest first.
 class MeetingsListScreen extends ConsumerStatefulWidget {
   const MeetingsListScreen({super.key});
 
@@ -44,12 +43,11 @@ class MeetingsListScreen extends ConsumerStatefulWidget {
 }
 
 class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
-  /// Meeting ids whose entrance has already played — see the same field on
-  /// `MeetingDetailScreen` for why the bookkeeping lives here and not inside
-  /// [Entrance].
-  final _seen = <int>{};
+  /// Day groups whose entrance has already played. Rows of a group arrive
+  /// together, so the group — not the row — is what enters.
+  final _seen = <String>{};
 
-  /// A second tap on the start card while the first is still opening the
+  /// A second tap on the record disc while the first is still opening the
   /// microphone would otherwise push the meeting screen twice.
   bool _starting = false;
 
@@ -92,9 +90,6 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
   Future<void> _resumeRecording() async {
     await ref.read(recordingControllerProvider.notifier).resume();
-    if (!mounted) return;
-    final recording = ref.read(recordingControllerProvider);
-    if (recording.isRecording && !recording.isPaused) _openRecording();
   }
 
   Future<void> _openSettings() async {
@@ -175,11 +170,8 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                     if (!hidden.contains(s.meeting.id)) s,
                 ],
         );
-    final isRecording = ref.watch(
-      recordingControllerProvider.select((s) => s.isRecording),
-    );
-    final isPaused = ref.watch(
-      recordingControllerProvider.select((s) => s.isPaused),
+    final liveMeetingId = ref.watch(
+      recordingControllerProvider.select((s) => s.meetingId),
     );
     final recordingError = ref.watch(
       recordingControllerProvider.select((s) => s.error),
@@ -187,51 +179,28 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     final keyKnown = ref.watch(hasApiKeyProvider).valueOrNull;
     final hasKey = keyKnown ?? true;
     final onboarding = _onboarding(keyKnown);
-    // The shell's floating dock arrives as bottom padding, so this clears both
-    // the dock and the home indicator.
+    // The shell's floating tab bar arrives as bottom padding, so this clears
+    // both the bar and the home indicator.
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final latest = _latestNotes(summaries.valueOrNull);
+
+    String? liveSubject;
+    for (final s in summaries.valueOrNull ?? const <MeetingSummary>[]) {
+      if (s.meeting.id == liveMeetingId) liveSubject = s.subject?.name;
+    }
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // Compact on purpose: the first thing under the status bar is the
-          // record action, not a headline.
-          SliverAppBar(
-            pinned: true,
-            toolbarHeight: 64,
-            titleSpacing: Gap.xl,
-            title: _DashboardTitle(today: DateTime.now()),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search),
-                tooltip: 'Hledat',
-                onPressed: () =>
-                    Navigator.of(context).push(SearchScreen.route()),
-              ),
-              IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                tooltip: 'Nastavení',
-                onPressed: _openSettings,
-              ),
-              const SizedBox(width: Gap.xs),
-            ],
-          ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Gap.lg,
-                Gap.xs,
-                Gap.lg,
-                Gap.sm,
-              ),
-              child: RecordHero(
-                isRecording: isRecording,
-                isPaused: isPaused,
-                onStart: _startRecording,
-                onOpen: _openRecording,
-                onResume: _resumeRecording,
-              ),
+            child: DashboardStage(
+              date: formatDashboardDate(DateTime.now()),
+              liveSubjectName: liveSubject,
+              onStart: _startRecording,
+              onOpen: _openRecording,
+              onResume: _resumeRecording,
+              onSearch: () => Navigator.of(context).push(SearchScreen.route()),
+              onSettings: _openSettings,
             ),
           ),
           if (recordingError != null)
@@ -245,7 +214,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
             ),
           // Recording works without a key — the audio is kept and queued either
           // way — but nothing will ever be transcribed, so say so right under
-          // the button, before the user records an hour and wonders where the
+          // the stage, before the user records an hour and wonders where the
           // text is.
           if (onboarding != null)
             SliverToBoxAdapter(
@@ -269,15 +238,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
             ),
           if (latest != null)
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Gap.lg,
-                  Gap.sm,
-                  Gap.lg,
-                  0,
-                ),
-                child: latest,
-              ),
+              child: InsetGroup(label: 'Poslední výpisky', children: [latest]),
             ),
           AsyncSliver(
             value: summaries,
@@ -291,28 +252,46 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     );
   }
 
-  /// The newest AI notes as a card, else the newest saved note, else nothing.
+  /// The newest AI notes as a prose row, else the newest saved note.
   Widget? _latestNotes(List<MeetingSummary>? summaries) {
     final notes = ref.watch(latestLessonNotesProvider).valueOrNull;
     if (notes != null && summaries != null) {
       for (final s in summaries) {
-        if (s.meeting.id == notes.meetingId) {
-          return LatestNotesCard.lesson(
-            notes: notes,
-            summary: s,
-            onTap: () => Navigator.of(
-              context,
-            ).push(MeetingDetailScreen.route(s.meeting.id)),
-          );
-        }
+        if (s.meeting.id != notes.meetingId) continue;
+        final subject = s.subject;
+        final named = !isDefaultMeetingTitle(s.meeting.title);
+        return ListRow(
+          leading: SubjectDot(
+            color: subject == null
+                ? Theme.of(context).colorScheme.outline
+                : subjectColor(context, subject.colorIndex),
+          ),
+          title: named ? s.meeting.title : (subject?.name ?? 'Hodina'),
+          excerpt: notePreview(notes.content ?? ''),
+          subtitle: [
+            if (named) ?subject?.name,
+            formatDateGroup(s.meeting.createdAt).toLowerCase(),
+          ].join(' · '),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MeetingDetailScreen.route(s.meeting.id)),
+        );
       }
     }
     final saved = ref.watch(savedNotesProvider).valueOrNull;
     if (saved == null || saved.isEmpty) return null;
-    return LatestNotesCard.saved(
-      note: saved.first,
-      onTap: () =>
-          Navigator.of(context).push(SavedNoteScreen.route(saved.first.id)),
+    final note = saved.first;
+    return ListRow(
+      leading: Icon(
+        Icons.bookmark_rounded,
+        size: 16,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: note.title,
+      excerpt: notePreview(note.content),
+      subtitle:
+          'Uložená poznámka · ${formatDateGroup(note.updatedAt).toLowerCase()}',
+      onTap: () => Navigator.of(context).push(SavedNoteScreen.route(note.id)),
     );
   }
 
@@ -323,69 +302,53 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
         child: EmptyState(
           icon: Icons.mic_none_outlined,
           title: 'Zatím žádné nahrávky',
-          message:
-              'Začni kartou nahoře. Přepis začne přibývat během pár '
-              'vteřin.',
+          message: 'Klepni na zlaté tlačítko nahoře. Přepis začne přibývat '
+              'během pár vteřin.',
         ),
       );
     }
 
-    final firstPaint = _seen.isEmpty;
-    final entering = <int, int>{};
-    for (final summary in list) {
-      if (_seen.add(summary.meeting.id)) {
-        entering[summary.meeting.id] = entering.length;
-      }
-    }
-
-    // Day headers interleaved with the rows they cover, so this can stay one
-    // flat lazy list rather than a column of nested ones.
-    final rows = <Object>[];
-    String? group;
+    // One inset group per day.
+    final groups = <(String, List<MeetingSummary>)>[];
     for (final summary in list) {
       final label = formatDateGroup(summary.meeting.createdAt);
-      if (label != group) {
-        rows.add(label);
-        group = label;
+      if (groups.isEmpty || groups.last.$1 != label) {
+        groups.add((label, [summary]));
+      } else {
+        groups.last.$2.add(summary);
       }
-      rows.add(summary);
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
-      sliver: SliverList.builder(
-        itemCount: rows.length,
-        itemBuilder: (_, i) {
-          final row = rows[i];
-          if (row is String) return _DayHeader(label: row, first: i == 0);
+    final firstPaint = _seen.isEmpty;
+    final entering = <String, int>{};
+    for (final (label, _) in groups) {
+      if (_seen.add(label)) entering[label] = entering.length;
+    }
 
-          final summary = row as MeetingSummary;
-          final order = entering[summary.meeting.id];
-          return Entrance(
-            enabled: order != null,
-            delay: firstPaint && order != null
-                ? AppMotion.staggerDelay(order)
-                : Duration.zero,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Gap.sm),
-              child: Pressable(child: _MeetingCard(summary: summary)),
-            ),
-          );
-        },
-      ),
+    return SliverList.builder(
+      itemCount: groups.length,
+      itemBuilder: (_, i) {
+        final (label, rows) = groups[i];
+        final order = entering[label];
+        return Entrance(
+          enabled: order != null,
+          delay: firstPaint && order != null
+              ? AppMotion.staggerDelay(order)
+              : Duration.zero,
+          child: InsetGroup(
+            label: label,
+            children: [for (final s in rows) _MeetingRow(summary: s)],
+          ),
+        );
+      },
     );
   }
 }
 
-/// „Dnes" with the date above it, sized for a toolbar rather than a large
-/// collapsing title. Czech names are spelled out here so the header does not
-/// depend on intl's locale data having been loaded.
-class _DashboardTitle extends StatelessWidget {
-  const _DashboardTitle({required this.today});
-
-  final DateTime today;
-
-  static const _days = [
+/// `sobota 26. září`, spelled out here so the header does not depend on
+/// intl's locale data having been loaded.
+String formatDashboardDate(DateTime today) {
+  const days = [
     'pondělí',
     'úterý',
     'středa',
@@ -394,7 +357,7 @@ class _DashboardTitle extends StatelessWidget {
     'sobota',
     'neděle',
   ];
-  static const _months = [
+  const months = [
     'ledna',
     'února',
     'března',
@@ -408,296 +371,150 @@ class _DashboardTitle extends StatelessWidget {
     'listopadu',
     'prosince',
   ];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final date =
-        '${_days[today.weekday - 1]} ${today.day}. ${_months[today.month - 1]}';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          date.toUpperCase(),
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-          ),
-        ),
-        Text('Dnes', style: theme.textTheme.headlineSmall),
-      ],
-    );
-  }
+  return '${days[today.weekday - 1]} ${today.day}. ${months[today.month - 1]}';
 }
 
-/// `Dnes`, `Včera`, then the date. The stored title already carries the full
-/// date, but a heading is what lets someone find last Thursday by scrolling
-/// rather than by reading every row.
-class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.label, required this.first});
+enum _RowAction { open, rename, delete }
 
-  final String label;
-
-  /// The topmost header sits right under the start card and needs less air
-  /// above it than one that follows a meeting.
-  final bool first;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: EdgeInsets.only(
-        top: first ? Gap.lg : Gap.lg + Gap.xs,
-        bottom: Gap.sm,
-        left: Gap.xs,
-      ),
-      child: Text(
-        label,
-        style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-enum _CardAction { rename, delete }
-
-class _MeetingCard extends ConsumerWidget {
-  const _MeetingCard({required this.summary});
+/// One lesson: a subject dot, what it was, when and how long, and only the
+/// states worth knowing. Rename and delete live behind a long press.
+class _MeetingRow extends ConsumerWidget {
+  const _MeetingRow({required this.summary});
 
   final MeetingSummary summary;
-
-  Meeting get meeting => summary.meeting;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final meeting = summary.meeting;
     final isLive = ref.watch(
       recordingControllerProvider.select(
         (s) => s.isRecording && s.meetingId == meeting.id,
       ),
     );
-    final chips = _chips(isLive);
-    final named = !isDefaultMeetingTitle(meeting.title);
     final subject = summary.subject;
-    final accent = subject == null
-        ? null
-        : subjectColor(context, subject.colorIndex);
+    final named = !isDefaultMeetingTitle(meeting.title);
+    final title = named ? meeting.title : (subject?.name ?? 'Schůzka');
+    final subtitle = [
+      if (named && subject != null) subject.name,
+      formatTimeOfDay(meeting.createdAt),
+      if (summary.segmentCount > 0) formatDurationLabel(summary.duration),
+    ].join(' · ');
+    final (status, alert) = _status(isLive);
 
-    return Card(
-      child: InkWell(
-        onTap: () =>
-            Navigator.of(context).push(MeetingDetailScreen.route(meeting.id)),
-        child: Stack(
-          children: [
-            if (accent != null)
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 4,
-                child: ColoredBox(color: accent),
+    void open() =>
+        Navigator.of(context).push(MeetingDetailScreen.route(meeting.id));
+
+    return Semantics(
+      hint: 'Podržením přejmenuješ nebo smažeš.',
+      child: ListRow(
+        leading: isLive
+            ? const SubjectDot(color: AftermindPalette.record)
+            : SubjectDot(
+                color: subject == null
+                    ? scheme.outline.withValues(alpha: 0.6)
+                    : subjectColor(context, subject.colorIndex),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Gap.lg,
-                Gap.md,
-                Gap.md,
-                Gap.md,
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        title: title,
+        subtitle: subtitle,
+        status: status,
+        statusColor: alert ? scheme.error : null,
+        trailing: summary.importantCount > 0
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _Leading(isLive: isLive, accent: accent),
-                  const SizedBox(width: Gap.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // The time, not a generated `Schůzka 08.09. 09:50`
-                        // title — under a `Dnes` heading two thirds of that
-                        // repeats what the heading just said. A title the user
-                        // gave is shown, since that is how they will look for
-                        // the meeting.
-                        Text(
-                          named
-                              ? meeting.title
-                              : formatTimeOfDay(meeting.createdAt),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            height: 1.2,
-                            fontFeatures: kTabularFigures,
-                          ),
-                        ),
-                        const SizedBox(height: Gap.xs),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              size: 13,
-                              color: scheme.outline,
-                            ),
-                            const SizedBox(width: Gap.xs),
-                            Text(
-                              named
-                                  ? '${formatTimeOfDay(meeting.createdAt)} · '
-                                        '${formatDurationLabel(summary.duration)}'
-                                  : formatDurationLabel(summary.duration),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                fontFeatures: kTabularFigures,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (chips.isNotEmpty) ...[
-                          const SizedBox(height: Gap.sm),
-                          Wrap(
-                            spacing: Gap.xs + 2,
-                            runSpacing: Gap.xs + 2,
-                            children: chips,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  // Pulled up and in so the button's touch target does not
-                  // make the card taller than its text.
-                  Transform.translate(
-                    offset: const Offset(Gap.sm, -Gap.sm),
-                    child: PopupMenuButton<_CardAction>(
-                      icon: Icon(Icons.more_vert, color: scheme.outline),
-                      tooltip: 'Další akce',
-                      onSelected: (action) => switch (action) {
-                        _CardAction.rename => renameMeetingFlow(
-                          context,
-                          ref,
-                          meeting,
-                        ),
-                        _CardAction.delete => confirmAndDeleteMeeting(
-                          context,
-                          ref,
-                          meetingId: meeting.id,
-                        ),
-                      },
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                          value: _CardAction.rename,
-                          child: MenuRow(
-                            icon: Icons.drive_file_rename_outline,
-                            label: 'Přejmenovat',
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: _CardAction.delete,
-                          enabled: !isLive,
-                          child: MenuRow(
-                            icon: Icons.delete_outline,
-                            label: 'Smazat',
-                            destructive: true,
-                            enabled: !isLive,
-                          ),
-                        ),
-                      ],
+                  Icon(Icons.star_rounded, size: 16, color: scheme.primary),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${summary.importantCount}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontFeatures: kTabularFigures,
                     ),
                   ),
                 ],
-              ),
+              )
+            : null,
+        onTap: open,
+        onLongPress: () => _showActions(context, ref, isLive, open),
+      ),
+    );
+  }
+
+  /// Only what is worth saying; an ordinary finished lesson says nothing.
+  (String?, bool) _status(bool isLive) {
+    final alerts = [
+      if (isLive) 'Nahrává se',
+      if (summary.failedCount > 0) '${summary.failedCount}× chyba',
+      if (summary.weakAudio) 'Slabý zvuk',
+    ];
+    final notes = [
+      if (summary.outstandingCount > 0)
+        'Přepis ${summary.transcribedCount}/${summary.segmentCount}',
+      if (summary.segmentCount == 0 && !isLive) 'Bez záznamu',
+      if (summary.meeting.interrupted) 'Přerušeno',
+    ];
+    final all = [...alerts, ...notes];
+    if (all.isEmpty) return (null, false);
+    return (all.join(' · '), alerts.isNotEmpty);
+  }
+
+  Future<void> _showActions(
+    BuildContext context,
+    WidgetRef ref,
+    bool isLive,
+    VoidCallback open,
+  ) async {
+    HapticFeedback.selectionClick();
+    final meeting = summary.meeting;
+    final action = await showModalBottomSheet<_RowAction>(
+      context: context,
+      useRootNavigator: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.open_in_new_rounded),
+              title: const Text('Otevřít'),
+              onTap: () => Navigator.of(sheetContext).pop(_RowAction.open),
             ),
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Přejmenovat'),
+              onTap: () => Navigator.of(sheetContext).pop(_RowAction.rename),
+            ),
+            ListTile(
+              enabled: !isLive,
+              title: MenuRow(
+                icon: Icons.delete_outline,
+                label: isLive ? 'Smazat (právě nahrává)' : 'Smazat',
+                destructive: true,
+                enabled: !isLive,
+              ),
+              onTap: () => Navigator.of(sheetContext).pop(_RowAction.delete),
+            ),
+            const SizedBox(height: Gap.sm),
           ],
         ),
       ),
     );
-  }
-
-  /// Only what is worth saying. A finished meeting whose transcript is complete
-  /// gets no chips at all, which is what makes the ones that do stand out.
-  List<Widget> _chips(bool isLive) {
-    return [
-      if (summary.subject != null) SubjectBadge(subject: summary.subject!),
-      if (isLive)
-        const StatusChip(
-          icon: Icons.fiber_manual_record,
-          label: 'Nahrává se',
-          tone: ChipTone.alert,
-        ),
-      if (summary.importantCount > 0)
-        StatusChip(
-          icon: Icons.star_rounded,
-          label: '${summary.importantCount}',
-          tone: ChipTone.progress,
-        ),
-      if (summary.failedCount > 0)
-        StatusChip(
-          icon: Icons.error_outline,
-          label: '${summary.failedCount}× chyba',
-          tone: ChipTone.alert,
-        ),
-      if (summary.outstandingCount > 0)
-        StatusChip(
-          icon: Icons.sync,
-          label: 'Přepis ${summary.transcribedCount}/${summary.segmentCount}',
-          tone: ChipTone.progress,
-        ),
-      if (summary.weakAudio)
-        const StatusChip(
-          icon: Icons.graphic_eq,
-          label: 'Slabý zvuk',
-          tone: ChipTone.alert,
-        ),
-      if (summary.segmentCount == 0)
-        const StatusChip(icon: Icons.mic_off_outlined, label: 'Bez záznamu'),
-      if (meeting.interrupted)
-        const StatusChip(icon: Icons.power_settings_new, label: 'Přerušeno'),
-    ];
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case _RowAction.open:
+        open();
+      case _RowAction.rename:
+        await renameMeetingFlow(context, ref, meeting);
+      case _RowAction.delete:
+        await confirmAndDeleteMeeting(context, ref, meetingId: meeting.id);
+    }
   }
 }
 
-class _Leading extends StatelessWidget {
-  const _Leading({required this.isLive, this.accent});
-
-  final bool isLive;
-
-  /// The lesson's subject colour; plain grey for an ordinary meeting.
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final tint = accent;
-
-    return Container(
-      width: 38,
-      height: 38,
-      decoration: BoxDecoration(
-        color: isLive
-            ? scheme.errorContainer
-            : tint?.withValues(alpha: 0.16) ?? scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(Gap.md),
-      ),
-      child: Icon(
-        isLive
-            ? Icons.fiber_manual_record
-            : tint != null
-            ? Icons.school_outlined
-            : Icons.description_outlined,
-        size: 19,
-        color: isLive ? scheme.error : tint ?? scheme.onSurfaceVariant,
-      ),
-    );
-  }
-}
-
-/// A rounded note above the list: something is wrong, or something is missing
-/// that the user will want to fix before recording.
+/// A rounded note between the stage and the lists: something is wrong, or
+/// something is missing that the user will want to fix before recording.
 class _Notice extends StatelessWidget {
   const _Notice({
     required this.icon,
@@ -719,22 +536,26 @@ class _Notice extends StatelessWidget {
     final scheme = theme.colorScheme;
     final (background, foreground) = tone == ChipTone.alert
         ? (scheme.errorContainer, scheme.onErrorContainer)
-        : (scheme.secondaryContainer, scheme.onSecondaryContainer);
+        : (scheme.surfaceContainerLow, scheme.onSurface);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, Gap.xs),
       child: Material(
         color: background,
-        borderRadius: BorderRadius.circular(Gap.radius),
+        borderRadius: BorderRadius.circular(InsetGroup.radius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.md),
+            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.md, Gap.md),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, size: 20, color: foreground),
+                Icon(
+                  icon,
+                  size: 20,
+                  color: tone == ChipTone.alert ? foreground : scheme.primary,
+                ),
                 const SizedBox(width: Gap.md),
                 Expanded(
                   child: Column(
@@ -744,14 +565,17 @@ class _Notice extends StatelessWidget {
                         title,
                         style: theme.textTheme.titleSmall?.copyWith(
                           color: foreground,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (message != null) ...[
-                        const SizedBox(height: Gap.xs),
+                        const SizedBox(height: 2),
                         Text(
                           message!,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: foreground,
+                            color: tone == ChipTone.alert
+                                ? foreground
+                                : scheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -759,7 +583,11 @@ class _Notice extends StatelessWidget {
                   ),
                 ),
                 if (onTap != null)
-                  Icon(Icons.chevron_right, size: 20, color: foreground),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 22,
+                    color: scheme.onSurfaceVariant,
+                  ),
               ],
             ),
           ),

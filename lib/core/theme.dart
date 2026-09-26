@@ -19,32 +19,35 @@ const _seed = Color(0xFFB8913F);
 abstract final class AftermindPalette {
   const AftermindPalette._();
 
-  // Light: warm paper and graphite ink.
-  static const lightCanvas = Color(0xFFF3F1EC);
+  // Light: an iOS-like grouped background, white groups, near-black ink.
+  static const lightCanvas = Color(0xFFF2F1EE);
   static const lightSurface = Color(0xFFFFFFFF);
-  static const lightCard = Color(0xFFFBFAF7);
-  static const lightInk = Color(0xFF1B1C1F);
-  static const lightMuted = Color(0xFF5E5C57);
-  // Dark enough to carry white text (5.4:1) and read as gold, not brown.
-  static const lightGold = Color(0xFF8A6420);
-  static const lightGoldSoft = Color(0xFFF1E3C2);
+  static const lightCard = Color(0xFFFFFFFF);
+  static const lightInk = Color(0xFF161618);
+  static const lightMuted = Color(0xFF6C6C71);
+  // Dark enough to carry white text and read as gold, not brown.
+  static const lightGold = Color(0xFF8F6619);
 
-  // Dark: graphite, never pure black, so the gold has something to glow on.
-  static const darkCanvas = Color(0xFF0E0F11);
-  static const darkSurface = Color(0xFF16171A);
-  static const darkCard = Color(0xFF1A1B1F);
-  static const darkInk = Color(0xFFEEEAE2);
-  static const darkMuted = Color(0xFFABA79E);
-  static const darkGold = Color(0xFFDDB86E);
-  static const darkGoldSoft = Color(0xFF3A301B);
+  // Dark: near-black, never pure black, so the gold has something to glow on.
+  static const darkCanvas = Color(0xFF0B0B0D);
+  static const darkSurface = Color(0xFF141416);
+  static const darkCard = Color(0xFF1B1B1E);
+  static const darkInk = Color(0xFFF3F1EC);
+  static const darkMuted = Color(0xFFA3A19B);
+  static const darkGold = Color(0xFFE2B55E);
 
-  /// The brand gold at full strength, for glows, the icon and the smoke
-  /// layer, never for text.
-  static const gold = Color(0xFFD4A94F);
+  /// The brand gold as a fill: the record disc, the icon, glows. Never text.
+  static const gold = Color(0xFFC9973A);
   static const graphite = Color(0xFF1C1D21);
 
-  static const record = Color(0xFFB3261E);
-  static const recordDark = Color(0xFFFF8A80);
+  /// The dashboard stage: dark in both themes, so the gold disc and the red
+  /// recording state always sit on the same ground.
+  static const stage = Color(0xFF151619);
+  static const stageDark = Color(0xFF18191C);
+  static const stageInk = Color(0xFFF4F2ED);
+
+  static const record = Color(0xFFD93B30);
+  static const recordDark = Color(0xFFFF5F55);
 }
 
 /// Digits that keep their width as they change. The recording clock and the
@@ -61,12 +64,12 @@ ThemeData _build(Brightness brightness) {
       .copyWith(
         primary: dark ? AftermindPalette.darkGold : AftermindPalette.lightGold,
         onPrimary: dark ? const Color(0xFF2A1F08) : Colors.white,
-        primaryContainer: dark
-            ? AftermindPalette.darkGoldSoft
-            : AftermindPalette.lightGoldSoft,
+        // Neutral, not beige: a filled container carries gold only in its
+        // icon and label, so gold keeps meaning "this is the action".
+        primaryContainer: dark ? const Color(0xFF2A2A2E) : const Color(0xFFE9E7E2),
         onPrimaryContainer: dark
-            ? const Color(0xFFF4E2BA)
-            : const Color(0xFF2E2106),
+            ? AftermindPalette.darkGold
+            : const Color(0xFF6E4E12),
         // Secondary is graphite, not a second hue: selected chips, segments
         // and quiet containers stay neutral so gold keeps meaning "act".
         secondary: dark ? const Color(0xFFBDBEC4) : const Color(0xFF55575D),
