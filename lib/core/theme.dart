@@ -8,27 +8,43 @@ import 'spacing.dart';
 
 /// The app's visual identity.
 ///
-/// Titanium surfaces, ink typography and a glacial blue signal. The accent
-/// names actions; recording and errors retain a separate, unmistakable red.
-const _seed = Color(0xFF0B6A99);
+/// Graphite surfaces, warm ink and a restrained gold. Gold names actions and
+/// emphasis only; recording and errors keep their own unmistakable red, so
+/// "this is live" never reads as "this is a button".
+///
+/// Every colour the app paints lives here. Tune the identity in this class,
+/// not in widgets.
+const _seed = Color(0xFFB8913F);
 
 abstract final class AftermindPalette {
   const AftermindPalette._();
 
-  static const lightCanvas = Color(0xFFF4F6F8);
+  // Light: warm paper and graphite ink.
+  static const lightCanvas = Color(0xFFF3F1EC);
   static const lightSurface = Color(0xFFFFFFFF);
-  static const lightInk = Color(0xFF18242C);
-  static const lightMuted = Color(0xFF53636C);
-  static const lightAccent = Color(0xFF0B6A99);
-  static const lightAccentSoft = Color(0xFFDDF3FC);
-  static const darkCanvas = Color(0xFF101418);
-  static const darkSurface = Color(0xFF1B2228);
-  static const darkInk = Color(0xFFEAF2F6);
-  static const darkMuted = Color(0xFFB0BEC5);
-  static const darkAccent = Color(0xFF85D8FF);
-  static const darkAccentSoft = Color(0xFF123849);
+  static const lightCard = Color(0xFFFBFAF7);
+  static const lightInk = Color(0xFF1B1C1F);
+  static const lightMuted = Color(0xFF5E5C57);
+  // Dark enough to carry white text (5.4:1) and read as gold, not brown.
+  static const lightGold = Color(0xFF8A6420);
+  static const lightGoldSoft = Color(0xFFF1E3C2);
+
+  // Dark: graphite, never pure black, so the gold has something to glow on.
+  static const darkCanvas = Color(0xFF0E0F11);
+  static const darkSurface = Color(0xFF16171A);
+  static const darkCard = Color(0xFF1A1B1F);
+  static const darkInk = Color(0xFFEEEAE2);
+  static const darkMuted = Color(0xFFABA79E);
+  static const darkGold = Color(0xFFDDB86E);
+  static const darkGoldSoft = Color(0xFF3A301B);
+
+  /// The brand gold at full strength, for glows, the icon and the smoke
+  /// layer, never for text.
+  static const gold = Color(0xFFD4A94F);
+  static const graphite = Color(0xFF1C1D21);
+
   static const record = Color(0xFFB3261E);
-  static const recordDark = Color(0xFFFFB4AB);
+  static const recordDark = Color(0xFFFF8A80);
 }
 
 /// Digits that keep their width as they change. The recording clock and the
@@ -43,49 +59,64 @@ ThemeData _build(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness)
       .copyWith(
-        primary: dark
-            ? AftermindPalette.darkAccent
-            : AftermindPalette.lightAccent,
-        onPrimary: dark ? const Color(0xFF00354E) : Colors.white,
+        primary: dark ? AftermindPalette.darkGold : AftermindPalette.lightGold,
+        onPrimary: dark ? const Color(0xFF2A1F08) : Colors.white,
         primaryContainer: dark
-            ? AftermindPalette.darkAccentSoft
-            : AftermindPalette.lightAccentSoft,
+            ? AftermindPalette.darkGoldSoft
+            : AftermindPalette.lightGoldSoft,
         onPrimaryContainer: dark
-            ? const Color(0xFFDDF3FC)
-            : const Color(0xFF082B3D),
-        secondary: dark ? const Color(0xFFB8CDD6) : const Color(0xFF45636F),
-        onSecondary: dark ? const Color(0xFF20323A) : Colors.white,
+            ? const Color(0xFFF4E2BA)
+            : const Color(0xFF2E2106),
+        // Secondary is graphite, not a second hue: selected chips, segments
+        // and quiet containers stay neutral so gold keeps meaning "act".
+        secondary: dark ? const Color(0xFFBDBEC4) : const Color(0xFF55575D),
+        onSecondary: dark ? const Color(0xFF1F2024) : Colors.white,
         secondaryContainer: dark
-            ? const Color(0xFF26363E)
-            : const Color(0xFFE2EBEF),
+            ? const Color(0xFF2B2D32)
+            : const Color(0xFFE7E4DD),
         onSecondaryContainer: dark
-            ? const Color(0xFFE0EDF2)
-            : const Color(0xFF1B303A),
-        surface: dark ? const Color(0xFF151A1E) : AftermindPalette.lightSurface,
+            ? const Color(0xFFE6E4DF)
+            : const Color(0xFF1F2023),
+        tertiary: dark ? const Color(0xFFE9D3A2) : const Color(0xFF6E5A33),
+        onTertiary: dark ? const Color(0xFF2A1F08) : Colors.white,
+        tertiaryContainer: dark
+            ? const Color(0xFF33302A)
+            : const Color(0xFFF0E8D8),
+        onTertiaryContainer: dark
+            ? const Color(0xFFF1E6CF)
+            : const Color(0xFF2B2415),
+        surface: dark ? AftermindPalette.darkSurface : AftermindPalette.lightSurface,
         onSurface: dark ? AftermindPalette.darkInk : AftermindPalette.lightInk,
         surfaceContainerLowest: dark
             ? AftermindPalette.darkCanvas
             : AftermindPalette.lightCanvas,
         surfaceContainerLow: dark
-            ? const Color(0xFF171D22)
-            : const Color(0xFFF0F3F5),
+            ? AftermindPalette.darkCard
+            : AftermindPalette.lightCard,
         surfaceContainer: dark
-            ? const Color(0xFF1B2228)
-            : const Color(0xFFEBEFF2),
+            ? const Color(0xFF202125)
+            : const Color(0xFFF0EDE7),
         surfaceContainerHigh: dark
-            ? const Color(0xFF252E34)
-            : const Color(0xFFE4E9EC),
+            ? const Color(0xFF26282C)
+            : const Color(0xFFEAE7E0),
         surfaceContainerHighest: dark
-            ? const Color(0xFF303A41)
-            : const Color(0xFFDCE3E7),
+            ? const Color(0xFF303237)
+            : const Color(0xFFE1DDD4),
         onSurfaceVariant: dark
             ? AftermindPalette.darkMuted
             : AftermindPalette.lightMuted,
-        outline: dark ? const Color(0xFF9BAAB2) : AftermindPalette.lightMuted,
+        outline: dark ? const Color(0xFF8D8A84) : const Color(0xFF7A776F),
         outlineVariant: dark
-            ? const Color(0xFF46535A)
-            : const Color(0xFFC5D0D5),
+            ? const Color(0xFF3A3B40)
+            : const Color(0xFFD9D4CA),
+        inverseSurface: dark ? const Color(0xFFEEEAE2) : const Color(0xFF26272B),
+        onInverseSurface: dark ? const Color(0xFF1B1C1F) : const Color(0xFFF1EEE8),
+        inversePrimary: dark ? AftermindPalette.lightGold : AftermindPalette.darkGold,
+        surfaceTint: Colors.transparent,
         error: dark ? AftermindPalette.recordDark : AftermindPalette.record,
+        onError: dark ? const Color(0xFF3B0907) : Colors.white,
+        errorContainer: dark ? const Color(0xFF4A1512) : const Color(0xFFFBDDD9),
+        onErrorContainer: dark ? const Color(0xFFFFDAD5) : const Color(0xFF410E0B),
       );
 
   // fontFamily at construction time so the family reaches every default text
@@ -108,7 +139,7 @@ ThemeData _build(Brightness brightness) {
 
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.surfaceContainerLowest,
-      surfaceTintColor: scheme.surfaceTint,
+      surfaceTintColor: scheme.onSurface,
       foregroundColor: scheme.onSurface,
       elevation: 0,
       // Not zero: this is the only thing that separates a scrolled list from
@@ -131,10 +162,10 @@ ThemeData _build(Brightness brightness) {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Gap.radius),
-        // A hairline in dark, where tone steps alone are too close to see.
-        side: brightness == Brightness.dark
-            ? BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.4))
-            : BorderSide.none,
+        // A hairline in both themes: graphite tone steps are deliberately close.
+        side: BorderSide(
+          color: scheme.outlineVariant.withValues(alpha: dark ? 0.55 : 0.7),
+        ),
       ),
     ),
 

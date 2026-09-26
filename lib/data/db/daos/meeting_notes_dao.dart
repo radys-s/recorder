@@ -36,6 +36,21 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
         .map((ids) => ids.toSet());
   }
 
+  /// The most recently finished notes of any meeting, for the home screen.
+  /// A regenerate in progress still shows its previous notes.
+  Stream<MeetingNote?> watchLatestReady() {
+    return (select(meetingNotes)
+          ..where(
+            (t) => t.content.isNotNull() & t.content.equals('').not(),
+          )
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.createdAt),
+            (t) => OrderingTerm.desc(t.id),
+          ])
+          ..limit(1))
+        .watchSingleOrNull();
+  }
+
   /// Claims the row for a generation that is about to start.
   ///
   /// [content] is deliberately left alone: while a regenerate is running the

@@ -27,7 +27,7 @@ function Save-Resized($source, [int]$size, [string]$path, [bool]$opaque = $false
     $g = $pair[1]
     try {
         if ($opaque) {
-            $g.Clear([System.Drawing.Color]::FromArgb(244, 246, 248))
+            $g.Clear([System.Drawing.Color]::FromArgb(14, 15, 17))
         } else {
             $g.Clear([System.Drawing.Color]::Transparent)
         }
@@ -77,8 +77,8 @@ try {
     try {
         $brush = [System.Drawing.Drawing2D.LinearGradientBrush]::new(
             [System.Drawing.Rectangle]::new(0, 0, 1024, 1024),
-            [System.Drawing.Color]::FromArgb(37, 49, 59),
-            [System.Drawing.Color]::FromArgb(16, 22, 27),
+            [System.Drawing.Color]::FromArgb(40, 41, 46),
+            [System.Drawing.Color]::FromArgb(14, 15, 17),
             [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
         try { $bgGraphics.FillRectangle($brush, 0, 0, 1024, 1024) } finally { $brush.Dispose() }
         $bg.Save((Join-Path $assets 'icon_background.png'), [System.Drawing.Imaging.ImageFormat]::Png)

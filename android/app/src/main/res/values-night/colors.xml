@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Match the titanium canvas in the dark Flutter theme. -->
-    <color name="launch_background">#111318</color>
+    <!-- Match the graphite-and-gold canvas in the dark Flutter theme. -->
+    <color name="launch_background">#0E0F11</color>
 </resources>

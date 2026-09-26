@@ -59,18 +59,19 @@ final pinnedCardsProvider =
   return ref.watch(subjectsDaoProvider).watchPinnedCards(meetingId);
 });
 
-/// Eight hues picked to stay apart from each other and from the red recording
-/// state. Stored as an index, so the palette can be retuned without a
+/// Eight muted hues tuned for graphite surfaces: apart from each other, from
+/// the red recording state and from the gold accent (so a subject never reads
+/// as a button). Stored as an index, so the palette can be retuned without a
 /// migration.
 const _subjectHues = <Color>[
-  Color(0xFF3F6FB5), // blue
-  Color(0xFF3C8D5A), // green
-  Color(0xFFC77A22), // amber
-  Color(0xFF7E57C2), // violet
-  Color(0xFF26878A), // teal
-  Color(0xFFB0476E), // rose
-  Color(0xFF7A6552), // brown
-  Color(0xFF5C6BC0), // indigo
+  Color(0xFF4A6D99), // slate blue
+  Color(0xFF4F8466), // sage
+  Color(0xFFB0643C), // terracotta
+  Color(0xFF7D5A8F), // plum
+  Color(0xFF357E80), // teal
+  Color(0xFFA4506A), // rose
+  Color(0xFF7F6A55), // umber
+  Color(0xFF5A63A6), // indigo
 ];
 
 /// The subject's colour, lifted on a dark surface so it keeps its contrast.

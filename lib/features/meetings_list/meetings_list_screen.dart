@@ -18,19 +18,21 @@ import '../../core/widgets/pressable.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/meetings_dao.dart';
-import '../../data/db/daos/subjects_dao.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
 import '../subjects/subject_actions.dart';
 import '../subjects/subject_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
-import '../subjects/timetable.dart';
 import '../subjects/widgets/lesson_sheet.dart';
 import '../subjects/widgets/subject_badge.dart';
 import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
+import 'widgets/latest_notes_card.dart';
 import 'widgets/onboarding_card.dart';
+import 'widgets/record_hero.dart';
+import '../notes_library/notes_library_providers.dart';
+import '../notes_library/saved_note_screen.dart';
 import '../../core/pending_deletions.dart';
 
 /// Home screen: a big start card, then every recorded meeting, newest first.
@@ -185,15 +187,21 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     final keyKnown = ref.watch(hasApiKeyProvider).valueOrNull;
     final hasKey = keyKnown ?? true;
     final onboarding = _onboarding(keyKnown);
-    // The system inset is still needed below the final row on devices with a
-    // home indicator, even though navigation is no longer a floating overlay.
+    // The shell's floating dock arrives as bottom padding, so this clears both
+    // the dock and the home indicator.
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final latest = _latestNotes(summaries.valueOrNull);
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          SliverAppBar.large(
-            title: const Text('Dnes'),
+          // Compact on purpose: the first thing under the status bar is the
+          // record action, not a headline.
+          SliverAppBar(
+            pinned: true,
+            toolbarHeight: 64,
+            titleSpacing: Gap.xl,
+            title: _DashboardTitle(today: DateTime.now()),
             actions: [
               IconButton(
                 icon: const Icon(Icons.search),
@@ -206,11 +214,39 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 tooltip: 'Nastavení',
                 onPressed: _openSettings,
               ),
+              const SizedBox(width: Gap.xs),
             ],
           ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Gap.lg,
+                Gap.xs,
+                Gap.lg,
+                Gap.sm,
+              ),
+              child: RecordHero(
+                isRecording: isRecording,
+                isPaused: isPaused,
+                onStart: _startRecording,
+                onOpen: _openRecording,
+                onResume: _resumeRecording,
+              ),
+            ),
+          ),
+          if (recordingError != null)
+            SliverToBoxAdapter(
+              child: _Notice(
+                icon: Icons.error_outline,
+                title: 'Nahrávání skončilo chybou',
+                message: recordingError,
+                tone: ChipTone.alert,
+              ),
+            ),
           // Recording works without a key — the audio is kept and queued either
-          // way — but nothing will ever be transcribed, so say so before the
-          // user records an hour and wonders where the text is.
+          // way — but nothing will ever be transcribed, so say so right under
+          // the button, before the user records an hour and wonders where the
+          // text is.
           if (onboarding != null)
             SliverToBoxAdapter(
               child: OnboardingCard(
@@ -231,32 +267,18 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 onTap: _openSettings,
               ),
             ),
-          if (recordingError != null)
+          if (latest != null)
             SliverToBoxAdapter(
-              child: _Notice(
-                icon: Icons.error_outline,
-                title: 'Nahrávání skončilo chybou',
-                message: recordingError,
-                tone: ChipTone.alert,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Gap.lg,
+                  Gap.sm,
+                  Gap.lg,
+                  0,
+                ),
+                child: latest,
               ),
             ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                Gap.lg,
-                Gap.sm,
-                Gap.lg,
-                Gap.xs,
-              ),
-              child: _RecordHero(
-                isRecording: isRecording,
-                isPaused: isPaused,
-                onStart: _startRecording,
-                onOpen: _openRecording,
-                onResume: _resumeRecording,
-              ),
-            ),
-          ),
           AsyncSliver(
             value: summaries,
             message: 'Seznam schůzek se nepodařilo načíst.',
@@ -266,6 +288,31 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           SliverPadding(padding: EdgeInsets.only(bottom: Gap.xl + bottomInset)),
         ],
       ),
+    );
+  }
+
+  /// The newest AI notes as a card, else the newest saved note, else nothing.
+  Widget? _latestNotes(List<MeetingSummary>? summaries) {
+    final notes = ref.watch(latestLessonNotesProvider).valueOrNull;
+    if (notes != null && summaries != null) {
+      for (final s in summaries) {
+        if (s.meeting.id == notes.meetingId) {
+          return LatestNotesCard.lesson(
+            notes: notes,
+            summary: s,
+            onTap: () => Navigator.of(
+              context,
+            ).push(MeetingDetailScreen.route(s.meeting.id)),
+          );
+        }
+      }
+    }
+    final saved = ref.watch(savedNotesProvider).valueOrNull;
+    if (saved == null || saved.isEmpty) return null;
+    return LatestNotesCard.saved(
+      note: saved.first,
+      onTap: () =>
+          Navigator.of(context).push(SavedNoteScreen.route(saved.first.id)),
     );
   }
 
@@ -330,343 +377,57 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   }
 }
 
-/// The start button as the first thing on the screen: a large card that says
-/// what is on right now according to the timetable, with a breathing record
-/// button. While a recording runs it turns red and opens that recording.
-class _RecordHero extends ConsumerStatefulWidget {
-  const _RecordHero({
-    required this.isRecording,
-    required this.isPaused,
-    required this.onStart,
-    required this.onOpen,
-    required this.onResume,
-  });
+/// „Dnes" with the date above it, sized for a toolbar rather than a large
+/// collapsing title. Czech names are spelled out here so the header does not
+/// depend on intl's locale data having been loaded.
+class _DashboardTitle extends StatelessWidget {
+  const _DashboardTitle({required this.today});
 
-  final bool isRecording;
-  final bool isPaused;
-  final VoidCallback onStart;
-  final VoidCallback onOpen;
-  final VoidCallback onResume;
+  final DateTime today;
 
-  @override
-  ConsumerState<_RecordHero> createState() => _RecordHeroState();
-}
-
-class _RecordHeroState extends ConsumerState<_RecordHero>
-    with WidgetsBindingObserver {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  /// The hint depends on the clock. No periodic timer (it would outlive a
-  /// widget test); coming back to the app is when it most needs to be fresh.
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) setState(() {});
-  }
-
-  String? _hint(List<TimetableSlot> slots, List<SubjectSummary> subjects) {
-    final hint = todaySlotHint(slots, DateTime.now());
-    if (hint == null) return null;
-    String? name;
-    for (final s in subjects) {
-      if (s.subject.id == hint.slot.subjectId) name = s.subject.name;
-    }
-    if (name == null) return null;
-    return hint.running
-        ? 'Teď: $name do ${formatMinuteOfDay(hint.slot.endMinute)}'
-        : 'Další: $name v ${formatMinuteOfDay(hint.slot.startMinute)}';
-  }
+  static const _days = [
+    'pondělí',
+    'úterý',
+    'středa',
+    'čtvrtek',
+    'pátek',
+    'sobota',
+    'neděle',
+  ];
+  static const _months = [
+    'ledna',
+    'února',
+    'března',
+    'dubna',
+    'května',
+    'června',
+    'července',
+    'srpna',
+    'září',
+    'října',
+    'listopadu',
+    'prosince',
+  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final recording = widget.isRecording;
-    final paused = widget.isPaused;
-    final hint = recording
-        ? null
-        : _hint(
-            ref.watch(allSlotsProvider).valueOrNull ?? const [],
-            ref.watch(subjectsProvider).valueOrNull ?? const [],
-          );
-
-    final (start, end, fg) = paused
-        ? (
-            scheme.surfaceContainerHigh,
-            scheme.surfaceContainerLow,
-            scheme.onSurface,
-          )
-        : recording
-        ? (
-            scheme.errorContainer,
-            Color.alphaBlend(
-              scheme.error.withValues(alpha: 0.12),
-              scheme.errorContainer,
-            ),
-            scheme.onErrorContainer,
-          )
-        : (
-            scheme.primaryContainer,
-            Color.alphaBlend(
-              scheme.tertiaryContainer.withValues(alpha: 0.6),
-              scheme.primaryContainer,
-            ),
-            scheme.onPrimaryContainer,
-          );
-
-    final label = paused
-        ? 'Pokračovat v nahrávání'
-        : recording
-        ? 'Otevřít probíhající nahrávání'
-        : 'Nahrát hodinu';
-
-    return Pressable(
-      child: Semantics(
-        button: true,
-        label: label,
-        hint: paused
-            ? 'Obnoví záznam a otevře jeho přepis.'
-            : recording
-            ? 'Otevře živý přepis.'
-            : 'Otevře nastavení nové nahrávky.',
-        excludeSemantics: true,
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: BorderRadius.circular(Gap.sheetRadius),
-          clipBehavior: Clip.antiAlias,
-          child: Ink(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [start, end],
-              ),
-            ),
-            child: InkWell(
-              onTap: paused
-                  ? widget.onResume
-                  : recording
-                  ? widget.onOpen
-                  : widget.onStart,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Gap.xl,
-                  Gap.lg,
-                  Gap.md,
-                  Gap.lg,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (hint != null) ...[
-                            _HintPill(label: hint, color: fg),
-                            const SizedBox(height: Gap.sm),
-                          ],
-                          Text(
-                            paused
-                                ? 'Pozastaveno'
-                                : recording
-                                ? 'Nahrává se'
-                                : 'Nahrát hodinu',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: fg,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: Gap.xs),
-                          Text(
-                            paused
-                                ? 'Klepni a pokračuj v hodině.'
-                                : recording
-                                ? 'Klepni a vrať se k přepisu.'
-                                : 'Přepis začne přibývat během pár vteřin.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: fg.withValues(alpha: 0.8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: Gap.sm),
-                    _BreathingButton(
-                      recording: recording && !paused,
-                      paused: paused,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+    final date =
+        '${_days[today.weekday - 1]} ${today.day}. ${_months[today.month - 1]}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          date.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _HintPill extends StatelessWidget {
-  const _HintPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: Gap.sm, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(Gap.md),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.schedule, size: 14, color: color),
-          const SizedBox(width: Gap.xs),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
-                fontFeatures: kTabularFigures,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The round record button with a soft halo that slowly swells and settles.
-/// Under reduced motion the halo is drawn once, at rest.
-class _BreathingButton extends StatefulWidget {
-  const _BreathingButton({required this.recording, required this.paused});
-
-  final bool recording;
-  final bool paused;
-
-  @override
-  State<_BreathingButton> createState() => _BreathingButtonState();
-}
-
-class _BreathingButtonState extends State<_BreathingButton>
-    with SingleTickerProviderStateMixin {
-  static const _size = 60.0;
-
-  late final AnimationController _breath = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _syncBreath();
-  }
-
-  @override
-  void didUpdateWidget(covariant _BreathingButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.recording != widget.recording) _syncBreath();
-  }
-
-  void _syncBreath() {
-    if (reducedMotion(context) || !widget.recording) {
-      _breath
-        ..stop()
-        ..value = 0;
-    } else if (!_breath.isAnimating) {
-      _breath.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _breath.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final reduced = reducedMotion(context);
-
-    final signal = widget.recording ? scheme.error : scheme.primary;
-    final buttonColor = widget.recording
-        ? scheme.error
-        : widget.paused
-        ? scheme.surfaceContainerHighest
-        : scheme.primary;
-    final iconColor = widget.recording
-        ? scheme.onError
-        : widget.paused
-        ? scheme.onSurface
-        : scheme.onPrimary;
-
-    Widget halo(double t) => Container(
-      width: _size * (1.16 + 0.16 * t),
-      height: _size * (1.16 + 0.16 * t),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: signal.withValues(alpha: 0.14 - 0.08 * t),
-      ),
-    );
-
-    return SizedBox.square(
-      dimension: _size * 1.4,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (reduced || !widget.recording)
-            halo(0)
-          else
-            AnimatedBuilder(
-              animation: _breath,
-              builder: (_, _) =>
-                  halo(Curves.easeInOut.transform(_breath.value)),
-            ),
-          Container(
-            width: _size,
-            height: _size,
-            decoration: BoxDecoration(
-              color: buttonColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: signal.withValues(alpha: 0.24),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Icon(
-              widget.recording
-                  ? Icons.graphic_eq
-                  : widget.paused
-                  ? Icons.play_arrow_rounded
-                  : Icons.mic_none_rounded,
-              color: iconColor,
-              size: 28,
-            ),
-          ),
-        ],
-      ),
+        Text('Dnes', style: theme.textTheme.headlineSmall),
+      ],
     );
   }
 }

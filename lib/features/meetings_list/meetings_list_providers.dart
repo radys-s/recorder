@@ -8,3 +8,11 @@ import '../../data/db/daos/meetings_dao.dart';
 final meetingSummariesProvider = StreamProvider<List<MeetingSummary>>((ref) {
   return ref.watch(appDatabaseProvider).meetingsDao.watchMeetingSummaries();
 });
+
+/// The newest AI notes of any lesson — the home screen's preview card.
+final latestLessonNotesProvider = StreamProvider<MeetingNote?>((ref) {
+  return ref
+      .watch(appDatabaseProvider)
+      .meetingNotesDao
+      .watchLatestReady();
+});
