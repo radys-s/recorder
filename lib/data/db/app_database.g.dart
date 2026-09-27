@@ -2231,6 +2231,16 @@ class $PreferencesTable extends Preferences
     requiredDuringInsert: false,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<AccentPreset, int> accentPreset =
+      GeneratedColumn<int>(
+        'accent_preset',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<AccentPreset>($PreferencesTable.$converteraccentPreset);
+  @override
   List<GeneratedColumn> get $columns => [
     id,
     transcriptLanguage,
@@ -2253,6 +2263,7 @@ class $PreferencesTable extends Preferences
     driveSyncEnabled,
     driveIncludeTranscripts,
     driveFolderId,
+    accentPreset,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2492,6 +2503,12 @@ class $PreferencesTable extends Preferences
         DriftSqlType.string,
         data['${effectivePrefix}drive_folder_id'],
       ),
+      accentPreset: $PreferencesTable.$converteraccentPreset.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}accent_preset'],
+        )!,
+      ),
     );
   }
 
@@ -2516,6 +2533,8 @@ class $PreferencesTable extends Preferences
       const EnumIndexConverter<AudioRetention>(AudioRetention.values);
   static JsonTypeConverter2<LessonReminder, int, int> $converterlessonReminder =
       const EnumIndexConverter<LessonReminder>(LessonReminder.values);
+  static JsonTypeConverter2<AccentPreset, int, int> $converteraccentPreset =
+      const EnumIndexConverter<AccentPreset>(AccentPreset.values);
 }
 
 class Preference extends DataClass implements Insertable<Preference> {
@@ -2576,6 +2595,9 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// The „Schůzky" folder the docs live in, once created.
   final String? driveFolderId;
+
+  /// The app's accent colour preset.
+  final AccentPreset accentPreset;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2598,6 +2620,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     required this.driveSyncEnabled,
     required this.driveIncludeTranscripts,
     this.driveFolderId,
+    required this.accentPreset,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2665,6 +2688,11 @@ class Preference extends DataClass implements Insertable<Preference> {
     if (!nullToAbsent || driveFolderId != null) {
       map['drive_folder_id'] = Variable<String>(driveFolderId);
     }
+    {
+      map['accent_preset'] = Variable<int>(
+        $PreferencesTable.$converteraccentPreset.toSql(accentPreset),
+      );
+    }
     return map;
   }
 
@@ -2709,6 +2737,7 @@ class Preference extends DataClass implements Insertable<Preference> {
       driveFolderId: driveFolderId == null && nullToAbsent
           ? const Value.absent()
           : Value(driveFolderId),
+      accentPreset: Value(accentPreset),
     );
   }
 
@@ -2758,6 +2787,9 @@ class Preference extends DataClass implements Insertable<Preference> {
         json['driveIncludeTranscripts'],
       ),
       driveFolderId: serializer.fromJson<String?>(json['driveFolderId']),
+      accentPreset: $PreferencesTable.$converteraccentPreset.fromJson(
+        serializer.fromJson<int>(json['accentPreset']),
+      ),
     );
   }
   @override
@@ -2801,6 +2833,9 @@ class Preference extends DataClass implements Insertable<Preference> {
         driveIncludeTranscripts,
       ),
       'driveFolderId': serializer.toJson<String?>(driveFolderId),
+      'accentPreset': serializer.toJson<int>(
+        $PreferencesTable.$converteraccentPreset.toJson(accentPreset),
+      ),
     };
   }
 
@@ -2826,6 +2861,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     bool? driveSyncEnabled,
     bool? driveIncludeTranscripts,
     Value<String?> driveFolderId = const Value.absent(),
+    AccentPreset? accentPreset,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2857,6 +2893,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     driveFolderId: driveFolderId.present
         ? driveFolderId.value
         : this.driveFolderId,
+    accentPreset: accentPreset ?? this.accentPreset,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -2919,6 +2956,9 @@ class Preference extends DataClass implements Insertable<Preference> {
       driveFolderId: data.driveFolderId.present
           ? data.driveFolderId.value
           : this.driveFolderId,
+      accentPreset: data.accentPreset.present
+          ? data.accentPreset.value
+          : this.accentPreset,
     );
   }
 
@@ -2945,7 +2985,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('googleAccountEmail: $googleAccountEmail, ')
           ..write('driveSyncEnabled: $driveSyncEnabled, ')
           ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
-          ..write('driveFolderId: $driveFolderId')
+          ..write('driveFolderId: $driveFolderId, ')
+          ..write('accentPreset: $accentPreset')
           ..write(')'))
         .toString();
   }
@@ -2973,6 +3014,7 @@ class Preference extends DataClass implements Insertable<Preference> {
     driveSyncEnabled,
     driveIncludeTranscripts,
     driveFolderId,
+    accentPreset,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -2998,7 +3040,8 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.googleAccountEmail == this.googleAccountEmail &&
           other.driveSyncEnabled == this.driveSyncEnabled &&
           other.driveIncludeTranscripts == this.driveIncludeTranscripts &&
-          other.driveFolderId == this.driveFolderId);
+          other.driveFolderId == this.driveFolderId &&
+          other.accentPreset == this.accentPreset);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -3023,6 +3066,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<bool> driveSyncEnabled;
   final Value<bool> driveIncludeTranscripts;
   final Value<String?> driveFolderId;
+  final Value<AccentPreset> accentPreset;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -3045,6 +3089,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.driveSyncEnabled = const Value.absent(),
     this.driveIncludeTranscripts = const Value.absent(),
     this.driveFolderId = const Value.absent(),
+    this.accentPreset = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -3068,6 +3113,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.driveSyncEnabled = const Value.absent(),
     this.driveIncludeTranscripts = const Value.absent(),
     this.driveFolderId = const Value.absent(),
+    this.accentPreset = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -3091,6 +3137,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<bool>? driveSyncEnabled,
     Expression<bool>? driveIncludeTranscripts,
     Expression<String>? driveFolderId,
+    Expression<int>? accentPreset,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3119,6 +3166,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (driveIncludeTranscripts != null)
         'drive_include_transcripts': driveIncludeTranscripts,
       if (driveFolderId != null) 'drive_folder_id': driveFolderId,
+      if (accentPreset != null) 'accent_preset': accentPreset,
     });
   }
 
@@ -3144,6 +3192,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<bool>? driveSyncEnabled,
     Value<bool>? driveIncludeTranscripts,
     Value<String?>? driveFolderId,
+    Value<AccentPreset>? accentPreset,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -3168,6 +3217,7 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       driveIncludeTranscripts:
           driveIncludeTranscripts ?? this.driveIncludeTranscripts,
       driveFolderId: driveFolderId ?? this.driveFolderId,
+      accentPreset: accentPreset ?? this.accentPreset,
     );
   }
 
@@ -3255,6 +3305,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (driveFolderId.present) {
       map['drive_folder_id'] = Variable<String>(driveFolderId.value);
     }
+    if (accentPreset.present) {
+      map['accent_preset'] = Variable<int>(
+        $PreferencesTable.$converteraccentPreset.toSql(accentPreset.value),
+      );
+    }
     return map;
   }
 
@@ -3281,7 +3336,8 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('googleAccountEmail: $googleAccountEmail, ')
           ..write('driveSyncEnabled: $driveSyncEnabled, ')
           ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
-          ..write('driveFolderId: $driveFolderId')
+          ..write('driveFolderId: $driveFolderId, ')
+          ..write('accentPreset: $accentPreset')
           ..write(')'))
         .toString();
   }
@@ -11123,6 +11179,7 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<bool> driveSyncEnabled,
       Value<bool> driveIncludeTranscripts,
       Value<String?> driveFolderId,
+      Value<AccentPreset> accentPreset,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -11147,6 +11204,7 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<bool> driveSyncEnabled,
       Value<bool> driveIncludeTranscripts,
       Value<String?> driveFolderId,
+      Value<AccentPreset> accentPreset,
     });
 
 class $$PreferencesTableFilterComposer
@@ -11268,6 +11326,12 @@ class $$PreferencesTableFilterComposer
     column: $table.driveFolderId,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<AccentPreset, AccentPreset, int>
+  get accentPreset => $composableBuilder(
+    column: $table.accentPreset,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -11381,6 +11445,11 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<String> get driveFolderId => $composableBuilder(
     column: $table.driveFolderId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get accentPreset => $composableBuilder(
+    column: $table.accentPreset,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -11500,6 +11569,12 @@ class $$PreferencesTableAnnotationComposer
     column: $table.driveFolderId,
     builder: (column) => column,
   );
+
+  GeneratedColumnWithTypeConverter<AccentPreset, int> get accentPreset =>
+      $composableBuilder(
+        column: $table.accentPreset,
+        builder: (column) => column,
+      );
 }
 
 class $$PreferencesTableTableManager
@@ -11555,6 +11630,7 @@ class $$PreferencesTableTableManager
                 Value<bool> driveSyncEnabled = const Value.absent(),
                 Value<bool> driveIncludeTranscripts = const Value.absent(),
                 Value<String?> driveFolderId = const Value.absent(),
+                Value<AccentPreset> accentPreset = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -11577,6 +11653,7 @@ class $$PreferencesTableTableManager
                 driveSyncEnabled: driveSyncEnabled,
                 driveIncludeTranscripts: driveIncludeTranscripts,
                 driveFolderId: driveFolderId,
+                accentPreset: accentPreset,
               ),
           createCompanionCallback:
               ({
@@ -11602,6 +11679,7 @@ class $$PreferencesTableTableManager
                 Value<bool> driveSyncEnabled = const Value.absent(),
                 Value<bool> driveIncludeTranscripts = const Value.absent(),
                 Value<String?> driveFolderId = const Value.absent(),
+                Value<AccentPreset> accentPreset = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -11624,6 +11702,7 @@ class $$PreferencesTableTableManager
                 driveSyncEnabled: driveSyncEnabled,
                 driveIncludeTranscripts: driveIncludeTranscripts,
                 driveFolderId: driveFolderId,
+                accentPreset: accentPreset,
               ),
           withReferenceMapper: (p0) => p0
               .map(

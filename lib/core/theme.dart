@@ -4,6 +4,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../data/db/tables/preferences_table.dart';
+import 'accent.dart';
 import 'spacing.dart';
 
 /// The app's visual identity.
@@ -13,8 +15,8 @@ import 'spacing.dart';
 /// "this is live" never reads as "this is a button".
 ///
 /// Every colour the app paints lives here. Tune the identity in this class,
-/// not in widgets.
-const _seed = Color(0xFFB8913F);
+/// not in widgets. The accent itself is the student's choice (Settings →
+/// Vzhled) and comes from [AccentPalette]; gold is the default.
 
 abstract final class AftermindPalette {
   const AftermindPalette._();
@@ -55,21 +57,35 @@ abstract final class AftermindPalette {
 /// reflows on every tick.
 const kTabularFigures = <FontFeature>[FontFeature.tabularFigures()];
 
-ThemeData get appLightTheme => _build(Brightness.light);
-ThemeData get appDarkTheme => _build(Brightness.dark);
+ThemeData get appLightTheme => appTheme(Brightness.light, AccentPreset.gold);
+ThemeData get appDarkTheme => appTheme(Brightness.dark, AccentPreset.gold);
 
-ThemeData _build(Brightness brightness) {
+final _themes = <(Brightness, AccentPreset), ThemeData>{};
+
+/// The theme for one brightness and accent. Cached: building a ThemeData is
+/// not free and MaterialApp asks for it on every rebuild.
+ThemeData appTheme(Brightness brightness, AccentPreset preset) =>
+    _themes.putIfAbsent((brightness, preset), () => _build(brightness, preset));
+
+ThemeData _build(Brightness brightness, AccentPreset preset) {
   final dark = brightness == Brightness.dark;
-  final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness)
-      .copyWith(
-        primary: dark ? AftermindPalette.darkGold : AftermindPalette.lightGold,
-        onPrimary: dark ? const Color(0xFF2A1F08) : Colors.white,
+  final palette = AccentPalette.of(preset);
+  final accent = AccentTheme(palette: palette, brightness: brightness);
+  final scheme =
+      ColorScheme.fromSeed(
+        seedColor: palette.fill,
+        brightness: brightness,
+      ).copyWith(
+        primary: dark ? palette.darkText : palette.lightText,
+        onPrimary: dark ? palette.onFill : Colors.white,
         // Neutral, not beige: a filled container carries gold only in its
         // icon and label, so gold keeps meaning "this is the action".
-        primaryContainer: dark ? const Color(0xFF2A2A2E) : const Color(0xFFE9E7E2),
+        primaryContainer: dark
+            ? const Color(0xFF2A2A2E)
+            : const Color(0xFFE9E7E2),
         onPrimaryContainer: dark
-            ? AftermindPalette.darkGold
-            : const Color(0xFF6E4E12),
+            ? palette.darkText
+            : palette.lightContainerText,
         // Secondary is graphite, not a second hue: selected chips, segments
         // and quiet containers stay neutral so gold keeps meaning "act".
         secondary: dark ? const Color(0xFFBDBEC4) : const Color(0xFF55575D),
@@ -80,15 +96,20 @@ ThemeData _build(Brightness brightness) {
         onSecondaryContainer: dark
             ? const Color(0xFFE6E4DF)
             : const Color(0xFF1F2023),
-        tertiary: dark ? const Color(0xFFE9D3A2) : const Color(0xFF6E5A33),
-        onTertiary: dark ? const Color(0xFF2A1F08) : Colors.white,
-        tertiaryContainer: dark
-            ? const Color(0xFF33302A)
-            : const Color(0xFFF0E8D8),
+        // The accent's neighbouring hue, so the few tertiary surfaces shift
+        // colour with the preset instead of staying gold.
+        tertiary: dark ? palette.highlight : palette.deep,
+        onTertiary: dark ? palette.onFill : Colors.white,
+        tertiaryContainer: Color.alphaBlend(
+          palette.partner.withValues(alpha: dark ? 0.18 : 0.14),
+          dark ? const Color(0xFF1E1F23) : Colors.white,
+        ),
         onTertiaryContainer: dark
-            ? const Color(0xFFF1E6CF)
-            : const Color(0xFF2B2415),
-        surface: dark ? AftermindPalette.darkSurface : AftermindPalette.lightSurface,
+            ? const Color(0xFFF1EEE8)
+            : palette.lightContainerText,
+        surface: dark
+            ? AftermindPalette.darkSurface
+            : AftermindPalette.lightSurface,
         onSurface: dark ? AftermindPalette.darkInk : AftermindPalette.lightInk,
         surfaceContainerLowest: dark
             ? AftermindPalette.darkCanvas
@@ -112,14 +133,22 @@ ThemeData _build(Brightness brightness) {
         outlineVariant: dark
             ? const Color(0xFF3A3B40)
             : const Color(0xFFD9D4CA),
-        inverseSurface: dark ? const Color(0xFFEEEAE2) : const Color(0xFF26272B),
-        onInverseSurface: dark ? const Color(0xFF1B1C1F) : const Color(0xFFF1EEE8),
-        inversePrimary: dark ? AftermindPalette.lightGold : AftermindPalette.darkGold,
+        inverseSurface: dark
+            ? const Color(0xFFEEEAE2)
+            : const Color(0xFF26272B),
+        onInverseSurface: dark
+            ? const Color(0xFF1B1C1F)
+            : const Color(0xFFF1EEE8),
+        inversePrimary: dark ? palette.lightText : palette.darkText,
         surfaceTint: Colors.transparent,
         error: dark ? AftermindPalette.recordDark : AftermindPalette.record,
         onError: dark ? const Color(0xFF3B0907) : Colors.white,
-        errorContainer: dark ? const Color(0xFF4A1512) : const Color(0xFFFBDDD9),
-        onErrorContainer: dark ? const Color(0xFFFFDAD5) : const Color(0xFF410E0B),
+        errorContainer: dark
+            ? const Color(0xFF4A1512)
+            : const Color(0xFFFBDDD9),
+        onErrorContainer: dark
+            ? const Color(0xFFFFDAD5)
+            : const Color(0xFF410E0B),
       );
 
   // fontFamily at construction time so the family reaches every default text
@@ -131,8 +160,13 @@ ThemeData _build(Brightness brightness) {
   );
   final text = _tuneText(base.textTheme);
 
+  final hairline = accent.hairline(
+    scheme.outlineVariant.withValues(alpha: dark ? 0.55 : 0.7),
+  );
+
   return base.copyWith(
     textTheme: text,
+    extensions: [accent],
     // Three steps of depth on one hue: the page is the lowest surface, cards
     // sit one step up, sheets and dialogs one more. Hierarchy from tone, not
     // from shadows.
@@ -163,12 +197,12 @@ ThemeData _build(Brightness brightness) {
       surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
+      // A hairline in both themes — graphite tone steps are deliberately
+      // close — lit by the accent at one corner, so every card in the app
+      // shares the same light source.
+      shape: GradientRoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Gap.radius),
-        // A hairline in both themes: graphite tone steps are deliberately close.
-        side: BorderSide(
-          color: scheme.outlineVariant.withValues(alpha: dark ? 0.55 : 0.7),
-        ),
+        gradient: hairline,
       ),
     ),
 
@@ -211,8 +245,20 @@ ThemeData _build(Brightness brightness) {
       ),
     ),
 
+    // A lit gradient instead of a flat fill; disabled buttons stay flat so
+    // "you can't do this yet" never looks like an action.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        foregroundColor: palette.onFill,
+        disabledBackgroundColor: scheme.onSurface.withValues(alpha: 0.12),
+        backgroundBuilder: (context, states, child) =>
+            states.contains(WidgetState.disabled)
+            ? child!
+            : DecoratedBox(
+                decoration: BoxDecoration(gradient: accent.fillGradient),
+                child: child,
+              ),
         minimumSize: const Size(0, 46),
         textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         shape: RoundedRectangleBorder(
@@ -331,7 +377,10 @@ ThemeData _build(Brightness brightness) {
         borderRadius: BorderRadius.circular(Gap.sm),
       ),
       showCheckmark: false,
-      selectedColor: scheme.secondaryContainer,
+      selectedColor: Color.alphaBlend(
+        palette.fill.withValues(alpha: dark ? 0.24 : 0.16),
+        scheme.surfaceContainerLow,
+      ),
     ),
 
     popupMenuTheme: PopupMenuThemeData(
@@ -353,6 +402,12 @@ ThemeData _build(Brightness brightness) {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Gap.md),
       ),
+    ),
+
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: scheme.primary,
+      selectionColor: palette.fill.withValues(alpha: 0.3),
+      selectionHandleColor: palette.fill,
     ),
 
     progressIndicatorTheme: ProgressIndicatorThemeData(

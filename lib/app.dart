@@ -9,6 +9,7 @@ import 'core/pending_deletions.dart';
 import 'core/providers.dart';
 import 'core/theme.dart';
 import 'data/db/app_database.dart';
+import 'data/db/tables/preferences_table.dart';
 import 'features/meeting_detail/widgets/recording_indicator_banner.dart';
 import 'features/home/home_shell.dart';
 import 'features/subjects/subjects_providers.dart';
@@ -162,12 +163,16 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
       unawaited(ref.read(lessonReminderServiceProvider).reschedule());
     });
 
+    // The accent the student picked; gold until the preferences row loads.
+    final accent =
+        ref.watch(preferencesProvider).value?.accentPreset ?? AccentPreset.gold;
+
     return MaterialApp(
       title: 'Aftermind',
       navigatorKey: appNavigatorKey,
       navigatorObservers: [appRouteObserver],
-      theme: appLightTheme,
-      darkTheme: appDarkTheme,
+      theme: appTheme(Brightness.light, accent),
+      darkTheme: appTheme(Brightness.dark, accent),
       // Follows the device. The Android launch window already has a night
       // variant, so a light-only app flashed dark-then-light on every
       // night-mode cold start.

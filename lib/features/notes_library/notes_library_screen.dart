@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/formatting.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
+import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/menu_row.dart';
-import '../../core/widgets/pressable.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
 import '../settings/settings_screen.dart';
 import '../subjects/subject_actions.dart';
 import '../subjects/subjects_providers.dart';
-import '../subjects/widgets/subject_badge.dart';
 import 'notes_library_providers.dart';
 import 'saved_note_screen.dart';
 import 'widgets/folder_sheets.dart';
@@ -97,7 +97,7 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
       body: CustomScrollView(
         slivers: [
           SliverAppBar.large(
-            title: const Text('Poznámky'),
+            title: const Text('Knihovna'),
             actions: [
               if (selected != null)
                 PopupMenuButton<_FolderAction>(
@@ -259,7 +259,7 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
       );
     }
 
-    final names = {for (final f in folders) f.folder.id: f.folder.name};
+    final byId = {for (final f in folders) f.folder.id: f.folder};
 
     final firstPaint = _seen.isEmpty;
     final entering = <int, int>{};
@@ -267,33 +267,42 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
       if (_seen.add(note.id)) entering[note.id] = entering.length;
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, 0),
-      sliver: SliverList.builder(
-        itemCount: visible.length,
-        itemBuilder: (_, i) {
-          final note = visible[i];
-          final order = entering[note.id];
-          return Entrance(
-            enabled: order != null,
-            delay: firstPaint && order != null
-                ? AppMotion.staggerDelay(order)
-                : Duration.zero,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: Gap.sm),
-              child: Pressable(
-                child: _SavedNoteCard(
+    final label = switch (filter.kind) {
+      FolderFilterKind.all => 'Všechny poznámky',
+      FolderFilterKind.unfiled => 'Bez předmětu',
+      FolderFilterKind.folder => byId[filter.folderId]?.name ?? 'Poznámky',
+    };
+
+    // One inset group: the notes share a surface, and a folder's colour shows
+    // as the gradient on the row's tile rather than as another box.
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        InsetGroup(
+          label: label,
+          trailingLabel: czechCount(
+            visible.length,
+            'poznámka',
+            'poznámky',
+            'poznámek',
+          ),
+          dividerIndent: Gap.lg + _NoteRow.slot,
+          children: [
+            for (final note in visible)
+              Entrance(
+                enabled: entering[note.id] != null,
+                delay: firstPaint && entering[note.id] != null
+                    ? AppMotion.staggerDelay(entering[note.id]!)
+                    : Duration.zero,
+                child: _NoteRow(
                   note: note,
-                  // In a folder's own view its name on every card is noise.
-                  folderName: filter.kind == FolderFilterKind.folder
-                      ? null
-                      : names[note.folderId],
+                  subject: byId[note.folderId],
+                  // In a folder's own view its name on every row is noise.
+                  showSubject: filter.kind != FolderFilterKind.folder,
                 ),
               ),
-            ),
-          );
-        },
-      ),
+          ],
+        ),
+      ]),
     );
   }
 }
@@ -394,11 +403,24 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final accent = context.accent;
+    final radius = BorderRadius.circular(Gap.sm);
 
+    // The selected chip gets the accent's lit outline, the rest a plain one.
     return ChoiceChip(
       avatar: avatar,
       selected: selected,
       onSelected: (_) => onSelected(),
+      shape: selected
+          ? GradientRoundedRectangleBorder(
+              borderRadius: radius,
+              gradient: accent.outlineGradient(),
+              width: 1.2,
+            )
+          : RoundedRectangleBorder(
+              borderRadius: radius,
+              side: BorderSide(color: scheme.outlineVariant),
+            ),
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -407,9 +429,8 @@ class _FilterChip extends StatelessWidget {
           Text(
             '$count',
             style: theme.textTheme.labelMedium?.copyWith(
-              color: selected
-                  ? scheme.onSecondaryContainer
-                  : scheme.onSurfaceVariant,
+              color: selected ? accent.text : scheme.onSurfaceVariant,
+              fontWeight: selected ? FontWeight.w700 : null,
             ),
           ),
         ],
@@ -418,98 +439,35 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _SavedNoteCard extends StatelessWidget {
-  const _SavedNoteCard({required this.note, this.folderName});
+/// A saved note as a row: a gradient tile in its subject's colour (the
+/// accent when it has none), title, when, and a two-line prose excerpt.
+class _NoteRow extends StatelessWidget {
+  const _NoteRow({required this.note, this.subject, this.showSubject = true});
 
   final SavedNote note;
-  final String? folderName;
+  final Subject? subject;
+  final bool showSubject;
+
+  static const slot = 52.0;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Card(
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(SavedNoteScreen.route(note.id)),
-        child: Padding(
-          padding: const EdgeInsets.all(Gap.md),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(Gap.md),
-                ),
-                child: Icon(
-                  Icons.sticky_note_2_outlined,
-                  size: 19,
-                  color: scheme.onSecondaryContainer,
-                ),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      note.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: Gap.xs),
-                    Text(
-                      notePreview(note.content),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: Gap.sm),
-                    Row(
-                      children: [
-                        if (folderName != null) ...[
-                          Icon(
-                            Icons.folder_outlined,
-                            size: 14,
-                            color: scheme.primary,
-                          ),
-                          const SizedBox(width: Gap.xs),
-                          Flexible(
-                            child: Text(
-                              folderName!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: scheme.primary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: Gap.md),
-                        ],
-                        Text(
-                          formatMeetingDate(note.updatedAt),
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.outline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    final subject = this.subject;
+    final when = formatMeetingDate(note.updatedAt);
+    return ListRow(
+      leadingSlot: slot,
+      leading: GradientIconTile(
+        icon: Icons.sticky_note_2_rounded,
+        color: subject == null
+            ? null
+            : subjectColor(context, subject.colorIndex),
       ),
+      title: note.title,
+      subtitle: showSubject && subject != null
+          ? '${subject.name} · $when'
+          : when,
+      excerpt: notePreview(note.content),
+      onTap: () => Navigator.of(context).push(SavedNoteScreen.route(note.id)),
     );
   }
 }

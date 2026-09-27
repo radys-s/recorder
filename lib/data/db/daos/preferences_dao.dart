@@ -70,6 +70,9 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> setAudioRetention(AudioRetention value) =>
       _write(PreferencesCompanion(audioRetention: Value(value)));
 
+  Future<void> setAccentPreset(AccentPreset value) =>
+      _write(PreferencesCompanion(accentPreset: Value(value)));
+
   Future<void> setLessonReminder(LessonReminder value) =>
       _write(PreferencesCompanion(lessonReminder: Value(value)));
 

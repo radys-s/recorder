@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../audio/recording_controller.dart';
+import '../../../core/accent.dart';
 import '../../../core/formatting.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
@@ -169,7 +170,7 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
 
     final glow = live
         ? AftermindPalette.recordDark.withValues(alpha: 0.16)
-        : AftermindPalette.gold.withValues(alpha: paused ? 0.08 : 0.20);
+        : context.accent.fill.withValues(alpha: paused ? 0.08 : 0.20);
 
     final Widget body = recording
         ? _LiveStage(
@@ -233,7 +234,10 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
                       transitionBuilder: (child, animation) => FadeTransition(
                         opacity: animation,
                         child: ScaleTransition(
-                          scale: Tween(begin: 0.97, end: 1.0).animate(animation),
+                          scale: Tween(
+                            begin: 0.97,
+                            end: 1.0,
+                          ).animate(animation),
                           child: child,
                         ),
                       ),
@@ -420,10 +424,12 @@ class _IdleStage extends StatelessWidget {
                   return Stack(
                     alignment: Alignment.center,
                     children: [
-                      const RepaintBoundary(
+                      RepaintBoundary(
                         child: CustomPaint(
                           size: Size.square(_ring),
-                          painter: RingBarsPainter(),
+                          painter: RingBarsPainter(
+                            accent: context.accent.palette,
+                          ),
                         ),
                       ),
                       if (t > 0 && t < 1)
@@ -433,7 +439,7 @@ class _IdleStage extends StatelessWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AftermindPalette.gold.withValues(
+                              color: context.accent.highlight.withValues(
                                 alpha: 0.7 * (1 - t),
                               ),
                               width: 2,
@@ -479,43 +485,41 @@ class _IdleStage extends StatelessWidget {
   }
 }
 
-/// The gold disc with its thin gold ring.
+/// The accent disc inside a ring that sweeps through the accent's hues.
 class _RecordDisc extends StatelessWidget {
   const _RecordDisc();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final accent = context.accent;
+    return SizedBox(
       width: 104,
       height: 104,
-      padding: const EdgeInsets.all(7),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AftermindPalette.gold.withValues(alpha: 0.42),
-          width: 3,
-        ),
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFE2B55E), AftermindPalette.gold],
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AftermindPalette.gold.withValues(alpha: 0.45),
-              blurRadius: 30,
-              spreadRadius: -4,
+      child: GradientOutline(
+        gradient: accent.ring,
+        circle: true,
+        width: 3,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: accent.fillGradient,
+              boxShadow: [
+                BoxShadow(
+                  color: accent.fill.withValues(alpha: 0.5),
+                  blurRadius: 30,
+                  spreadRadius: -4,
+                ),
+                BoxShadow(
+                  color: accent.partner.withValues(alpha: 0.25),
+                  blurRadius: 44,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: const Icon(
-          Icons.mic_rounded,
-          size: 36,
-          color: Color(0xFF2A1F08),
+            child: Icon(Icons.mic_rounded, size: 36, color: accent.onFill),
+          ),
         ),
       ),
     );
@@ -525,7 +529,11 @@ class _RecordDisc extends StatelessWidget {
 /// 72 short radial bars around the record disc — a still waveform, the
 /// stage's quiet ornament. Painted once; nothing here animates.
 class RingBarsPainter extends CustomPainter {
-  const RingBarsPainter();
+  const RingBarsPainter({this.accent});
+
+  /// When set, the bars pick up the accent's hues around the ring instead of
+  /// plain white.
+  final AccentPalette? accent;
 
   static const bars = 72;
 
@@ -541,14 +549,33 @@ class RingBarsPainter extends CustomPainter {
       // A gentle, fixed texture: longer bars drift around the ring.
       final wave = (math.sin(i * 0.45) + math.sin(i * 0.17 + 1.3)) / 2;
       final length = 8 + 10 * (wave * wave);
-      paint.color = Colors.white.withValues(alpha: 0.16 + 0.10 * wave.abs());
+      final alpha = 0.16 + 0.10 * wave.abs();
+      final tint = accent;
+      if (tint == null) {
+        paint.color = Colors.white.withValues(alpha: alpha);
+      } else {
+        // Around the ring: highlight → partner → highlight, faded into white
+        // so it stays an ornament rather than a second colour block.
+        final t = (math.sin(i / bars * 2 * math.pi) + 1) / 2;
+        final hue = Color.lerp(tint.highlight, tint.partner, t)!;
+        paint.color = Color.lerp(
+          Colors.white,
+          hue,
+          0.55,
+        )!.withValues(alpha: alpha + 0.08);
+      }
       final dir = Offset(math.cos(a), math.sin(a));
-      canvas.drawLine(center + dir * inner, center + dir * (inner + length), paint);
+      canvas.drawLine(
+        center + dir * inner,
+        center + dir * (inner + length),
+        paint,
+      );
     }
   }
 
   @override
-  bool shouldRepaint(RingBarsPainter oldDelegate) => false;
+  bool shouldRepaint(RingBarsPainter oldDelegate) =>
+      oldDelegate.accent != accent;
 }
 
 // ── Recording ───────────────────────────────────────────────────────────────
@@ -628,7 +655,9 @@ class _LiveStage extends ConsumerWidget {
           SizedBox(
             height: 42,
             child: Text(
-              line == null ? (paused ? 'Pozastaveno' : 'Poslouchám…') : '„$line"',
+              line == null
+                  ? (paused ? 'Pozastaveno' : 'Poslouchám…')
+                  : '„$line"',
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -645,7 +674,7 @@ class _LiveStage extends ConsumerWidget {
               'Slabý signál — polož telefon blíž k vyučujícímu',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: AftermindPalette.darkGold.withValues(alpha: 0.9),
+                color: context.accent.palette.darkText.withValues(alpha: 0.9),
                 fontSize: 13,
               ),
             ),
@@ -664,7 +693,7 @@ class _LiveStage extends ConsumerWidget {
               else
                 _RoundAction(
                   icon: Icons.star_rounded,
-                  iconColor: AftermindPalette.darkGold,
+                  iconColor: context.accent.palette.darkText,
                   label: 'Důležité',
                   onTap: onImportant,
                 ),
@@ -709,7 +738,9 @@ class _LiveStage extends ConsumerWidget {
     for (final s in segments.reversed) {
       final text = s.content?.trim();
       if (text != null && text.isNotEmpty) {
-        return text.length > 140 ? '…${text.substring(text.length - 140)}' : text;
+        return text.length > 140
+            ? '…${text.substring(text.length - 140)}'
+            : text;
       }
     }
     return null;
@@ -819,22 +850,22 @@ class _BigControl extends StatelessWidget {
       children: [
         Semantics(
           button: true,
-          label: label == 'Ukončit' ? 'Ukončit nahrávání' : 'Pokračovat v nahrávání',
+          label: label == 'Ukončit'
+              ? 'Ukončit nahrávání'
+              : 'Pokračovat v nahrávání',
           excludeSemantics: true,
           child: GestureDetector(
             onTap: onTap,
-            child: Container(
-              width: 76,
-              height: 76,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AftermindPalette.gold.withValues(alpha: 0.42),
-                  width: 3,
-                ),
+            child: GradientOutline(
+              gradient: context.accent.ring,
+              circle: true,
+              width: 3,
+              child: Container(
+                width: 76,
+                height: 76,
+                padding: const EdgeInsets.all(7),
+                child: child,
               ),
-              child: child,
             ),
           ),
         ),
@@ -881,16 +912,13 @@ class _PlayDisc extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    final accent = context.accent;
+    return DecoratedBox(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFE2B55E), AftermindPalette.gold],
-        ),
+        gradient: accent.fillGradient,
       ),
-      child: Icon(Icons.play_arrow_rounded, size: 34, color: Color(0xFF2A1F08)),
+      child: Icon(Icons.play_arrow_rounded, size: 34, color: accent.onFill),
     );
   }
 }

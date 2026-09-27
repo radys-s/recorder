@@ -196,6 +196,16 @@ void main() {
     expect((await db.driveDocsDao.doc(3, DriveDocKind.notes))!.docId, 'doc1');
     await db.subjectsDao.deleteSubject(3);
     expect(await db.driveDocsDao.doc(3, DriveDocKind.notes), isNull);
+    // v23 adds the accent preset, gold until the student picks another.
+    expect(
+      (await db.preferencesDao.current()).accentPreset,
+      AccentPreset.gold,
+    );
+    await db.preferencesDao.setAccentPreset(AccentPreset.emerald);
+    expect(
+      (await db.preferencesDao.current()).accentPreset,
+      AccentPreset.emerald,
+    );
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../accent.dart';
 import '../spacing.dart';
 
 /// An iOS-style inset group: a small caps label, then rows on one rounded
@@ -57,30 +58,42 @@ class InsetGroup extends StatelessWidget {
                     child: Text(label!.toUpperCase(), style: labelStyle),
                   ),
                 ),
-                if (trailingLabel != null) Text(trailingLabel!, style: labelStyle),
+                if (trailingLabel != null)
+                  Text(trailingLabel!, style: labelStyle),
               ],
             ),
           ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
-          child: Material(
-            color: scheme.surfaceContainerLow,
+          // The group's edge is the accent's hairline gradient, the same light
+          // source every card in the app has.
+          child: GradientOutline(
+            gradient: context.accent.hairline(
+              scheme.outlineVariant.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.5 : 0.65,
+              ),
+            ),
             borderRadius: BorderRadius.circular(radius),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < children.length; i++) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 0.5,
-                      thickness: 0.5,
-                      indent: dividerIndent,
-                      color: scheme.outlineVariant.withValues(alpha: 0.8),
-                    ),
-                  children[i],
+            width: 0.8,
+            child: Material(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(radius),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < children.length; i++) ...[
+                    if (i > 0)
+                      Divider(
+                        height: 0.5,
+                        thickness: 0.5,
+                        indent: dividerIndent,
+                        color: scheme.outlineVariant.withValues(alpha: 0.8),
+                      ),
+                    children[i],
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -105,6 +118,7 @@ class ListRow extends StatelessWidget {
     this.chevron = true,
     this.onTap,
     this.onLongPress,
+    this.leadingSlot = leadingWidth,
   });
 
   /// Left padding plus the leading slot: where the title starts, and so where
@@ -127,6 +141,10 @@ class ListRow extends StatelessWidget {
   final bool chevron;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Width of the leading slot; wider for an icon tile than for a dot. The
+  /// group's divider indent should be `Gap.lg + leadingSlot`.
+  final double leadingSlot;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +170,7 @@ class ListRow extends StatelessWidget {
                 : CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: leadingWidth,
+                width: leadingSlot,
                 child: Align(
                   alignment: excerpt == null
                       ? Alignment.centerLeft
@@ -237,7 +255,8 @@ class ListRow extends StatelessWidget {
   }
 }
 
-/// A subject's colour as a small dot, the leading mark of a lesson row.
+/// A subject's colour as a small dot, the leading mark of a lesson row —
+/// a lit gradient rather than a flat disc.
 class SubjectDot extends StatelessWidget {
   const SubjectDot({super.key, required this.color, this.size = 10});
 
@@ -248,6 +267,58 @@ class SubjectDot extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: size,
     height: size,
-    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    decoration: BoxDecoration(
+      gradient: subjectGradient(color),
+      shape: BoxShape.circle,
+      boxShadow: [
+        BoxShadow(color: color.withValues(alpha: 0.35), blurRadius: size * 0.6),
+      ],
+    ),
   );
+}
+
+/// A rounded tile carrying an icon on a gradient: the leading mark of a
+/// subject or a note row. With [color] it uses the subject's colour, else the
+/// accent.
+class GradientIconTile extends StatelessWidget {
+  const GradientIconTile({
+    super.key,
+    required this.icon,
+    this.color,
+    this.size = 36,
+  });
+
+  final IconData icon;
+  final Color? color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.accent;
+    final gradient = color == null
+        ? accent.fillGradient
+        : subjectGradient(color!);
+    final glow = color ?? accent.fill;
+    final onColor = color == null
+        ? accent.onFill
+        : (ThemeData.estimateBrightnessForColor(color!) == Brightness.dark
+              ? Colors.white
+              : Colors.black87);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(size * 0.3),
+        boxShadow: [
+          BoxShadow(
+            color: glow.withValues(alpha: 0.30),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Icon(icon, size: size * 0.55, color: onColor),
+    );
+  }
 }

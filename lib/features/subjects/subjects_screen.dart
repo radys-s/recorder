@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
-import '../../core/widgets/pressable.dart';
+import '../../core/widgets/inset_group.dart';
 import '../../data/db/daos/subjects_dao.dart';
 import '../settings/settings_screen.dart';
 import 'subject_actions.dart';
@@ -47,10 +48,10 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
     return Scaffold(
       floatingActionButton: Padding(
         padding: EdgeInsets.only(bottom: fabLift),
-        child: FloatingActionButton.extended(
+        child: GradientFab(
           onPressed: _create,
-          icon: const Icon(Icons.add),
-          label: const Text('Nový předmět'),
+          icon: Icons.add,
+          label: 'Nový předmět',
         ),
       ),
       body: CustomScrollView(
@@ -114,91 +115,100 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
       if (_seen.add(s.subject.id)) entering[s.subject.id] = entering.length;
     }
 
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, 0),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate((context, i) {
-          final summary = list[i];
-          final order = entering[summary.subject.id];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: Gap.sm),
-            child: Entrance(
-              enabled: order != null,
-              delay: firstPaint && order != null
-                  ? AppMotion.staggerDelay(order)
-                  : Duration.zero,
-              child: Pressable(child: _SubjectTile(summary: summary)),
-            ),
-          );
-        }, childCount: list.length),
-      ),
+    // One inset group rather than a card per subject: the rows share a
+    // surface, and the subject colour lives in the gradient tile only.
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        InsetGroup(
+          label: czechCount(list.length, 'předmět', 'předměty', 'předmětů'),
+          dividerIndent: Gap.lg + _SubjectRow.slot,
+          children: [
+            for (final summary in list)
+              Entrance(
+                enabled: entering[summary.subject.id] != null,
+                delay: firstPaint && entering[summary.subject.id] != null
+                    ? AppMotion.staggerDelay(entering[summary.subject.id]!)
+                    : Duration.zero,
+                child: _SubjectRow(summary: summary),
+              ),
+          ],
+        ),
+      ]),
     );
   }
 }
 
-/// A compact neutral row; the subject colour is an identifier, not a surface.
-class _SubjectTile extends StatelessWidget {
-  const _SubjectTile({required this.summary});
+/// A subject as a row: its colour as a gradient tile, name, and what it holds.
+class _SubjectRow extends StatelessWidget {
+  const _SubjectRow({required this.summary});
 
   final SubjectSummary summary;
 
+  static const slot = 52.0;
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final subject = summary.subject;
-    final base = subjectColor(context, subject.colorIndex);
     final counts = [
       czechCount(summary.cardCount, 'karta', 'karty', 'karet'),
       czechCount(summary.lessonCount, 'hodina', 'hodiny', 'hodin'),
     ].join(' · ');
 
-    return Card(
-      color: scheme.surfaceContainerLow,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(Gap.radius),
-        onTap: () =>
-            Navigator.of(context).push(SubjectDetailScreen.route(subject.id)),
-        child: Padding(
-          padding: const EdgeInsets.all(Gap.md),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: base.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(Gap.md),
-                ),
-                child: Icon(Icons.menu_book_outlined, color: base),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      subject.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: Gap.xs),
-                    Text(
-                      counts,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: Gap.sm),
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
+    return ListRow(
+      leadingSlot: slot,
+      leading: GradientIconTile(
+        icon: Icons.menu_book_rounded,
+        color: subjectColor(context, subject.colorIndex),
+      ),
+      title: subject.name,
+      subtitle: counts,
+      onTap: () =>
+          Navigator.of(context).push(SubjectDetailScreen.route(subject.id)),
+    );
+  }
+}
+
+/// The extended action button on a lit accent gradient. Still a
+/// [FloatingActionButton], so the Scaffold places and animates it as usual.
+class GradientFab extends StatelessWidget {
+  const GradientFab({
+    super.key,
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.accent;
+    final radius = BorderRadius.circular(Gap.lg);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: accent.fillGradient,
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: accent.fill.withValues(alpha: 0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
           ),
-        ),
+        ],
+      ),
+      child: FloatingActionButton.extended(
+        onPressed: onPressed,
+        backgroundColor: Colors.transparent,
+        foregroundColor: accent.onFill,
+        elevation: 0,
+        focusElevation: 0,
+        hoverElevation: 0,
+        highlightElevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        icon: Icon(icon),
+        label: Text(label),
       ),
     );
   }

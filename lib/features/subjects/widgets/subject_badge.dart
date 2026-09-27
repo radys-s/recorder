@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/accent.dart';
 import '../../../core/spacing.dart';
+import '../../../core/widgets/inset_group.dart' show SubjectDot;
 import '../../../data/db/app_database.dart';
 import '../subjects_providers.dart';
+
+export '../../../core/widgets/inset_group.dart' show SubjectDot;
 
 /// A colour dot and the subject's name, the way a subject is named everywhere
 /// outside its own screen.
@@ -20,7 +24,12 @@ class SubjectBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: Gap.sm, vertical: Gap.xs),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0.22),
+            color.withValues(alpha: 0.08),
+          ],
+        ),
         borderRadius: BorderRadius.circular(Gap.sm),
       ),
       child: Row(
@@ -48,20 +57,6 @@ class SubjectBadge extends StatelessWidget {
   }
 }
 
-class SubjectDot extends StatelessWidget {
-  const SubjectDot({super.key, required this.color, this.size = 10});
-
-  final Color color;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
-}
-
 /// A rounded tile with the subject's initial, for list rows.
 class SubjectAvatar extends StatelessWidget {
   const SubjectAvatar({super.key, required this.subject, this.size = 40});
@@ -78,13 +73,23 @@ class SubjectAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        gradient: subjectGradient(color),
         borderRadius: BorderRadius.circular(Gap.md),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Text(
         initial,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: color,
+              color:
+                  ThemeData.estimateBrightnessForColor(color) == Brightness.dark
+                      ? Colors.white
+                      : Colors.black87,
               fontWeight: FontWeight.w700,
             ),
       ),

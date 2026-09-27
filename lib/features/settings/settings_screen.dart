@@ -14,6 +14,7 @@ import '../../data/db/tables/preferences_table.dart';
 import '../debug/queue_debug_screen.dart';
 import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
+import 'appearance_section.dart';
 import 'drive_sync_section.dart';
 import 'lesson_reminders_section.dart';
 import 'storage_section.dart';
@@ -93,8 +94,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(Gap.lg),
         children: [
+          const AppearanceSection(first: true),
           const SectionHeader(
-            first: true,
             title: 'Groq API klíč',
             description:
                 'Uložený jen na tomhle zařízení, v systémovém '

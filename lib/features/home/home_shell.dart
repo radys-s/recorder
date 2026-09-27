@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/motion.dart';
 import '../../core/providers.dart';
 import '../../core/spacing.dart';
@@ -75,7 +76,11 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
-    const pages = [MeetingsListScreen(), SubjectsScreen(), NotesLibraryScreen()];
+    const pages = [
+      MeetingsListScreen(),
+      SubjectsScreen(),
+      NotesLibraryScreen(),
+    ];
     return Scaffold(
       extendBody: true,
       body: IndexedStack(
@@ -109,7 +114,8 @@ const _tabs = [
 ];
 
 /// A floating glass dock: content scrolls under it and shows through the blur.
-/// Only the selected destination carries colour — gold, the one accent.
+/// Only the selected destination carries colour — the accent, as a soft
+/// gradient pill with a lit outline and a gradient-painted icon.
 ///
 /// The Scaffold uses `extendBody`, so the dock's height reaches every tab as
 /// bottom padding; the root lists add that padding after their last row and
@@ -130,6 +136,7 @@ class _HomeNavigationBar extends StatelessWidget {
     final height = largeText ? 76.0 : 64.0;
     final bottom = MediaQuery.viewPaddingOf(context).bottom;
     final radius = BorderRadius.circular(height / 2);
+    final accent = context.accent;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -153,54 +160,64 @@ class _HomeNavigationBar extends StatelessWidget {
           borderRadius: radius,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              height: height,
-              padding: const EdgeInsets.all(Gap.xs + 2),
-              decoration: BoxDecoration(
-                color: (dark ? const Color(0xFF1E1F23) : Colors.white)
-                    .withValues(alpha: 0.72),
-                borderRadius: radius,
-                border: Border.all(
-                  width: 0.5,
-                  color: scheme.outlineVariant.withValues(alpha: 0.8),
-                ),
+            child: GradientOutline(
+              gradient: accent.hairline(
+                scheme.outlineVariant.withValues(alpha: 0.8),
               ),
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final slot = box.maxWidth / _tabs.length;
-                  return Stack(
-                    children: [
-                      // A faint pill behind the selected destination.
-                      AnimatedPositioned(
-                        duration: reduced ? Duration.zero : AppDuration.base,
-                        curve: AppCurve.standard,
-                        left: slot * index,
-                        top: 0,
-                        bottom: 0,
-                        width: slot,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: scheme.onSurface.withValues(alpha: 0.07),
+              borderRadius: radius,
+              width: 0.8,
+              child: Container(
+                height: height,
+                padding: const EdgeInsets.all(Gap.xs + 2),
+                decoration: BoxDecoration(
+                  color: (dark ? const Color(0xFF1E1F23) : Colors.white)
+                      .withValues(alpha: 0.72),
+                  borderRadius: radius,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final slot = box.maxWidth / _tabs.length;
+                    return Stack(
+                      children: [
+                        // A faint pill behind the selected destination.
+                        AnimatedPositioned(
+                          duration: reduced ? Duration.zero : AppDuration.base,
+                          curve: AppCurve.standard,
+                          left: slot * index,
+                          top: 0,
+                          bottom: 0,
+                          width: slot,
+                          child: GradientOutline(
+                            gradient: accent.outlineGradient(
+                              opacity: dark ? 0.55 : 0.6,
+                            ),
                             borderRadius: radius,
-                          ),
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          for (var i = 0; i < _tabs.length; i++)
-                            Expanded(
-                              child: _DockItem(
-                                tab: _tabs[i],
-                                selected: i == index,
-                                onTap: () => onSelected(i),
-                                radius: height / 2,
+                            width: 1,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: accent.softGradient(),
+                                borderRadius: radius,
                               ),
                             ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            for (var i = 0; i < _tabs.length; i++)
+                              Expanded(
+                                child: _DockItem(
+                                  tab: _tabs[i],
+                                  selected: i == index,
+                                  onTap: () => onSelected(i),
+                                  radius: height / 2,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -228,6 +245,11 @@ class _DockItem extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final icon = Icon(
+      selected ? tab.selectedIcon : tab.icon,
+      size: 22,
+      color: selected ? Colors.white : color,
+    );
     return Semantics(
       selected: selected,
       button: true,
@@ -239,7 +261,12 @@ class _DockItem extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(selected ? tab.selectedIcon : tab.icon, size: 22, color: color),
+            selected
+                ? GradientMask(
+                    gradient: context.accent.textGradient,
+                    child: icon,
+                  )
+                : icon,
             const SizedBox(height: 2),
             Text(
               tab.label,

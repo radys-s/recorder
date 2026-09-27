@@ -143,6 +143,21 @@ enum AudioRetention {
 /// — before the student has a timetable at all — is a prompt nobody can
 /// answer sensibly. The switch in Nastavení asks at the moment it can explain
 /// what for.
+/// The accent the whole app is painted in. Stored by index: append only.
+enum AccentPreset {
+  gold,
+  sapphire,
+  emerald,
+  amethyst;
+
+  String get label => switch (this) {
+    AccentPreset.gold => 'Zlatá',
+    AccentPreset.sapphire => 'Modrá',
+    AccentPreset.emerald => 'Smaragdová',
+    AccentPreset.amethyst => 'Ametystová',
+  };
+}
+
 enum LessonReminder {
   off,
   fiveMinutes,
@@ -239,6 +254,10 @@ class Preferences extends Table {
 
   /// The „Schůzky" folder the docs live in, once created.
   TextColumn get driveFolderId => text().nullable()();
+
+  /// The app's accent colour preset.
+  IntColumn get accentPreset =>
+      intEnum<AccentPreset>().withDefault(const Constant(0))(); // gold
 
   @override
   Set<Column> get primaryKey => {id};

@@ -18,6 +18,7 @@ import '../audio/recording_controller.dart';
 import '../core/photo_picker.dart';
 import '../core/providers.dart';
 import '../data/db/app_database.dart';
+import '../data/db/tables/preferences_table.dart';
 import '../data/secure/api_key_store.dart';
 import 'demo_seed.dart';
 
@@ -40,6 +41,11 @@ Future<void> main() async {
   if (!fresh) {
     final seeded = await seedDemo(db, recording: scenario == 'recording');
     recordingId = seeded.recording;
+  }
+  // `?accent=sapphire` previews another accent preset.
+  final accent = Uri.base.queryParameters['accent'];
+  for (final preset in AccentPreset.values) {
+    if (preset.name == accent) await db.preferencesDao.setAccentPreset(preset);
   }
 
   runApp(

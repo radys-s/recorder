@@ -26,6 +26,7 @@ class _Prefs implements PreferencesDao {
     id: 0,
     transcriptLanguage: TranscriptLanguage.czech,
     notesDepth: NotesDepth.standard,
+    accentPreset: AccentPreset.gold,
     liveAnswersEnabled: live,
     webAnswersEnabled: web,
     micSensitivity: MicSensitivity.medium,
