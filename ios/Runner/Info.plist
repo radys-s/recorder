@@ -33,7 +33,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Aftermind potřebuje fotoaparát, aby mohl vyfotit tabuli nebo stránky knihy a přečíst z nich text.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Aftermind potřebuje přístup k fotkám, abys mohl vybrat stránky, ze kterých se přečte text do karty.</string>
+	<string>Aftermind potřebuje přístup k fotkám, aby šlo vybrat stránky, tabuli nebo slidy a přečíst z nich text.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.pravera.flutter_foreground_task.refresh</string>

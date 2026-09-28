@@ -9,6 +9,7 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/notes_text.dart';
 import '../../learning/exam_prep.dart';
+import '../legal/ai_disclaimer.dart';
 import '../notes_library/saved_note_screen.dart';
 import '../subjects/subjects_providers.dart';
 
@@ -217,6 +218,7 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
                     ? '- Shrnutí chybí, rovnou k otázkám.'
                     : prep.summary,
               ),
+              const AiDisclaimer(),
             ],
           ),
         ),

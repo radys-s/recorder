@@ -12,10 +12,12 @@ import '../../core/spacing.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/tables/drive_docs_table.dart';
+import '../../legal/data_processors.dart';
 import '../../sync/drive_api.dart';
 import '../../sync/drive_sync_service.dart';
 import '../../sync/google_auth.dart';
 import '../../sync/web_authenticator.dart';
+import '../legal/data_processor_notice.dart';
 import '../subjects/subjects_providers.dart';
 
 const _tag = 'ui.settings.drive';
@@ -134,6 +136,7 @@ class _DriveSyncSectionState extends ConsumerState<DriveSyncSection> {
               'který si NotebookLM přidá jako zdroj. Aplikace vidí jen '
               'soubory, které sama vytvořila.',
         ),
+        const DataProcessorNotice(DataProcessor.googleDrive),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(Gap.lg),

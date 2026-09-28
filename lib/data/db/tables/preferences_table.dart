@@ -262,6 +262,18 @@ class Preferences extends Table {
   /// The last few searches, newest first, as a JSON list of strings.
   TextColumn get recentSearches => text().nullable()();
 
+  /// The version of the terms the student last agreed to; 0 = never. A newer
+  /// `kTermsVersion` asks again.
+  IntColumn get termsAcceptedVersion =>
+      integer().withDefault(const Constant(0))();
+
+  /// When they agreed — kept as the record of the consent.
+  DateTimeColumn get termsAcceptedAt => dateTime().nullable()();
+
+  /// „Příště nezobrazovat" on the reminder shown before a recording starts.
+  BoolColumn get recordingNoticeDismissed =>
+      boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

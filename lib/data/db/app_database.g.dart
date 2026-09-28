@@ -2251,6 +2251,44 @@ class $PreferencesTable extends Preferences
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _termsAcceptedVersionMeta =
+      const VerificationMeta('termsAcceptedVersion');
+  @override
+  late final GeneratedColumn<int> termsAcceptedVersion = GeneratedColumn<int>(
+    'terms_accepted_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _termsAcceptedAtMeta = const VerificationMeta(
+    'termsAcceptedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> termsAcceptedAt =
+      GeneratedColumn<DateTime>(
+        'terms_accepted_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _recordingNoticeDismissedMeta =
+      const VerificationMeta('recordingNoticeDismissed');
+  @override
+  late final GeneratedColumn<bool> recordingNoticeDismissed =
+      GeneratedColumn<bool>(
+        'recording_notice_dismissed',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("recording_notice_dismissed" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2276,6 +2314,9 @@ class $PreferencesTable extends Preferences
     driveFolderId,
     accentPreset,
     recentSearches,
+    termsAcceptedVersion,
+    termsAcceptedAt,
+    recordingNoticeDismissed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2418,6 +2459,33 @@ class $PreferencesTable extends Preferences
         ),
       );
     }
+    if (data.containsKey('terms_accepted_version')) {
+      context.handle(
+        _termsAcceptedVersionMeta,
+        termsAcceptedVersion.isAcceptableOrUnknown(
+          data['terms_accepted_version']!,
+          _termsAcceptedVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('terms_accepted_at')) {
+      context.handle(
+        _termsAcceptedAtMeta,
+        termsAcceptedAt.isAcceptableOrUnknown(
+          data['terms_accepted_at']!,
+          _termsAcceptedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('recording_notice_dismissed')) {
+      context.handle(
+        _recordingNoticeDismissedMeta,
+        recordingNoticeDismissed.isAcceptableOrUnknown(
+          data['recording_notice_dismissed']!,
+          _recordingNoticeDismissedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2534,6 +2602,18 @@ class $PreferencesTable extends Preferences
         DriftSqlType.string,
         data['${effectivePrefix}recent_searches'],
       ),
+      termsAcceptedVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}terms_accepted_version'],
+      )!,
+      termsAcceptedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}terms_accepted_at'],
+      ),
+      recordingNoticeDismissed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}recording_notice_dismissed'],
+      )!,
     );
   }
 
@@ -2626,6 +2706,16 @@ class Preference extends DataClass implements Insertable<Preference> {
 
   /// The last few searches, newest first, as a JSON list of strings.
   final String? recentSearches;
+
+  /// The version of the terms the student last agreed to; 0 = never. A newer
+  /// `kTermsVersion` asks again.
+  final int termsAcceptedVersion;
+
+  /// When they agreed — kept as the record of the consent.
+  final DateTime? termsAcceptedAt;
+
+  /// „Příště nezobrazovat" on the reminder shown before a recording starts.
+  final bool recordingNoticeDismissed;
   const Preference({
     required this.id,
     required this.transcriptLanguage,
@@ -2650,6 +2740,9 @@ class Preference extends DataClass implements Insertable<Preference> {
     this.driveFolderId,
     required this.accentPreset,
     this.recentSearches,
+    required this.termsAcceptedVersion,
+    this.termsAcceptedAt,
+    required this.recordingNoticeDismissed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2725,6 +2818,13 @@ class Preference extends DataClass implements Insertable<Preference> {
     if (!nullToAbsent || recentSearches != null) {
       map['recent_searches'] = Variable<String>(recentSearches);
     }
+    map['terms_accepted_version'] = Variable<int>(termsAcceptedVersion);
+    if (!nullToAbsent || termsAcceptedAt != null) {
+      map['terms_accepted_at'] = Variable<DateTime>(termsAcceptedAt);
+    }
+    map['recording_notice_dismissed'] = Variable<bool>(
+      recordingNoticeDismissed,
+    );
     return map;
   }
 
@@ -2773,6 +2873,11 @@ class Preference extends DataClass implements Insertable<Preference> {
       recentSearches: recentSearches == null && nullToAbsent
           ? const Value.absent()
           : Value(recentSearches),
+      termsAcceptedVersion: Value(termsAcceptedVersion),
+      termsAcceptedAt: termsAcceptedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(termsAcceptedAt),
+      recordingNoticeDismissed: Value(recordingNoticeDismissed),
     );
   }
 
@@ -2826,6 +2931,13 @@ class Preference extends DataClass implements Insertable<Preference> {
         serializer.fromJson<int>(json['accentPreset']),
       ),
       recentSearches: serializer.fromJson<String?>(json['recentSearches']),
+      termsAcceptedVersion: serializer.fromJson<int>(
+        json['termsAcceptedVersion'],
+      ),
+      termsAcceptedAt: serializer.fromJson<DateTime?>(json['termsAcceptedAt']),
+      recordingNoticeDismissed: serializer.fromJson<bool>(
+        json['recordingNoticeDismissed'],
+      ),
     );
   }
   @override
@@ -2873,6 +2985,11 @@ class Preference extends DataClass implements Insertable<Preference> {
         $PreferencesTable.$converteraccentPreset.toJson(accentPreset),
       ),
       'recentSearches': serializer.toJson<String?>(recentSearches),
+      'termsAcceptedVersion': serializer.toJson<int>(termsAcceptedVersion),
+      'termsAcceptedAt': serializer.toJson<DateTime?>(termsAcceptedAt),
+      'recordingNoticeDismissed': serializer.toJson<bool>(
+        recordingNoticeDismissed,
+      ),
     };
   }
 
@@ -2900,6 +3017,9 @@ class Preference extends DataClass implements Insertable<Preference> {
     Value<String?> driveFolderId = const Value.absent(),
     AccentPreset? accentPreset,
     Value<String?> recentSearches = const Value.absent(),
+    int? termsAcceptedVersion,
+    Value<DateTime?> termsAcceptedAt = const Value.absent(),
+    bool? recordingNoticeDismissed,
   }) => Preference(
     id: id ?? this.id,
     transcriptLanguage: transcriptLanguage ?? this.transcriptLanguage,
@@ -2935,6 +3055,12 @@ class Preference extends DataClass implements Insertable<Preference> {
     recentSearches: recentSearches.present
         ? recentSearches.value
         : this.recentSearches,
+    termsAcceptedVersion: termsAcceptedVersion ?? this.termsAcceptedVersion,
+    termsAcceptedAt: termsAcceptedAt.present
+        ? termsAcceptedAt.value
+        : this.termsAcceptedAt,
+    recordingNoticeDismissed:
+        recordingNoticeDismissed ?? this.recordingNoticeDismissed,
   );
   Preference copyWithCompanion(PreferencesCompanion data) {
     return Preference(
@@ -3003,6 +3129,15 @@ class Preference extends DataClass implements Insertable<Preference> {
       recentSearches: data.recentSearches.present
           ? data.recentSearches.value
           : this.recentSearches,
+      termsAcceptedVersion: data.termsAcceptedVersion.present
+          ? data.termsAcceptedVersion.value
+          : this.termsAcceptedVersion,
+      termsAcceptedAt: data.termsAcceptedAt.present
+          ? data.termsAcceptedAt.value
+          : this.termsAcceptedAt,
+      recordingNoticeDismissed: data.recordingNoticeDismissed.present
+          ? data.recordingNoticeDismissed.value
+          : this.recordingNoticeDismissed,
     );
   }
 
@@ -3031,7 +3166,10 @@ class Preference extends DataClass implements Insertable<Preference> {
           ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
           ..write('driveFolderId: $driveFolderId, ')
           ..write('accentPreset: $accentPreset, ')
-          ..write('recentSearches: $recentSearches')
+          ..write('recentSearches: $recentSearches, ')
+          ..write('termsAcceptedVersion: $termsAcceptedVersion, ')
+          ..write('termsAcceptedAt: $termsAcceptedAt, ')
+          ..write('recordingNoticeDismissed: $recordingNoticeDismissed')
           ..write(')'))
         .toString();
   }
@@ -3061,6 +3199,9 @@ class Preference extends DataClass implements Insertable<Preference> {
     driveFolderId,
     accentPreset,
     recentSearches,
+    termsAcceptedVersion,
+    termsAcceptedAt,
+    recordingNoticeDismissed,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -3088,7 +3229,10 @@ class Preference extends DataClass implements Insertable<Preference> {
           other.driveIncludeTranscripts == this.driveIncludeTranscripts &&
           other.driveFolderId == this.driveFolderId &&
           other.accentPreset == this.accentPreset &&
-          other.recentSearches == this.recentSearches);
+          other.recentSearches == this.recentSearches &&
+          other.termsAcceptedVersion == this.termsAcceptedVersion &&
+          other.termsAcceptedAt == this.termsAcceptedAt &&
+          other.recordingNoticeDismissed == this.recordingNoticeDismissed);
 }
 
 class PreferencesCompanion extends UpdateCompanion<Preference> {
@@ -3115,6 +3259,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
   final Value<String?> driveFolderId;
   final Value<AccentPreset> accentPreset;
   final Value<String?> recentSearches;
+  final Value<int> termsAcceptedVersion;
+  final Value<DateTime?> termsAcceptedAt;
+  final Value<bool> recordingNoticeDismissed;
   const PreferencesCompanion({
     this.id = const Value.absent(),
     this.transcriptLanguage = const Value.absent(),
@@ -3139,6 +3286,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.driveFolderId = const Value.absent(),
     this.accentPreset = const Value.absent(),
     this.recentSearches = const Value.absent(),
+    this.termsAcceptedVersion = const Value.absent(),
+    this.termsAcceptedAt = const Value.absent(),
+    this.recordingNoticeDismissed = const Value.absent(),
   });
   PreferencesCompanion.insert({
     this.id = const Value.absent(),
@@ -3164,6 +3314,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     this.driveFolderId = const Value.absent(),
     this.accentPreset = const Value.absent(),
     this.recentSearches = const Value.absent(),
+    this.termsAcceptedVersion = const Value.absent(),
+    this.termsAcceptedAt = const Value.absent(),
+    this.recordingNoticeDismissed = const Value.absent(),
   });
   static Insertable<Preference> custom({
     Expression<int>? id,
@@ -3189,6 +3342,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Expression<String>? driveFolderId,
     Expression<int>? accentPreset,
     Expression<String>? recentSearches,
+    Expression<int>? termsAcceptedVersion,
+    Expression<DateTime>? termsAcceptedAt,
+    Expression<bool>? recordingNoticeDismissed,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3219,6 +3375,11 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       if (driveFolderId != null) 'drive_folder_id': driveFolderId,
       if (accentPreset != null) 'accent_preset': accentPreset,
       if (recentSearches != null) 'recent_searches': recentSearches,
+      if (termsAcceptedVersion != null)
+        'terms_accepted_version': termsAcceptedVersion,
+      if (termsAcceptedAt != null) 'terms_accepted_at': termsAcceptedAt,
+      if (recordingNoticeDismissed != null)
+        'recording_notice_dismissed': recordingNoticeDismissed,
     });
   }
 
@@ -3246,6 +3407,9 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     Value<String?>? driveFolderId,
     Value<AccentPreset>? accentPreset,
     Value<String?>? recentSearches,
+    Value<int>? termsAcceptedVersion,
+    Value<DateTime?>? termsAcceptedAt,
+    Value<bool>? recordingNoticeDismissed,
   }) {
     return PreferencesCompanion(
       id: id ?? this.id,
@@ -3272,6 +3436,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
       driveFolderId: driveFolderId ?? this.driveFolderId,
       accentPreset: accentPreset ?? this.accentPreset,
       recentSearches: recentSearches ?? this.recentSearches,
+      termsAcceptedVersion: termsAcceptedVersion ?? this.termsAcceptedVersion,
+      termsAcceptedAt: termsAcceptedAt ?? this.termsAcceptedAt,
+      recordingNoticeDismissed:
+          recordingNoticeDismissed ?? this.recordingNoticeDismissed,
     );
   }
 
@@ -3367,6 +3535,17 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
     if (recentSearches.present) {
       map['recent_searches'] = Variable<String>(recentSearches.value);
     }
+    if (termsAcceptedVersion.present) {
+      map['terms_accepted_version'] = Variable<int>(termsAcceptedVersion.value);
+    }
+    if (termsAcceptedAt.present) {
+      map['terms_accepted_at'] = Variable<DateTime>(termsAcceptedAt.value);
+    }
+    if (recordingNoticeDismissed.present) {
+      map['recording_notice_dismissed'] = Variable<bool>(
+        recordingNoticeDismissed.value,
+      );
+    }
     return map;
   }
 
@@ -3395,7 +3574,10 @@ class PreferencesCompanion extends UpdateCompanion<Preference> {
           ..write('driveIncludeTranscripts: $driveIncludeTranscripts, ')
           ..write('driveFolderId: $driveFolderId, ')
           ..write('accentPreset: $accentPreset, ')
-          ..write('recentSearches: $recentSearches')
+          ..write('recentSearches: $recentSearches, ')
+          ..write('termsAcceptedVersion: $termsAcceptedVersion, ')
+          ..write('termsAcceptedAt: $termsAcceptedAt, ')
+          ..write('recordingNoticeDismissed: $recordingNoticeDismissed')
           ..write(')'))
         .toString();
   }
@@ -12075,6 +12257,9 @@ typedef $$PreferencesTableCreateCompanionBuilder =
       Value<String?> driveFolderId,
       Value<AccentPreset> accentPreset,
       Value<String?> recentSearches,
+      Value<int> termsAcceptedVersion,
+      Value<DateTime?> termsAcceptedAt,
+      Value<bool> recordingNoticeDismissed,
     });
 typedef $$PreferencesTableUpdateCompanionBuilder =
     PreferencesCompanion Function({
@@ -12101,6 +12286,9 @@ typedef $$PreferencesTableUpdateCompanionBuilder =
       Value<String?> driveFolderId,
       Value<AccentPreset> accentPreset,
       Value<String?> recentSearches,
+      Value<int> termsAcceptedVersion,
+      Value<DateTime?> termsAcceptedAt,
+      Value<bool> recordingNoticeDismissed,
     });
 
 class $$PreferencesTableFilterComposer
@@ -12233,6 +12421,21 @@ class $$PreferencesTableFilterComposer
     column: $table.recentSearches,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<int> get termsAcceptedVersion => $composableBuilder(
+    column: $table.termsAcceptedVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get termsAcceptedAt => $composableBuilder(
+    column: $table.termsAcceptedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get recordingNoticeDismissed => $composableBuilder(
+    column: $table.recordingNoticeDismissed,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$PreferencesTableOrderingComposer
@@ -12356,6 +12559,21 @@ class $$PreferencesTableOrderingComposer
 
   ColumnOrderings<String> get recentSearches => $composableBuilder(
     column: $table.recentSearches,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get termsAcceptedVersion => $composableBuilder(
+    column: $table.termsAcceptedVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get termsAcceptedAt => $composableBuilder(
+    column: $table.termsAcceptedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get recordingNoticeDismissed => $composableBuilder(
+    column: $table.recordingNoticeDismissed,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -12486,6 +12704,21 @@ class $$PreferencesTableAnnotationComposer
     column: $table.recentSearches,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get termsAcceptedVersion => $composableBuilder(
+    column: $table.termsAcceptedVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get termsAcceptedAt => $composableBuilder(
+    column: $table.termsAcceptedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get recordingNoticeDismissed => $composableBuilder(
+    column: $table.recordingNoticeDismissed,
+    builder: (column) => column,
+  );
 }
 
 class $$PreferencesTableTableManager
@@ -12543,6 +12776,9 @@ class $$PreferencesTableTableManager
                 Value<String?> driveFolderId = const Value.absent(),
                 Value<AccentPreset> accentPreset = const Value.absent(),
                 Value<String?> recentSearches = const Value.absent(),
+                Value<int> termsAcceptedVersion = const Value.absent(),
+                Value<DateTime?> termsAcceptedAt = const Value.absent(),
+                Value<bool> recordingNoticeDismissed = const Value.absent(),
               }) => PreferencesCompanion(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -12567,6 +12803,9 @@ class $$PreferencesTableTableManager
                 driveFolderId: driveFolderId,
                 accentPreset: accentPreset,
                 recentSearches: recentSearches,
+                termsAcceptedVersion: termsAcceptedVersion,
+                termsAcceptedAt: termsAcceptedAt,
+                recordingNoticeDismissed: recordingNoticeDismissed,
               ),
           createCompanionCallback:
               ({
@@ -12594,6 +12833,9 @@ class $$PreferencesTableTableManager
                 Value<String?> driveFolderId = const Value.absent(),
                 Value<AccentPreset> accentPreset = const Value.absent(),
                 Value<String?> recentSearches = const Value.absent(),
+                Value<int> termsAcceptedVersion = const Value.absent(),
+                Value<DateTime?> termsAcceptedAt = const Value.absent(),
+                Value<bool> recordingNoticeDismissed = const Value.absent(),
               }) => PreferencesCompanion.insert(
                 id: id,
                 transcriptLanguage: transcriptLanguage,
@@ -12618,6 +12860,9 @@ class $$PreferencesTableTableManager
                 driveFolderId: driveFolderId,
                 accentPreset: accentPreset,
                 recentSearches: recentSearches,
+                termsAcceptedVersion: termsAcceptedVersion,
+                termsAcceptedAt: termsAcceptedAt,
+                recordingNoticeDismissed: recordingNoticeDismissed,
               ),
           withReferenceMapper: (p0) => p0
               .map(

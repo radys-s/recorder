@@ -12,6 +12,7 @@ import 'data/db/app_database.dart';
 import 'data/db/tables/preferences_table.dart';
 import 'features/meeting_detail/widgets/recording_indicator_banner.dart';
 import 'features/home/home_shell.dart';
+import 'features/legal/consent_screen.dart';
 import 'features/subjects/subjects_providers.dart';
 
 class RecorderApp extends ConsumerStatefulWidget {
@@ -189,7 +190,9 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
       // Above the Navigator rather than inside a route: an indicator that
       // vanishes the moment the user opens Settings is not an indicator.
       builder: (_, child) => RecordingIndicatorBanner(child: child!),
-      home: const HomeShell(),
+      // Nothing of the app is reachable before the student agrees to the
+      // current terms.
+      home: const ConsentGate(child: HomeShell()),
     );
   }
 }

@@ -180,6 +180,8 @@ class _Prefs implements PreferencesDao {
     lessonReminder: LessonReminder.off,
     driveSyncEnabled: false,
     driveIncludeTranscripts: false,
+    termsAcceptedVersion: 1,
+    recordingNoticeDismissed: true,
   );
 
   @override

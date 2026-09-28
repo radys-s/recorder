@@ -225,6 +225,19 @@ void main() {
     );
     await db.subjectsDao.deleteSubject(sid);
     expect(await db.studyCardsDao.dueCards(DateTime(2026, 9, 28)), isEmpty);
+    // v26 records the consent; an upgraded install has not agreed yet.
+    var consent = await db.preferencesDao.current();
+    expect(
+      (consent.termsAcceptedVersion, consent.termsAcceptedAt),
+      (0, null),
+    );
+    expect(consent.recordingNoticeDismissed, isFalse);
+    await db.preferencesDao.acceptTerms(1, DateTime(2026, 9, 28, 8));
+    await db.preferencesDao.setRecordingNoticeDismissed(true);
+    consent = await db.preferencesDao.current();
+    expect(consent.termsAcceptedVersion, 1);
+    expect(consent.termsAcceptedAt, DateTime(2026, 9, 28, 8));
+    expect(consent.recordingNoticeDismissed, isTrue);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

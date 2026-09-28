@@ -21,6 +21,7 @@ import '../data/db/app_database.dart';
 import '../data/db/tables/preferences_table.dart';
 import '../data/secure/api_key_store.dart';
 import '../learning/exam_prep.dart';
+import '../legal/legal_texts.dart';
 import 'demo_seed.dart';
 
 /// Test-only web entry point for Playwright: demo data, fake keys, no network,
@@ -42,6 +43,11 @@ Future<void> main() async {
   if (!fresh) {
     final seeded = await seedDemo(db, recording: scenario == 'recording');
     recordingId = seeded.recording;
+    // Seeded scenarios skip the consent screen; `?consent=1` shows it.
+    if (Uri.base.queryParameters['consent'] != '1') {
+      await db.preferencesDao.acceptTerms(kTermsVersion, DateTime.now());
+    }
+    await db.preferencesDao.setRecordingNoticeDismissed(true);
   }
   // `?accent=sapphire` previews another accent preset.
   final accent = Uri.base.queryParameters['accent'];

@@ -84,6 +84,17 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
   Future<void> clearRecentSearches() =>
       _write(const PreferencesCompanion(recentSearches: Value(null)));
 
+  /// Records the student's agreement to [version] of the terms at [at].
+  Future<void> acceptTerms(int version, DateTime at) => _write(
+    PreferencesCompanion(
+      termsAcceptedVersion: Value(version),
+      termsAcceptedAt: Value(at),
+    ),
+  );
+
+  Future<void> setRecordingNoticeDismissed(bool value) =>
+      _write(PreferencesCompanion(recordingNoticeDismissed: Value(value)));
+
   Future<void> setAccentPreset(AccentPreset value) =>
       _write(PreferencesCompanion(accentPreset: Value(value)));
 

@@ -11,6 +11,8 @@ import '../../core/providers.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/secure/api_key_store.dart';
+import '../../legal/data_processors.dart';
+import '../legal/data_processor_notice.dart';
 
 /// Extra text services behind the router. Each is optional; with more keys
 /// the app simply runs out of free limits later.
@@ -320,6 +322,12 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
               ),
               const SizedBox(height: Gap.sm),
               Text(widget.privacy, style: muted),
+              DataProcessorNotice(switch (widget.vendor) {
+                AiVendor.mistral => DataProcessor.mistral,
+                AiVendor.cerebras => DataProcessor.cerebras,
+                AiVendor.groq => DataProcessor.groq,
+                AiVendor.custom => DataProcessor.custom,
+              }),
             ],
           ),
         ),

@@ -62,6 +62,7 @@ import '../sync/drive_api.dart';
 import '../sync/drive_sync_service.dart';
 import '../sync/google_auth.dart';
 import '../sync/web_authenticator.dart';
+import '../data/data_privacy.dart';
 import 'constants.dart';
 import 'local_reminder_scheduler.dart';
 import 'paths.dart';
@@ -660,6 +661,26 @@ final googleAccountProvider = Provider<GoogleAccount>((ref) {
     refreshTokenStore: ApiKeyStore(storageKey: kGoogleRefreshTokenStorageKey),
     authenticator: ref.watch(webAuthenticatorProvider),
     auth: GoogleAuthClient(ref.watch(googleDioProvider)),
+  );
+});
+
+/// „Smazat všechna data" in Settings: rows, files, keys and the Google grant.
+final dataWiperProvider = Provider<DataWiper>((ref) {
+  return DataWiper(
+    ref.watch(appDatabaseProvider),
+    docsPath: documentsPath,
+    keyStores: [
+      ref.watch(apiKeyStoreProvider),
+      ref.watch(geminiKeyStoreProvider),
+      ref.watch(mistralKeyStoreProvider),
+      ref.watch(cerebrasKeyStoreProvider),
+      ref.watch(customAiKeyStoreProvider),
+      ref.watch(customAiBaseUrlStoreProvider),
+      ref.watch(customAiModelStoreProvider),
+      ApiKeyStore(storageKey: kGoogleRefreshTokenStorageKey),
+    ],
+    signOutGoogle: () => ref.read(googleAccountProvider).signOut(),
+    cancelReminders: () => ref.read(reminderSchedulerProvider).cancelAll(),
   );
 });
 

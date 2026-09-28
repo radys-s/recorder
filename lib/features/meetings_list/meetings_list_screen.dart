@@ -19,6 +19,7 @@ import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/menu_row.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../data/db/daos/meetings_dao.dart';
+import '../legal/recording_notice.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../notes_library/notes_library_providers.dart';
 import '../notes_library/saved_note_screen.dart';
@@ -85,6 +86,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (_starting) return;
     _starting = true;
     try {
+      if (!await confirmRecordingNotice(context, ref) || !mounted) return;
       final setup = await showStartRecordingSheet(
         context,
         ref,

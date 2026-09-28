@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/accent.dart';
+import '../../legal/ai_disclaimer.dart';
 import '../../../ai/card_suggestions.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
@@ -491,6 +492,7 @@ class _NotesBody extends StatelessWidget {
           ),
           const SizedBox(height: Gap.sm),
           NotesText(content: note.content!),
+          const AiDisclaimer(),
         ],
       ),
     );

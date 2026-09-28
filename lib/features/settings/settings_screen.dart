@@ -17,7 +17,10 @@ import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
 import 'appearance_section.dart';
 import 'drive_sync_section.dart';
+import '../../legal/data_processors.dart';
+import '../legal/data_processor_notice.dart';
 import 'lesson_reminders_section.dart';
+import 'privacy_section.dart';
 import 'storage_section.dart';
 import 'study_profile_section.dart';
 
@@ -157,6 +160,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
+          const DataProcessorNotice(DataProcessor.groq),
           const _GeminiKeySection(),
           const AiServicesSection(),
           const StudyProfileSection(),
@@ -168,6 +172,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _SensitivitySection(),
           const _LiveAnswersSection(),
           const _GlobalRulesSection(),
+          const PrivacySection(),
           if (kDebugMode) const _DiagnosticsSection(),
         ],
       ),
@@ -349,12 +354,13 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
         const SizedBox(height: Gap.sm),
         Text(
           'Bezplatná verze Gemini může vstupy použít ke zlepšování služeb '
-          'Googlu. Posílají se jen fotky, dohledávání, karty a otázky z chatu '
-          '— nikdy průběžný přepis.',
+          'Googlu. Posílají se fotky, dohledávání, karty, otázky a text '
+          'hodiny, po hodině i celá nahrávka pro vylepšený přepis.',
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
-        const SizedBox(height: Gap.lg),
+        const DataProcessorNotice(DataProcessor.gemini),
+        const SizedBox(height: Gap.sm),
         TextField(
           controller: _controller,
           obscureText: _obscured,

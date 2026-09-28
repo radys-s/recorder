@@ -16,6 +16,7 @@ class InsetGroup extends StatelessWidget {
     this.trailingLabel,
     required this.children,
     this.dividerIndent = ListRow.textIndent,
+    this.horizontalInset = Gap.lg,
   });
 
   final String? label;
@@ -26,6 +27,9 @@ class InsetGroup extends StatelessWidget {
 
   /// Where the hairline starts, measured from the group's left edge.
   final double dividerIndent;
+
+  /// Space on each side. Zero inside a list that is already padded.
+  final double horizontalInset;
 
   static const radius = 22.0;
 
@@ -44,10 +48,10 @@ class InsetGroup extends StatelessWidget {
       children: [
         if (label != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              Gap.lg + Gap.lg,
+            padding: EdgeInsets.fromLTRB(
+              horizontalInset + Gap.lg,
               Gap.xl,
-              Gap.lg + Gap.lg,
+              horizontalInset + Gap.lg,
               Gap.sm,
             ),
             child: Row(
@@ -64,7 +68,7 @@ class InsetGroup extends StatelessWidget {
             ),
           ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+          padding: EdgeInsets.symmetric(horizontal: horizontalInset),
           // The group's edge is the accent's hairline gradient, the same light
           // source every card in the app has.
           child: GradientOutline(
@@ -108,6 +112,7 @@ class ListRow extends StatelessWidget {
   const ListRow({
     super.key,
     required this.title,
+    this.titleColor,
     this.leading,
     this.subtitle,
     this.subtitleColor,
@@ -128,6 +133,9 @@ class ListRow extends StatelessWidget {
   static const leadingWidth = 24.0;
 
   final String title;
+
+  /// A destructive row („Smazat…") takes the error colour.
+  final Color? titleColor;
   final Widget? leading;
   final String? subtitle;
   final Color? subtitleColor;
@@ -200,6 +208,7 @@ class ListRow extends StatelessWidget {
                             fontSize: 17,
                             height: 1.25,
                             fontWeight: FontWeight.w500,
+                            color: titleColor,
                             letterSpacing: -0.2,
                           ),
                         ),
