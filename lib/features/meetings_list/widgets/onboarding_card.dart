@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/accent.dart';
 import '../../../core/spacing.dart';
+import '../../../core/widgets/inset_group.dart';
 
 enum OnboardingStep { groqKey, geminiKey, subject, study, timetable }
 
@@ -80,52 +82,59 @@ class OnboardingCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xs, Gap.lg, Gap.xs),
-      child: Material(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(Gap.radius),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.sm, Gap.sm),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          ready ? 'Hotovo, můžeš nahrávat' : 'Začínáme',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                        Text(
-                          '$done ${_of(steps.length)} kroků',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
+      // Same surface and hairline as the inset groups below it, so the guide
+      // reads as part of the page rather than as a slab dropped on top.
+      child: GradientOutline(
+        gradient: context.accent.hairline(
+          scheme.outlineVariant.withValues(
+            alpha: theme.brightness == Brightness.dark ? 0.5 : 0.65,
+          ),
+        ),
+        borderRadius: BorderRadius.circular(InsetGroup.radius),
+        width: 0.8,
+        child: Material(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(InsetGroup.radius),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.sm, Gap.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ready ? 'Hotovo, můžeš nahrávat' : 'Začínáme',
+                            style: theme.textTheme.titleMedium,
                           ),
-                        ),
-                      ],
+                          Text(
+                            '$done ${_of(steps.length)} kroků',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: onClose,
-                    child: Text(ready ? 'Zavřít' : 'Skrýt'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Gap.sm),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: done / steps.length,
-                  minHeight: 4,
-                  semanticsLabel: 'Průvodce, $done ${_of(steps.length)} kroků',
+                    TextButton(
+                      onPressed: onClose,
+                      child: Text(ready ? 'Zavřít' : 'Skrýt'),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: Gap.xs),
-              for (final item in steps) _StepRow(item: item, onTap: onStep),
-            ],
+                const SizedBox(height: Gap.sm),
+                Semantics(
+                  label: 'Průvodce, $done ${_of(steps.length)} kroků',
+                  child: _GradientProgress(value: done / steps.length),
+                ),
+                const SizedBox(height: Gap.xs),
+                for (final item in steps) _StepRow(item: item, onTap: onStep),
+              ],
+            ),
           ),
         ),
       ),
@@ -147,15 +156,18 @@ class _StepRow extends StatelessWidget {
 
     return ListTile(
       contentPadding: const EdgeInsets.only(right: Gap.sm),
-      leading: CircleAvatar(
-        radius: 16,
-        backgroundColor: item.done
-            ? scheme.primary
-            : scheme.surfaceContainerHighest,
+      leading: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: item.done ? context.accent.fillGradient : null,
+          color: item.done ? null : scheme.surfaceContainerHighest,
+        ),
         child: Icon(
           item.done ? Icons.check : copy.icon,
           size: 18,
-          color: item.done ? scheme.onPrimary : scheme.onSurfaceVariant,
+          color: item.done ? context.accent.onFill : scheme.onSurfaceVariant,
         ),
       ),
       title: Text(
@@ -174,6 +186,40 @@ class _StepRow extends StatelessWidget {
       ),
       trailing: item.done ? null : const Icon(Icons.chevron_right),
       onTap: item.done ? null : () => onTap(item.step),
+    );
+  }
+}
+
+/// A thin track filled with the accent gradient up to [value].
+class _GradientProgress extends StatelessWidget {
+  const _GradientProgress({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: SizedBox(
+        height: 4,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ColoredBox(color: scheme.surfaceContainerHighest),
+            ),
+            FractionallySizedBox(
+              widthFactor: value.clamp(0.0, 1.0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: context.accent.fillGradient,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

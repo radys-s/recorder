@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../audio/recording_controller.dart';
 import '../../core/motion.dart';
+import '../../core/formatting.dart';
 import '../../core/listening_diagnostics.dart';
 import '../../core/providers.dart';
 import '../../core/share.dart';
@@ -19,6 +20,7 @@ import '../../data/db/tables/refined_segments_table.dart';
 import '../../data/db/tables/transcript_segments_table.dart';
 import '../../stt/refined_transcript.dart';
 import '../meetings_list/meeting_actions.dart';
+import '../subjects/subjects_providers.dart';
 import '../subjects/widgets/lesson_context_strip.dart';
 import '../subjects/widgets/lesson_sheet.dart';
 import 'meeting_detail_providers.dart';
@@ -243,7 +245,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(meeting.valueOrNull?.title ?? 'Schůzka'),
+          title: _MeetingTitle(meeting: meeting.valueOrNull),
           actions: [
             IconButton(
               // The two icons differ only in fill, so a hard swap reads as a
@@ -662,4 +664,40 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     TranscriptSegment() => 'seg:${item.id}',
     _ => 'other:${item.hashCode}',
   };
+}
+
+/// A lesson nobody renamed is titled „Hodina 28.9. 8:00", which says when but
+/// not what. The subject is what the student looks for, so it leads and the
+/// date moves to a quiet second line.
+class _MeetingTitle extends ConsumerWidget {
+  const _MeetingTitle({required this.meeting});
+
+  final Meeting? meeting;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final m = meeting;
+    if (m == null) return const Text('Schůzka');
+    final subjectId = m.subjectId;
+    final subject = subjectId == null
+        ? null
+        : ref.watch(subjectProvider(subjectId)).valueOrNull;
+    if (subject == null || !isDefaultMeetingTitle(m.title)) {
+      return Text(m.title, overflow: TextOverflow.ellipsis);
+    }
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(subject.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(
+          formatMeetingDate(m.createdAt),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
 }
