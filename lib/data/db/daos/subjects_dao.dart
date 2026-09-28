@@ -321,6 +321,14 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
         ]));
   }
 
+  /// Drops the given stored photos from a card; the files are the caller's.
+  Future<void> removeCardImages(int cardId, List<String> paths) async {
+    if (paths.isEmpty) return;
+    await (delete(cardImages)
+          ..where((t) => t.cardId.equals(cardId) & t.path.isIn(paths)))
+        .go();
+  }
+
   Future<List<String>> cardImagePaths(int cardId) async {
     final rows = await (select(cardImages)
           ..where((t) => t.cardId.equals(cardId))

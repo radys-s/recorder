@@ -32,6 +32,11 @@ class NotesText extends StatelessWidget {
   static bool _isHeading(String line) =>
       line.endsWith(':') && line.length <= 60;
 
+  /// The výpisky section a student rereads before a test („Co si
+  /// zapamatovat (může být v testu):") — drawn as a highlighted block.
+  static bool isRememberHeading(String line) =>
+      _isHeading(line) && line.toLowerCase().contains('zapamatovat');
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -41,12 +46,41 @@ class NotesText extends StatelessWidget {
     final blocks = <Widget>[];
     var gap = false;
 
+    // While inside the „Co si zapamatovat" section its blocks collect here
+    // and are wrapped in one tinted box when the next heading (or the end)
+    // closes it.
+    List<Widget>? remember;
+
     void add(Widget block) {
-      if (gap && blocks.isNotEmpty) {
-        blocks.add(const SizedBox(height: Gap.md));
+      final target = remember ?? blocks;
+      if (gap && target.isNotEmpty) {
+        target.add(const SizedBox(height: Gap.md));
       }
       gap = false;
-      blocks.add(block);
+      target.add(block);
+    }
+
+    void closeRemember() {
+      final inner = remember;
+      if (inner == null) return;
+      remember = null;
+      if (blocks.isNotEmpty) blocks.add(const SizedBox(height: Gap.md));
+      blocks.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, Gap.md),
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(Gap.lg),
+            border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: inner,
+          ),
+        ),
+      );
+      gap = false;
     }
 
     for (final raw in content.trim().split('\n')) {
@@ -83,6 +117,8 @@ class NotesText extends StatelessWidget {
       }
 
       if (_isHeading(line)) {
+        closeRemember();
+        if (isRememberHeading(line)) remember = <Widget>[];
         add(
           Padding(
             padding: const EdgeInsets.only(top: Gap.sm, bottom: Gap.xs),
@@ -105,6 +141,7 @@ class NotesText extends StatelessWidget {
       );
     }
 
+    closeRemember();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: blocks,

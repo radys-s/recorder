@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/formatting.dart';
+import '../../core/logging.dart';
 import '../../core/pending_deletions.dart';
 import '../../core/share.dart';
 import '../../core/spacing.dart';
@@ -130,7 +132,7 @@ class SavedNoteScreen extends ConsumerWidget {
                         value: _NoteAction.openMeeting,
                         child: MenuRow(
                           icon: Icons.open_in_new,
-                          label: 'Otevřít schůzku',
+                          label: 'Otevřít hodinu',
                         ),
                       ),
                     const PopupMenuItem(
@@ -157,6 +159,8 @@ class SavedNoteScreen extends ConsumerWidget {
             : _SavedNoteBody(
                 note: note,
                 onMove: () => _move(context, ref, note),
+                onShare: () => _share(context, note),
+                onCopy: () => _copy(context, note),
               ),
       ),
     );
@@ -164,10 +168,17 @@ class SavedNoteScreen extends ConsumerWidget {
 }
 
 class _SavedNoteBody extends ConsumerWidget {
-  const _SavedNoteBody({required this.note, required this.onMove});
+  const _SavedNoteBody({
+    required this.note,
+    required this.onMove,
+    required this.onShare,
+    required this.onCopy,
+  });
 
   final SavedNote note;
   final VoidCallback onMove;
+  final VoidCallback onShare;
+  final VoidCallback onCopy;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -180,9 +191,20 @@ class _SavedNoteBody extends ConsumerWidget {
     final edited = note.updatedAt.difference(note.createdAt).inSeconds > 1;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(Gap.xl, Gap.xs, Gap.xl, Gap.xxl),
+      padding: EdgeInsets.fromLTRB(
+        Gap.xl,
+        Gap.xs,
+        Gap.xl,
+        Gap.xxl + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
-        Text(note.title, style: theme.textTheme.headlineSmall),
+        Text(
+          note.title,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
         const SizedBox(height: Gap.md),
         Wrap(
           spacing: Gap.sm,
@@ -210,11 +232,27 @@ class _SavedNoteBody extends ConsumerWidget {
               StatusChip(icon: Icons.tune, label: note.depth!.label),
           ],
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: Gap.lg),
-          child: Divider(),
-        ),
+        const SizedBox(height: Gap.xl),
         NotesText(content: note.content),
+        const SizedBox(height: Gap.xl),
+        Wrap(
+          spacing: Gap.sm,
+          runSpacing: Gap.sm,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: onShare,
+              style: tonalButtonStyle(context),
+              icon: const Icon(Icons.ios_share, size: 18),
+              label: const Text('Sdílet'),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: onCopy,
+              style: tonalButtonStyle(context),
+              icon: const Icon(Icons.copy_all_outlined, size: 18),
+              label: const Text('Kopírovat'),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -260,10 +298,27 @@ class _SavedNoteEditorScreenState extends ConsumerState<SavedNoteEditorScreen> {
     if (!_canSave) return;
     setState(() => _saving = true);
     final navigator = Navigator.of(context);
-    await ref
-        .read(savedNotesDaoProvider)
-        .updateNote(widget.note.id, title: _title.text, content: _content.text);
-    navigator.pop();
+    try {
+      await ref
+          .read(savedNotesDaoProvider)
+          .updateNote(
+            widget.note.id,
+            title: _title.text,
+            content: _content.text,
+          );
+      navigator.pop();
+    } catch (e, st) {
+      AppLog.e('notes.editor', 'note not saved', e, st);
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Poznámku se nepodařilo uložit. Zkus to znovu.'),
+          ),
+        );
+    }
   }
 
   Future<void> _confirmDiscard() async {

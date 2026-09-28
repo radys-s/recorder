@@ -72,7 +72,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -201,6 +201,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 23 && from >= 3) {
         await m.addColumn(preferences, preferences.accentPreset);
+      }
+      if (from < 24 && from >= 3) {
+        await m.addColumn(preferences, preferences.recentSearches);
       }
     },
   );

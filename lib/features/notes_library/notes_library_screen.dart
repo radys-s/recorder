@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/accent.dart';
 import '../../core/formatting.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
+import '../../core/widgets/count_chip.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
@@ -329,7 +329,7 @@ class _FolderBar extends StatelessWidget {
     final unfiled = notes.where((n) => n.folderId == null).length;
 
     final chips = <Widget>[
-      _FilterChip(
+      CountChip(
         label: 'Vše',
         count: notes.length,
         selected: filter == FolderFilter.all,
@@ -341,7 +341,7 @@ class _FolderBar extends StatelessWidget {
           onLongPress: () => onLongPress(summary),
           child: GestureDetector(
             onLongPress: () => onLongPress(summary),
-            child: _FilterChip(
+            child: CountChip(
               avatar: SubjectDot(
                 color: subjectColor(context, summary.folder.colorIndex),
               ),
@@ -356,7 +356,7 @@ class _FolderBar extends StatelessWidget {
       // Only once there are subjects: before that every note is unfiled and the
       // chip would be a second „Vše".
       if (folders.isNotEmpty)
-        _FilterChip(
+        CountChip(
           avatar: const Icon(Icons.inbox_outlined, size: 18),
           label: 'Bez předmětu',
           count: unfiled,
@@ -379,61 +379,6 @@ class _FolderBar extends StatelessWidget {
         itemCount: chips.length,
         separatorBuilder: (_, _) => const SizedBox(width: Gap.sm),
         itemBuilder: (_, i) => Center(child: chips[i]),
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.onSelected,
-    this.avatar,
-  });
-
-  final String label;
-  final int count;
-  final bool selected;
-  final VoidCallback onSelected;
-  final Widget? avatar;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final accent = context.accent;
-    final radius = BorderRadius.circular(Gap.sm);
-
-    // The selected chip gets the accent's lit outline, the rest a plain one.
-    return ChoiceChip(
-      avatar: avatar,
-      selected: selected,
-      onSelected: (_) => onSelected(),
-      shape: selected
-          ? GradientRoundedRectangleBorder(
-              borderRadius: radius,
-              gradient: accent.outlineGradient(),
-              width: 1.2,
-            )
-          : RoundedRectangleBorder(
-              borderRadius: radius,
-              side: BorderSide(color: scheme.outlineVariant),
-            ),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          const SizedBox(width: Gap.sm - 2),
-          Text(
-            '$count',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: selected ? accent.text : scheme.onSurfaceVariant,
-              fontWeight: selected ? FontWeight.w700 : null,
-            ),
-          ),
-        ],
       ),
     );
   }

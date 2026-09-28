@@ -112,6 +112,7 @@ class ListRow extends StatelessWidget {
     this.subtitle,
     this.subtitleColor,
     this.excerpt,
+    this.excerptSpan,
     this.status,
     this.statusColor,
     this.trailing,
@@ -133,6 +134,9 @@ class ListRow extends StatelessWidget {
 
   /// Up to two lines of prose under the subtitle.
   final String? excerpt;
+
+  /// Rich text in place of [excerpt], e.g. a search hit with the match marked.
+  final InlineSpan? excerptSpan;
 
   /// A short state line (errors, progress) under everything else.
   final String? status;
@@ -170,14 +174,14 @@ class ListRow extends StatelessWidget {
                 Gap.md - 1,
               ),
               child: Row(
-                crossAxisAlignment: excerpt == null
+                crossAxisAlignment: excerpt == null && excerptSpan == null
                     ? CrossAxisAlignment.center
                     : CrossAxisAlignment.start,
                 children: [
                   SizedBox(
                     width: leadingSlot,
                     child: Align(
-                      alignment: excerpt == null
+                      alignment: excerpt == null && excerptSpan == null
                           ? Alignment.centerLeft
                           : const Alignment(-1, -0.6),
                       child: leading,
@@ -212,7 +216,19 @@ class ListRow extends StatelessWidget {
                             ),
                           ),
                         ],
-                        if (excerpt != null && excerpt!.isNotEmpty) ...[
+                        if (excerptSpan != null) ...[
+                          const SizedBox(height: Gap.xs),
+                          Text.rich(
+                            excerptSpan!,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurface.withValues(alpha: 0.78),
+                              fontSize: 15,
+                              height: 1.35,
+                            ),
+                          ),
+                        ] else if (excerpt != null && excerpt!.isNotEmpty) ...[
                           const SizedBox(height: Gap.xs),
                           Text(
                             excerpt!,

@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../app_database.dart';
+import '../../../core/search.dart';
 import '../tables/preferences_table.dart';
 
 part 'preferences_dao.g.dart';
@@ -69,6 +72,17 @@ class PreferencesDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> setAudioRetention(AudioRetention value) =>
       _write(PreferencesCompanion(audioRetention: Value(value)));
+
+  Future<List<String>> recentSearches() async =>
+      decodeRecentSearches((await current()).recentSearches);
+
+  Future<void> addRecentSearch(String query) async {
+    final next = pushRecentSearch(await recentSearches(), query);
+    await _write(PreferencesCompanion(recentSearches: Value(jsonEncode(next))));
+  }
+
+  Future<void> clearRecentSearches() =>
+      _write(const PreferencesCompanion(recentSearches: Value(null)));
 
   Future<void> setAccentPreset(AccentPreset value) =>
       _write(PreferencesCompanion(accentPreset: Value(value)));

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../stt/transcript_sanitizer.dart';
 
 /// What a hit is, which is also how the results are grouped.
@@ -136,3 +138,50 @@ SearchExcerpt excerptAround(
     length: hitLength,
   );
 }
+
+/// How many past searches the search screen offers.
+const kMaxRecentSearches = 8;
+
+/// [recent] with [query] moved to the front. A search that differs only in
+/// case, diacritics or spacing replaces its older spelling instead of sitting
+/// next to it.
+List<String> pushRecentSearch(List<String> recent, String query) {
+  final clean = query.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (searchWords(clean).isEmpty) return recent;
+  final key = searchWords(clean).join(' ');
+  return [
+    clean,
+    for (final r in recent)
+      if (searchWords(r).join(' ') != key) r,
+  ].take(kMaxRecentSearches).toList(growable: false);
+}
+
+/// Stored recent searches; anything unreadable counts as none.
+List<String> decodeRecentSearches(String? raw) {
+  if (raw == null || raw.isEmpty) return const [];
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return const [];
+    return [
+      for (final e in decoded)
+        if (e is String && e.trim().isNotEmpty) e,
+    ].take(kMaxRecentSearches).toList(growable: false);
+  } on FormatException {
+    return const [];
+  }
+}
+
+/// [hits] without anything waiting out its undo window: a deleted lesson,
+/// note or card must not be one tap away from search.
+List<SearchHit> visibleHits(
+  List<SearchHit> hits, {
+  Set<int> hiddenMeetings = const {},
+  Set<int> hiddenNotes = const {},
+  Set<int> hiddenCards = const {},
+}) => [
+  for (final h in hits)
+    if (!hiddenMeetings.contains(h.meetingId) &&
+        !hiddenNotes.contains(h.noteId) &&
+        !hiddenCards.contains(h.cardId))
+      h,
+];

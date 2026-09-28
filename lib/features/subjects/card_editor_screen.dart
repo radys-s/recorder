@@ -9,6 +9,7 @@ import '../../ai/answer_source.dart';
 import '../../ai/card_lookup_service.dart';
 import '../../ai/gemini_provider.dart';
 import '../../ai/photo_text_service.dart';
+import '../../core/accent.dart';
 import '../../core/logging.dart';
 import '../../core/paths.dart';
 import '../../core/pending_deletions.dart';
@@ -63,16 +64,15 @@ class CardEditorScreen extends ConsumerStatefulWidget {
     String? initialTitle,
     String? initialContent,
     List<String> initialImagePaths = const [],
-  }) =>
-      MaterialPageRoute<void>(
-        builder: (_) => CardEditorScreen(
-          subjectId: subjectId,
-          card: card,
-          initialTitle: initialTitle,
-          initialContent: initialContent,
-          initialImagePaths: initialImagePaths,
-        ),
-      );
+  }) => MaterialPageRoute<void>(
+    builder: (_) => CardEditorScreen(
+      subjectId: subjectId,
+      card: card,
+      initialTitle: initialTitle,
+      initialContent: initialContent,
+      initialImagePaths: initialImagePaths,
+    ),
+  );
 
   @override
   ConsumerState<CardEditorScreen> createState() => _CardEditorScreenState();
@@ -96,6 +96,10 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
   /// Pages read in this session, stored on save.
   final _newPages = <PickedPhoto>[];
 
+  /// Stored photos the student took off the card; removed on save, so
+  /// „Zahodit změny" brings them back.
+  final _removedImages = <String>{};
+
   bool _saving = false;
   bool _usedPhotos = false;
   bool _usedLookup = false;
@@ -112,6 +116,7 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       _title.text.trim() != (widget.card?.title ?? '') ||
       _content.text.trim() != (widget.card?.content ?? '') ||
       _newPages.isNotEmpty ||
+      _removedImages.isNotEmpty ||
       (_isNew && widget.initialImagePaths.isNotEmpty) ||
       encodeAnswerSources(_sources) != _savedSources;
 
@@ -121,7 +126,10 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     // The key may have been saved in Settings while an older answer to "is
     // there a key" was cached; the hint below must not claim there is none.
     Future.microtask(() {
-      if (mounted) ref.invalidate(hasGeminiKeyProvider);
+      if (!mounted) return;
+      ref
+        ..invalidate(hasGeminiKeyProvider)
+        ..invalidate(hasVisionKeyProvider);
     });
     final card = widget.card;
     if (card != null) {
@@ -227,22 +235,24 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       };
     } on PlatformException {
       if (mounted) {
-        _say('Fotoaparát nebo fotky nejsou dostupné. Povol je v Nastavení iPhonu.');
+        _say(
+          'Fotoaparát nebo fotky nejsou dostupné. Povol je v Nastavení iPhonu.',
+        );
       }
       return;
     }
     if (pages.isEmpty || !mounted) return;
 
     final cancel = _cancel = CancelToken();
-    setState(() => _busy = pages.length == 1 ? 'Čtu fotku…' : 'Čtu ${pages.length} fotky…');
+    setState(
+      () => _busy = pages.length == 1
+          ? 'Čtu fotku…'
+          : 'Čtu ${pages.length} fotky…',
+    );
     try {
-      final text = await ref.read(photoTextServiceProvider).transcribePages(
-        [
-          for (final page in pages)
-            LlmImage(page.bytes, mimeType: page.mimeType),
-        ],
-        cancelToken: cancel,
-      );
+      final text = await ref.read(photoTextServiceProvider).transcribePages([
+        for (final page in pages) LlmImage(page.bytes, mimeType: page.mimeType),
+      ], cancelToken: cancel);
       if (!mounted || cancel.isCancelled) return;
       setState(() {
         _append(text);
@@ -264,7 +274,9 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     if (_busy != null) return;
     final query = _title.text.trim();
     if (query.isEmpty) {
-      _say('Napiš do názvu, co mám dohledat — třeba „Babička, Božena Němcová".');
+      _say(
+        'Napiš do názvu, co mám dohledat — třeba „Babička, Božena Němcová".',
+      );
       return;
     }
     FocusScope.of(context).unfocus();
@@ -273,8 +285,9 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     final cancel = _cancel = CancelToken();
     setState(() => _busy = 'Dohledávám…');
     try {
-      final subject =
-          await ref.read(subjectsDaoProvider).subject(widget.subjectId);
+      final subject = await ref
+          .read(subjectsDaoProvider)
+          .subject(widget.subjectId);
       final found = await ref
           .read(cardLookupServiceProvider)
           .lookUp(query, subjectName: subject?.name, cancelToken: cancel);
@@ -293,7 +306,9 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       if (problem != null) {
         _say('Přes Gemini to nešlo, dohledáno stručně přes Groq. $problem');
       } else if (!found.viaGemini) {
-        _say('Dohledáno jen stručně. S Gemini klíčem v Nastavení to bude podrobnější.');
+        _say(
+          'Dohledáno jen stručně. S Gemini klíčem v Nastavení to bude podrobnější.',
+        );
       } else if (found.truncated) {
         _say('Karta je dlouhá a konec se nevešel — zkontroluj poslední část.');
       } else if (!found.grounded) {
@@ -327,26 +342,39 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
           kind: _usedLookup
               ? CardKind.lookup
               : _usedPhotos || widget.initialImagePaths.isNotEmpty
-                  ? CardKind.photo
-                  : CardKind.text,
+              ? CardKind.photo
+              : CardKind.text,
           sources: sources,
         );
       } else {
         id = widget.card!.id;
-        await dao.updateCard(
-          id,
-          title: _title.text,
-          content: _content.text,
-        );
+        await dao.updateCard(id, title: _title.text, content: _content.text);
         if (sources != _savedSources) await dao.setCardSources(id, sources);
       }
       await _storePhotos(id);
+      await _dropRemovedPhotos(id);
       // In the background: the digest is a nicety for later lessons and must
       // never hold the editor open. It skips cards that already have one.
       unawaited(digests.digest(id));
       navigator.pop();
+    } catch (e, st) {
+      AppLog.e(_tag, 'card not saved', e, st);
+      if (mounted) _say('Kartu se nepodařilo uložit. Zkus to znovu.');
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Rows first, files second — a file left behind is only wasted space, a
+  /// row pointing at a missing file is a broken thumbnail.
+  Future<void> _dropRemovedPhotos(int cardId) async {
+    if (_removedImages.isEmpty) return;
+    final removed = _removedImages.toList(growable: false);
+    await ref.read(subjectsDaoProvider).removeCardImages(cardId, removed);
+    try {
+      await removePhotoFiles(removed);
+    } catch (e, st) {
+      AppLog.e(_tag, 'card $cardId: photo files not removed', e, st);
     }
   }
 
@@ -408,8 +436,16 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
     final busy = _busy;
     final canSave = _title.text.trim().isNotEmpty && !_saving && busy == null;
     final hasGemini = ref.watch(hasGeminiKeyProvider).valueOrNull ?? false;
+    final hasVision = ref.watch(hasVisionKeyProvider).valueOrNull ?? false;
+    final keyHint = !hasVision
+        ? 'Přidej Gemini nebo Mistral klíč v Nastavení — přečte text z fotek. '
+              'S Gemini dohledává i podrobněji.'
+        : !hasGemini
+        ? 'Bez Gemini klíče se dohledává jen stručně.'
+        : null;
     final photoPaths = [
-      ..._storedImages,
+      for (final path in _storedImages)
+        if (!_removedImages.contains(path)) path,
       if (_isNew) ...widget.initialImagePaths,
     ];
 
@@ -464,9 +500,12 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
                 labelText: 'Název',
                 hintText: 'Třeba Babička – Božena Němcová',
               ),
-              buildCounter: (_, {required currentLength, required isFocused,
-                      maxLength}) =>
-                  null,
+              buildCounter: (
+                _, {
+                required currentLength,
+                required isFocused,
+                maxLength,
+              }) => null,
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: Gap.sm),
@@ -474,13 +513,15 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
               spacing: Gap.sm,
               runSpacing: Gap.sm,
               children: [
-                OutlinedButton.icon(
+                FilledButton.tonalIcon(
                   onPressed: busy == null ? _fromPhotos : null,
+                  style: tonalButtonStyle(context),
                   icon: const Icon(Icons.document_scanner_outlined, size: 18),
                   label: const Text('Z fotky'),
                 ),
-                OutlinedButton.icon(
+                FilledButton.tonalIcon(
                   onPressed: busy == null ? _lookUp : null,
+                  style: tonalButtonStyle(context),
                   icon: const Icon(Icons.travel_explore, size: 18),
                   label: const Text('Dohledat'),
                 ),
@@ -498,14 +539,14 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
                   ],
                 ),
               )
-            else if (!hasGemini)
+            else if (keyHint != null)
               Padding(
                 padding: const EdgeInsets.only(top: Gap.sm),
                 child: Text(
-                  'Přidej Gemini klíč v Nastavení — čte text z fotek a '
-                  'dohledává podrobněji.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  keyHint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             const SizedBox(height: Gap.md),
@@ -519,7 +560,8 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
                 labelText: 'Obsah',
                 alignLabelWithHint: true,
                 hintText: 'O čem to je, postavy, pojmy, co probíráte…',
-                helperText: 'Napiš, o čem to je — AI to použije při '
+                helperText:
+                    'Napiš, o čem to je — AI to použije při '
                     'odpovídání v hodině.',
                 helperMaxLines: 2,
               ),
@@ -537,7 +579,14 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
                     for (final path in photoPaths)
                       _Thumb(
                         onTap: () => showStoredPhoto(context, path),
-                        child: StoredPhoto(storedPath: path, width: 72, height: 88),
+                        onRemove: busy == null && _storedImages.contains(path)
+                            ? () => setState(() => _removedImages.add(path))
+                            : null,
+                        child: StoredPhoto(
+                          storedPath: path,
+                          width: 72,
+                          height: 88,
+                        ),
                       ),
                     for (final page in _newPages)
                       _Thumb(

@@ -78,3 +78,11 @@ Future<void> removeDirectory(String path) async {
   final dir = Directory(path);
   if (await dir.exists()) await dir.delete(recursive: true);
 }
+
+/// Deletes stored photos one by one. A file already gone is not an error.
+Future<void> removePhotoFiles(List<String> storedPaths) async {
+  for (final stored in storedPaths) {
+    final file = File(await resolveStoredPath(stored));
+    if (await file.exists()) await file.delete();
+  }
+}

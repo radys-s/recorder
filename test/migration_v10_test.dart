@@ -206,6 +206,13 @@ void main() {
       (await db.preferencesDao.current()).accentPreset,
       AccentPreset.emerald,
     );
+    // v24 remembers recent searches, none until the first one.
+    expect(await db.preferencesDao.recentSearches(), isEmpty);
+    await db.preferencesDao.addRecentSearch('směrování');
+    await db.preferencesDao.addRecentSearch('VLAN');
+    expect(await db.preferencesDao.recentSearches(), ['VLAN', 'směrování']);
+    await db.preferencesDao.clearRecentSearches();
+    expect(await db.preferencesDao.recentSearches(), isEmpty);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

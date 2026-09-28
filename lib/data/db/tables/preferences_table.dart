@@ -259,6 +259,9 @@ class Preferences extends Table {
   IntColumn get accentPreset =>
       intEnum<AccentPreset>().withDefault(const Constant(0))(); // gold
 
+  /// The last few searches, newest first, as a JSON list of strings.
+  TextColumn get recentSearches => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

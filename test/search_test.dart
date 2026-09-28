@@ -210,4 +210,60 @@ void main() {
       expect(await SearchService(db).search('   '), isEmpty);
     });
   });
+
+  group('recent searches', () {
+    test('newest first, tidied, duplicates folded together', () {
+      var recent = pushRecentSearch(const [], '  Síť   směrování ');
+      recent = pushRecentSearch(recent, 'VLAN');
+      recent = pushRecentSearch(recent, 'sit smerovani');
+      expect(recent, ['sit smerovani', 'VLAN']);
+    });
+
+    test('punctuation alone is not remembered', () {
+      expect(pushRecentSearch(const ['a'], ' ?? '), ['a']);
+    });
+
+    test('keeps only the last few', () {
+      var recent = const <String>[];
+      for (var i = 0; i < kMaxRecentSearches + 3; i++) {
+        recent = pushRecentSearch(recent, 'dotaz $i');
+      }
+      expect(recent, hasLength(kMaxRecentSearches));
+      expect(recent.first, 'dotaz ${kMaxRecentSearches + 2}');
+    });
+
+    test('a damaged stored value reads as no history', () {
+      expect(decodeRecentSearches(null), isEmpty);
+      expect(decodeRecentSearches('{nope'), isEmpty);
+      expect(decodeRecentSearches('{"a":1}'), isEmpty);
+      expect(decodeRecentSearches('["a", 3, "b"]'), ['a', 'b']);
+    });
+  });
+
+  test('visibleHits hides what is waiting out its undo window', () {
+    const excerpt = SearchExcerpt.plain('');
+    const hits = [
+      SearchHit(
+        kind: SearchKind.lesson,
+        title: 'a',
+        excerpt: excerpt,
+        meetingId: 1,
+      ),
+      SearchHit(
+        kind: SearchKind.transcript,
+        title: 'b',
+        excerpt: excerpt,
+        meetingId: 2,
+      ),
+      SearchHit(kind: SearchKind.note, title: 'c', excerpt: excerpt, noteId: 5),
+      SearchHit(kind: SearchKind.card, title: 'd', excerpt: excerpt, cardId: 7),
+    ];
+    final left = visibleHits(
+      hits,
+      hiddenMeetings: {2},
+      hiddenNotes: {5},
+      hiddenCards: {8},
+    );
+    expect([for (final h in left) h.title], ['a', 'd']);
+  });
 }

@@ -4,10 +4,10 @@ import 'package:recorder/core/widgets/notes_text.dart';
 
 void main() {
   Future<void> pump(WidgetTester tester, String content) => tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: NotesText(content: content)),
-        ),
-      );
+    MaterialApp(
+      home: Scaffold(body: NotesText(content: content)),
+    ),
+  );
 
   testWidgets('bullets get a glyph and keep only their text', (tester) async {
     await pump(tester, '- Jan pošle nabídku\n• Eva zavolá\n* hotovo');
@@ -26,14 +26,17 @@ void main() {
     expect(heading.style?.color, scheme.primary);
   });
 
-  testWidgets('a long sentence ending in a colon stays body text',
-      (tester) async {
+  testWidgets('a long sentence ending in a colon stays body text', (
+    tester,
+  ) async {
     final sentence = '${'Tohle je obyčejná věta, která náhodou ' * 2}končí:';
     await pump(tester, sentence);
 
     expect(find.byType(SelectableText), findsOneWidget);
-    expect(find.byWidgetPredicate((w) => w is Text && w.data == sentence),
-        findsNothing);
+    expect(
+      find.byWidgetPredicate((w) => w is Text && w.data == sentence),
+      findsNothing,
+    );
   });
 
   testWidgets('blank lines become one gap, not several', (tester) async {
@@ -48,5 +51,31 @@ void main() {
     // First block, one gap, second block.
     expect(column.children, hasLength(3));
     expect(column.children[1], isA<SizedBox>());
+  });
+
+  testWidgets('the „Co si zapamatovat" section is one highlighted block', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      'Téma:\nSměrování\n\nCo si zapamatovat (může být v testu):\n'
+      '- OSPF je link-state\n- RIP počítá skoky\n\nDomácí úkol:\n- nic',
+    );
+
+    final box = find.ancestor(
+      of: find.text('OSPF je link-state'),
+      matching: find.byType(Container),
+    );
+    expect(box, findsWidgets);
+    expect(
+      find.descendant(of: box.first, matching: find.text('RIP počítá skoky')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: box.first, matching: find.text('nic')),
+      findsNothing,
+    );
+    expect(NotesText.isRememberHeading('Co si zapamatovat:'), isTrue);
+    expect(NotesText.isRememberHeading('Téma:'), isFalse);
   });
 }
