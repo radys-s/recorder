@@ -335,7 +335,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           icon: Icons.mic_none_outlined,
           title: 'Zatím žádné nahrávky',
           message:
-              'Klepni na zlaté tlačítko nahoře. Přepis začne přibývat '
+              'Klepni na tlačítko nahrávání nahoře. Přepis začne přibývat '
               'během pár vteřin.',
         ),
       );

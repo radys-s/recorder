@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../ai/gemini_provider.dart';
 import '../../ai/photo_text_service.dart' show geminiFailureText;
 import '../../ai/timetable_import.dart';
@@ -194,6 +195,7 @@ class _TimetableImportScreenState extends ConsumerState<TimetableImportScreen> {
               title: 'Rozvrh se nepodařilo přečíst',
               message: _error!,
               action: FilledButton.tonal(
+                style: tonalButtonStyle(context),
                 onPressed: _read,
                 child: const Text('Zkusit znovu'),
               ),

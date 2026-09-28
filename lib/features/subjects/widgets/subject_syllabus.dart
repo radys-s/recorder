@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accent.dart';
 import '../../../ai/syllabus.dart';
 import '../../../core/spacing.dart';
 import '../../../data/db/app_database.dart';
@@ -139,6 +140,7 @@ class _SubjectSyllabusState extends ConsumerState<SubjectSyllabus> {
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton.tonal(
+              style: tonalButtonStyle(context),
               onPressed: _saveProfile,
               child: const Text('Uložit'),
             ),

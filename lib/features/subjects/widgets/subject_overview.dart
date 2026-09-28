@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accent.dart';
 import '../../../ai/course_overview.dart';
 import '../../../core/pending_deletions.dart';
 import '../../../core/providers.dart';
@@ -39,8 +40,11 @@ class SubjectOverview extends ConsumerWidget {
     final withNotes = ref.watch(meetingIdsWithNotesProvider);
 
     final failed = [topics, lessons, withNotes].where((v) => v.hasError);
-    final (t, l, n) =
-        (topics.valueOrNull, lessons.valueOrNull, withNotes.valueOrNull);
+    final (t, l, n) = (
+      topics.valueOrNull,
+      lessons.valueOrNull,
+      withNotes.valueOrNull,
+    );
     final AsyncValue<_OverviewData> data = t != null && l != null && n != null
         ? AsyncValue.data((
             topics: t,
@@ -148,6 +152,7 @@ class _Progress extends StatelessWidget {
               ),
               const SizedBox(height: Gap.md),
               FilledButton.tonalIcon(
+                style: tonalButtonStyle(context),
                 onPressed: onOpenSettings,
                 icon: const Icon(Icons.format_list_numbered),
                 label: const Text('Přidat plán'),
@@ -253,7 +258,8 @@ class _SummaryBlockState extends ConsumerState<_SummaryBlock> {
                 content: const Text('Shrnutí je uložené v poznámkách.'),
                 action: SnackBarAction(
                   label: 'Otevřít',
-                  onPressed: () => navigator.push(SavedNoteScreen.route(noteId)),
+                  onPressed: () =>
+                      navigator.push(SavedNoteScreen.route(noteId)),
                 ),
               ),
       );
@@ -324,7 +330,8 @@ class _TopicRow extends StatelessWidget {
     final scheme = theme.colorScheme;
     final color = coverageColor(scheme, topic.coverage);
     final months = monthRangeLabel(topic.topic.monthFrom, topic.topic.monthTo);
-    final faded = topic.coverage == TopicCoverage.upcoming ||
+    final faded =
+        topic.coverage == TopicCoverage.upcoming ||
         topic.coverage == TopicCoverage.beforeRecording;
 
     return IntrinsicHeight(
@@ -418,8 +425,9 @@ class _TopicRow extends StatelessWidget {
                             avatar: const Icon(Icons.mic_none, size: 16),
                             label: Text(_lessonDate(lesson.createdAt)),
                             tooltip: 'Otevřít hodinu',
-                            onPressed: () => Navigator.of(context)
-                                .push(MeetingDetailScreen.route(lesson.id)),
+                            onPressed: () =>
+                                Navigator.of(context)
+                                    .push(MeetingDetailScreen.route(lesson.id)),
                           ),
                       ],
                     ),

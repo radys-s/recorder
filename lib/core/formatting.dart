@@ -23,7 +23,7 @@ String formatClock(Duration d) {
 /// segment boundaries.
 String formatClockMs(int ms) => formatClock(Duration(milliseconds: ms));
 
-/// A duration as a human label rather than a clock: `2 h 05 min`, `5:03`,
+/// A duration as a human label rather than a clock: `2 h 05 min`, `5 min`,
 /// `42 s`. For summaries, where "how long was this" matters and the exact
 /// second does not.
 String formatDurationLabel(Duration d) {
@@ -31,7 +31,7 @@ String formatDurationLabel(Duration d) {
   final m = d.inMinutes.remainder(60);
   final s = d.inSeconds.remainder(60);
   if (h > 0) return '$h h ${m.toString().padLeft(2, '0')} min';
-  if (m > 0) return '$m:${s.toString().padLeft(2, '0')}';
+  if (m > 0) return '$m min';
   return '$s s';
 }
 

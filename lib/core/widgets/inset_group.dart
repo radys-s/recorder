@@ -152,102 +152,109 @@ class ListRow extends StatelessWidget {
     final scheme = theme.colorScheme;
     final muted = scheme.onSurfaceVariant;
 
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            Gap.lg,
-            Gap.md - 1,
-            Gap.md,
-            Gap.md - 1,
-          ),
-          child: Row(
-            crossAxisAlignment: excerpt == null
-                ? CrossAxisAlignment.center
-                : CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: leadingSlot,
-                child: Align(
-                  alignment: excerpt == null
-                      ? Alignment.centerLeft
-                      : const Alignment(-1, -0.6),
-                  child: leading,
-                ),
+    // One node per row, announced as a button, instead of a loose run of
+    // texts a screen reader cannot activate.
+    return MergeSemantics(
+      child: Semantics(
+        button: onTap != null,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Gap.lg,
+                Gap.md - 1,
+                Gap.md,
+                Gap.md - 1,
               ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontSize: 17,
-                        height: 1.25,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: -0.2,
-                      ),
+              child: Row(
+                crossAxisAlignment: excerpt == null
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: leadingSlot,
+                    child: Align(
+                      alignment: excerpt == null
+                          ? Alignment.centerLeft
+                          : const Alignment(-1, -0.6),
+                      child: leading,
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: subtitleColor ?? muted,
-                          fontSize: 14,
-                          height: 1.3,
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            fontSize: 17,
+                            height: 1.25,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -0.2,
+                          ),
                         ),
-                      ),
-                    ],
-                    if (excerpt != null && excerpt!.isNotEmpty) ...[
-                      const SizedBox(height: Gap.xs),
-                      Text(
-                        excerpt!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface.withValues(alpha: 0.78),
-                          fontSize: 15,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                    if (status != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        status!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: statusColor ?? muted,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: subtitleColor ?? muted,
+                              fontSize: 14,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                        if (excerpt != null && excerpt!.isNotEmpty) ...[
+                          const SizedBox(height: Gap.xs),
+                          Text(
+                            excerpt!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurface.withValues(alpha: 0.78),
+                              fontSize: 15,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                        if (status != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            status!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: statusColor ?? muted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: Gap.sm),
+                    trailing!,
                   ],
-                ),
+                  if (chevron) ...[
+                    const SizedBox(width: Gap.xs),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 22,
+                      color: muted.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ],
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: Gap.sm),
-                trailing!,
-              ],
-              if (chevron) ...[
-                const SizedBox(width: Gap.xs),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 22,
-                  color: muted.withValues(alpha: 0.6),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ),

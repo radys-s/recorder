@@ -204,8 +204,20 @@ class _BannerState extends ConsumerState<_Banner> {
     }
   }
 
+  // The strip lives above the Navigator, so its own context cannot open a
+  // dialog; the navigator's context can.
   Future<void> _confirmStop(BuildContext context) =>
-      confirmAndStopRecording(context, ref);
+      confirmAndStopRecording(appNavigatorKey.currentContext ?? context, ref);
+
+  void _togglePause() {
+    HapticFeedback.mediumImpact();
+    final controller = ref.read(recordingControllerProvider.notifier);
+    if (ref.read(recordingControllerProvider).isPaused) {
+      controller.resume();
+    } else {
+      controller.pause();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -232,16 +244,22 @@ class _BannerState extends ConsumerState<_Banner> {
             ? Icon(Icons.pause_circle_filled, color: foreground)
             : const _PulsingDot(),
         const SizedBox(width: Gap.sm),
-        Expanded(
+        // The clock never gives way; the word before it may.
+        Flexible(
           child: Text(
-            '${paused ? 'Pozastaveno' : 'Nahrává se'} · ${formatClock(elapsed)}',
+            paused ? 'Pozastaveno' : 'Nahrává se',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: foreground,
-              fontWeight: FontWeight.w500,
-              fontFeatures: kTabularFigures,
-            ),
+            style: TextStyle(color: foreground, fontWeight: FontWeight.w500),
+          ),
+        ),
+        Text(
+          ' · ${formatClock(elapsed)}',
+          maxLines: 1,
+          style: TextStyle(
+            color: foreground,
+            fontWeight: FontWeight.w600,
+            fontFeatures: kTabularFigures,
           ),
         ),
         if (!paused && !largeText) ...[
@@ -257,23 +275,18 @@ class _BannerState extends ConsumerState<_Banner> {
     Widget actions() => Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextButton.icon(
-          style: TextButton.styleFrom(
-            foregroundColor: foreground,
-            minimumSize: const Size(44, 44),
-            tapTargetSize: MaterialTapTargetSize.padded,
+        Semantics(
+          button: true,
+          label: paused ? 'Pokračovat v nahrávání' : 'Pozastavit nahrávání',
+          onTap: _togglePause,
+          excludeSemantics: true,
+          child: IconButton(
+            onPressed: _togglePause,
+            icon: Icon(
+              paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+              color: foreground,
+            ),
           ),
-          onPressed: () {
-            HapticFeedback.mediumImpact();
-            final controller = ref.read(recordingControllerProvider.notifier);
-            if (paused) {
-              controller.resume();
-            } else {
-              controller.pause();
-            }
-          },
-          icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
-          label: Text(paused ? 'Pokračovat' : 'Pozastavit'),
         ),
         // This banner is built above Navigator, so an IconButton tooltip has
         // no Overlay ancestor and throws as soon as the strip opens.

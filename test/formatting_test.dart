@@ -30,7 +30,7 @@ void main() {
     });
 
     test('m:ss under an hour', () {
-      expect(formatDurationLabel(const Duration(minutes: 5, seconds: 3)), '5:03');
+      expect(formatDurationLabel(const Duration(minutes: 5, seconds: 3)), '5 min');
     });
 
     test('hours and minutes above one hour', () {

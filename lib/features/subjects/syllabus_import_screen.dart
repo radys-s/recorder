@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../ai/course_profile.dart';
 import '../../ai/gemini_provider.dart';
 import '../../ai/photo_text_service.dart' show geminiFailureText;
@@ -307,6 +308,7 @@ class _SyllabusImportScreenState extends ConsumerState<SyllabusImportScreen> {
               title: 'Plán se nepodařilo přečíst',
               message: _error!,
               action: FilledButton.tonal(
+                style: tonalButtonStyle(context),
                 onPressed: _read,
                 child: const Text('Zkusit znovu'),
               ),

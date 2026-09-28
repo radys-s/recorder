@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/providers.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/section_header.dart';
@@ -141,6 +142,7 @@ class _StudyProfileSectionState extends ConsumerState<StudyProfileSection> {
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.tonalIcon(
+            style: tonalButtonStyle(context),
             onPressed: _loaded && _current != _saved ? _save : null,
             icon: const Icon(Icons.check),
             label: const Text('Uložit studium'),

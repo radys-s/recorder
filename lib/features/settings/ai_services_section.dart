@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/accent.dart';
 import '../../ai/ai_router.dart';
 import '../../ai/llm_provider.dart';
 import '../../ai/openai_compatible_provider.dart';
@@ -303,6 +304,7 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
                 runSpacing: Gap.sm,
                 children: [
                   FilledButton.tonal(
+                    style: tonalButtonStyle(context),
                     onPressed: _busy ? null : _save,
                     child: const Text('Uložit'),
                   ),

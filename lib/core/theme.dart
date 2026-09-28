@@ -255,8 +255,13 @@ ThemeData _build(Brightness brightness, AccentPreset preset) {
         backgroundBuilder: (context, states, child) =>
             states.contains(WidgetState.disabled)
             ? child!
+            // The builder paints outside the button's clip, so the gradient
+            // carries the rounded shape itself.
             : DecoratedBox(
-                decoration: BoxDecoration(gradient: accent.fillGradient),
+                decoration: BoxDecoration(
+                  gradient: accent.fillGradient,
+                  borderRadius: BorderRadius.circular(Gap.md),
+                ),
                 child: child,
               ),
         minimumSize: const Size(0, 46),

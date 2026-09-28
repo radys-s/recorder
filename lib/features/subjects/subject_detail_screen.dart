@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../core/formatting.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
@@ -456,6 +457,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.tonal(
+            style: tonalButtonStyle(context),
             onPressed: _rulesChanged ? _saveRules : null,
             child: const Text('Uložit pravidla'),
           ),

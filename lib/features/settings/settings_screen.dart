@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/accent.dart';
 import '../../ai/gemini_key_check.dart';
 import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
@@ -860,6 +861,7 @@ class _GlobalRulesSectionState extends ConsumerState<_GlobalRulesSection> {
         Align(
           alignment: Alignment.centerRight,
           child: FilledButton.tonalIcon(
+            style: tonalButtonStyle(context),
             onPressed: _loaded && _controller.text.trim() != _saved
                 ? _save
                 : null,

@@ -101,6 +101,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
               'AI je pak použije, když v hodině padne otázka. Předměty '
               'i rozvrh můžeš načíst ze screenshotu rozvrhu.',
           action: FilledButton.tonalIcon(
+            style: tonalButtonStyle(context),
             onPressed: () => importTimetableFlow(context, ref),
             icon: const Icon(Icons.document_scanner_outlined),
             label: const Text('Importovat rozvrh'),

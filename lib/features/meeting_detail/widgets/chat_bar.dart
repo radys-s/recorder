@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accent.dart';
 import '../../../ai/chat_intent.dart';
 import '../../../ai/live_answer_service.dart';
 import '../../../audio/recording_controller.dart';
@@ -242,8 +243,10 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                       children: [
                         FilledButton.tonalIcon(
                           onPressed: _answering ? null : _answerNow,
-                          style: FilledButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
+                          style: tonalButtonStyle(context).merge(
+                            FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                            ),
                           ),
                           icon: _answering
                               ? const SizedBox.square(

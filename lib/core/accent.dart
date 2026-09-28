@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../data/db/tables/preferences_table.dart';
+import 'spacing.dart';
 
 /// One accent colour family: the student picks it in Settings, and every
 /// gradient in the app is built from these five tones.
@@ -186,6 +187,31 @@ class AccentTheme extends ThemeExtension<AccentTheme> {
   @override
   AccentTheme lerp(covariant AccentTheme? other, double t) =>
       other == null || t < 0.5 ? this : other;
+}
+
+/// The secondary action next to a gradient one: a soft accent tint instead of
+/// a second lit button, so a screen keeps one obvious primary action.
+/// The theme gives every FilledButton the lit gradient and cannot tell a
+/// tonal variant apart, so tonal buttons pass this style.
+ButtonStyle tonalButtonStyle(BuildContext context) {
+  final accent = context.accent;
+  return FilledButton.styleFrom(
+    backgroundColor: Colors.transparent,
+    foregroundColor: accent.text,
+    backgroundBuilder: (context, states, child) =>
+        states.contains(WidgetState.disabled)
+        ? child!
+        : DecoratedBox(
+            decoration: ShapeDecoration(
+              gradient: accent.softGradient(strength: 1.1),
+              shape: GradientRoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(Gap.md),
+                gradient: accent.outlineGradient(opacity: 0.45),
+              ),
+            ),
+            child: child,
+          ),
+  );
 }
 
 extension AccentContext on BuildContext {

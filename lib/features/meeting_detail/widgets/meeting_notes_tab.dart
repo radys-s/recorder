@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/accent.dart';
 import '../../../ai/card_suggestions.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
@@ -44,10 +45,9 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     // The generator writes its own progress and failure to the row, so this
     // deliberately does not await anything the UI depends on.
     unawaited(
-      ref.read(notesGeneratorProvider).generate(
-            meetingId: widget.meetingId,
-            depth: depth,
-          ),
+      ref
+          .read(notesGeneratorProvider)
+          .generate(meetingId: widget.meetingId, depth: depth),
     );
   }
 
@@ -109,7 +109,9 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
   Future<void> _addSuggestion(CardSuggestion suggestion, int subjectId) async {
     final messenger = ScaffoldMessenger.of(context);
     final digests = ref.read(cardDigestServiceProvider);
-    final id = await ref.read(subjectsDaoProvider).createCard(
+    final id = await ref
+        .read(subjectsDaoProvider)
+        .createCard(
           subjectId: subjectId,
           title: suggestion.title,
           content: suggestion.content,
@@ -120,7 +122,8 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-          SnackBar(content: Text('Karta „${suggestion.title}" přidána.')));
+        SnackBar(content: Text('Karta „${suggestion.title}" přidána.')),
+      );
   }
 
   /// Removes one suggestion, read fresh so two quick taps cannot resurrect
@@ -133,8 +136,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
       for (final s in decodeCardSuggestions(row.cardSuggestions))
         if (s != suggestion) s,
     ];
-    await dao.setCardSuggestions(
-        widget.meetingId, encodeCardSuggestions(rest));
+    await dao.setCardSuggestions(widget.meetingId, encodeCardSuggestions(rest));
   }
 
   /// What the depth selector shows: the user's choice this session, else the
@@ -152,11 +154,14 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     final note = notes.valueOrNull;
     final depth = _effectiveDepth(note);
     final generating = note?.status == NotesStatus.generating;
-    final subjectId =
-        ref.watch(meetingProvider(widget.meetingId)).valueOrNull?.subjectId;
+    final subjectId = ref
+        .watch(meetingProvider(widget.meetingId))
+        .valueOrNull
+        ?.subjectId;
     final lesson = subjectId != null;
     final editedAt = ref.watch(transcriptEditedAtProvider)[widget.meetingId];
-    final outdated = !generating &&
+    final outdated =
+        !generating &&
         note?.content != null &&
         editedAt != null &&
         editedAt.isAfter(note!.createdAt);
@@ -168,19 +173,26 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
     // produces different text, and the button must then offer to save again.
     int? savedId;
     final content = note?.content?.trim();
-    for (final saved in ref
-            .watch(savedNotesForMeetingProvider(widget.meetingId))
-            .valueOrNull ??
-        const <SavedNote>[]) {
+    for (final saved
+        in ref
+                .watch(savedNotesForMeetingProvider(widget.meetingId))
+                .valueOrNull ??
+            const <SavedNote>[]) {
       if (saved.content == content) savedId = saved.id;
     }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
-          Gap.lg, Gap.lg, Gap.lg, Gap.fabClearance),
+        Gap.lg,
+        Gap.lg,
+        Gap.lg,
+        Gap.fabClearance,
+      ),
       children: [
-        Text(lesson ? 'Hloubka výpisků' : 'Hloubka poznámek',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          lesson ? 'Hloubka výpisků' : 'Hloubka poznámek',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: Gap.sm),
         Wrap(
           spacing: Gap.sm,
@@ -199,17 +211,18 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
         const SizedBox(height: Gap.xs),
         Text(
           lesson ? depth.lessonDescription : depth.description,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: Gap.md),
         FilledButton.icon(
           onPressed: generating ? null : () => _generate(depth),
           icon: const Icon(Icons.auto_awesome),
-          label: Text(note == null
-              ? (lesson ? 'Vytvořit výpisky' : 'Vytvořit poznámky')
-              : 'Vytvořit znovu'),
+          label: Text(
+            note == null
+                ? (lesson ? 'Vytvořit výpisky' : 'Vytvořit poznámky')
+                : 'Vytvořit znovu',
+          ),
         ),
         const SizedBox(height: Gap.xl),
         if (outdated) ...[
@@ -218,9 +231,11 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
             child: ListTile(
               leading: const Icon(Icons.edit_note),
               title: const Text('Přepis se změnil'),
-              subtitle: Text(lesson
-                  ? 'Výpisky jsou ze starší verze přepisu.'
-                  : 'Poznámky jsou ze starší verze přepisu.'),
+              subtitle: Text(
+                lesson
+                    ? 'Výpisky jsou ze starší verze přepisu.'
+                    : 'Poznámky jsou ze starší verze přepisu.',
+              ),
               trailing: TextButton(
                 onPressed: () => _generate(depth),
                 child: const Text('Vytvořit znovu'),
@@ -249,9 +264,9 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
             title: lesson ? 'Zatím žádné výpisky' : 'Zatím žádné poznámky',
             message: lesson
                 ? 'Výpisky do sešitu z přepisu, fotek tabule, kontextu a '
-                    'otázek z hodiny.'
+                      'otázek z hodiny.'
                 : 'Vyber hloubku a nech je vytvořit. Kdykoliv je '
-                    'můžeš přegenerovat jinak.',
+                      'můžeš přegenerovat jinak.',
           ),
         if (suggestions.isNotEmpty && subjectId != null)
           _CardSuggestions(
@@ -292,7 +307,11 @@ class _CardSuggestions extends StatelessWidget {
               margin: const EdgeInsets.only(bottom: Gap.sm),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    Gap.md, Gap.sm, Gap.xs, Gap.sm),
+                  Gap.md,
+                  Gap.sm,
+                  Gap.xs,
+                  Gap.sm,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -307,7 +326,8 @@ class _CardSuggestions extends StatelessWidget {
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant),
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -318,6 +338,7 @@ class _CardSuggestions extends StatelessWidget {
                       onPressed: () => onDismiss(s),
                     ),
                     FilledButton.tonal(
+                      style: tonalButtonStyle(context),
                       onPressed: () => onAdd(s),
                       child: const Text('Přidat'),
                     ),
@@ -373,14 +394,16 @@ class _NotesError extends StatelessWidget {
           children: [
             Text(
               'Poznámky se nepodařilo vytvořit',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(color: scheme.onErrorContainer),
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: scheme.onErrorContainer,
+              ),
             ),
             const SizedBox(height: Gap.xs),
             Text(
               message,
-              style: theme.textTheme.bodyMedium
-                  ?.copyWith(color: scheme.onErrorContainer),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onErrorContainer,
+              ),
             ),
           ],
         ),
@@ -425,8 +448,7 @@ class _NotesBody extends StatelessWidget {
     // as the screen blinking.
     return AnimatedOpacity(
       opacity: stale ? 0.5 : 1,
-      duration:
-          reducedMotion(context) ? Duration.zero : AppDuration.quick,
+      duration: reducedMotion(context) ? Duration.zero : AppDuration.quick,
       curve: AppCurve.standard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,8 +460,9 @@ class _NotesBody extends StatelessWidget {
                   stale
                       ? 'Předchozí verze (${note.depth.label})'
                       : note.depth.label,
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: theme.colorScheme.outline),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                 ),
               ),
               IconButton(
@@ -456,6 +479,7 @@ class _NotesBody extends StatelessWidget {
               ),
               const SizedBox(width: Gap.xs),
               FilledButton.tonalIcon(
+                style: tonalButtonStyle(context),
                 onPressed: stale ? null : onSave,
                 icon: Icon(
                   saved ? Icons.bookmark : Icons.bookmark_add_outlined,
