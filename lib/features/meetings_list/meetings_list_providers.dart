@@ -9,10 +9,8 @@ final meetingSummariesProvider = StreamProvider<List<MeetingSummary>>((ref) {
   return ref.watch(appDatabaseProvider).meetingsDao.watchMeetingSummaries();
 });
 
-/// The newest AI notes of any lesson — the home screen's preview card.
-final latestLessonNotesProvider = StreamProvider<MeetingNote?>((ref) {
-  return ref
-      .watch(appDatabaseProvider)
-      .meetingNotesDao
-      .watchLatestReady();
+/// The newest AI notes, newest first — the home screen's preview row takes
+/// the first whose meeting is still listed.
+final latestLessonNotesProvider = StreamProvider<List<MeetingNote>>((ref) {
+  return ref.watch(appDatabaseProvider).meetingNotesDao.watchRecentReady();
 });

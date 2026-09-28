@@ -279,10 +279,15 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
   /// The newest AI notes as a prose row, else the newest saved note.
   Widget? _latestNotes(List<MeetingSummary>? summaries) {
-    final notes = ref.watch(latestLessonNotesProvider).valueOrNull;
-    if (notes != null && summaries != null) {
-      for (final s in summaries) {
-        if (s.meeting.id != notes.meetingId) continue;
+    final recent = ref.watch(latestLessonNotesProvider).valueOrNull;
+    // [summaries] already hides meetings waiting out their undo window, so
+    // the first notes whose meeting is listed are the newest visible ones.
+    final byId = {
+      for (final s in summaries ?? const <MeetingSummary>[]) s.meeting.id: s,
+    };
+    for (final notes in recent ?? const []) {
+      final s = byId[notes.meetingId];
+      if (s != null) {
         final subject = s.subject;
         final named = !isDefaultMeetingTitle(s.meeting.title);
         return ListRow(

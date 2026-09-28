@@ -12,13 +12,15 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
   MeetingNotesDao(super.db);
 
   Stream<MeetingNote?> watchForMeeting(int meetingId) {
-    return (select(meetingNotes)..where((t) => t.meetingId.equals(meetingId)))
-        .watchSingleOrNull();
+    return (select(
+      meetingNotes,
+    )..where((t) => t.meetingId.equals(meetingId))).watchSingleOrNull();
   }
 
   Future<MeetingNote?> forMeeting(int meetingId) {
-    return (select(meetingNotes)..where((t) => t.meetingId.equals(meetingId)))
-        .getSingleOrNull();
+    return (select(
+      meetingNotes,
+    )..where((t) => t.meetingId.equals(meetingId))).getSingleOrNull();
   }
 
   /// Every meeting that has notes to read. A regenerate in progress still
@@ -36,19 +38,18 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
         .map((ids) => ids.toSet());
   }
 
-  /// The most recently finished notes of any meeting, for the home screen.
-  /// A regenerate in progress still shows its previous notes.
-  Stream<MeetingNote?> watchLatestReady() {
+  /// The most recently finished notes, newest first, for the home screen.
+  /// A regenerate in progress still shows its previous notes. More than one,
+  /// so the screen can skip a meeting that is waiting out its undo window.
+  Stream<List<MeetingNote>> watchRecentReady({int limit = 5}) {
     return (select(meetingNotes)
-          ..where(
-            (t) => t.content.isNotNull() & t.content.equals('').not(),
-          )
+          ..where((t) => t.content.isNotNull() & t.content.equals('').not())
           ..orderBy([
             (t) => OrderingTerm.desc(t.createdAt),
             (t) => OrderingTerm.desc(t.id),
           ])
-          ..limit(1))
-        .watchSingleOrNull();
+          ..limit(limit))
+        .watch();
   }
 
   /// Claims the row for a generation that is about to start.
@@ -94,8 +95,9 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
       );
 
   Future<void> setCardSuggestions(int meetingId, String? json) =>
-      (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId)))
-          .write(MeetingNotesCompanion(cardSuggestions: Value(json)));
+      (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId))).write(
+        MeetingNotesCompanion(cardSuggestions: Value(json)),
+      );
 
   Future<void> markFailed(int meetingId, String error) =>
       (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId))).write(
@@ -109,9 +111,9 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
   /// the orphaned-meeting cleanup: without it the notes tab would sit on a
   /// spinner forever, waiting for a generation that died with the process.
   Future<int> failInterruptedGenerations() {
-    return (update(meetingNotes)
-          ..where((t) => t.status.equalsValue(NotesStatus.generating)))
-        .write(
+    return (update(
+      meetingNotes,
+    )..where((t) => t.status.equalsValue(NotesStatus.generating))).write(
       const MeetingNotesCompanion(
         status: Value(NotesStatus.failed),
         error: Value('Aplikace se zavřela během generování.'),
