@@ -2,8 +2,10 @@ import 'package:drift/drift.dart';
 
 import '../ai/syllabus.dart';
 import '../data/db/app_database.dart';
+import '../data/db/daos/study_cards_dao.dart';
 import '../data/db/tables/chat_messages_table.dart';
 import '../data/db/tables/preferences_table.dart';
+import '../data/db/tables/study_cards_table.dart';
 import '../data/db/tables/syllabus_topics_table.dart';
 import '../data/db/tables/transcript_segments_table.dart';
 
@@ -187,6 +189,24 @@ Future<({int lesson, int? recording})> seedDemo(
     content: '- 1618–1648\n- defenestrace',
     folderId: dejepis,
   );
+
+  await db.studyCardsDao.addCards(
+    cestina,
+    const [
+      StudyItem('Próza', 'Souvislý text, ne verše.', StudySource.terms),
+      StudyItem('Kdo napsal Babičku?', 'Božena Němcová', StudySource.remember),
+      StudyItem(
+        'Čím je Babička podle žánru?',
+        'Obrazy venkovského života.',
+        StudySource.remember,
+      ),
+    ],
+    meetingId: lesson,
+    now: now,
+  );
+  await db.studyCardsDao.addCards(dejepis, const [
+    StudyItem('Kdy byla třicetiletá válka?', '1618–1648', StudySource.manual),
+  ], now: now.add(const Duration(days: 2)));
 
   int? live;
   if (recording) {

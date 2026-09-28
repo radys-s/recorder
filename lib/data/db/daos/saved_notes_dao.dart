@@ -128,8 +128,12 @@ class SavedNotesDao extends DatabaseAccessor<AppDatabase>
       (update(savedNotes)..where((t) => t.id.equals(id)))
           .write(SavedNotesCompanion(folderId: Value(folderId)));
 
-  Future<void> deleteNote(int id) =>
-      (delete(savedNotes)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteNote(int id) => transaction(() async {
+    final study = attachedDatabase.studyCards;
+    await (update(study)..where((t) => t.noteId.equals(id)))
+        .write(const StudyCardsCompanion(noteId: Value(null)));
+    await (delete(savedNotes)..where((t) => t.id.equals(id))).go();
+  });
 
   /// Creates a subject, or returns the one that already has this name.
   ///

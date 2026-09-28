@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../study/study_entry.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/formatting.dart';
 import '../../core/motion.dart';
@@ -261,6 +262,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 onTap: _openSettings,
               ),
             ),
+          const SliverToBoxAdapter(child: StudyDueGroup()),
           if (latest != null)
             SliverToBoxAdapter(
               child: InsetGroup(label: 'Poslední výpisky', children: [latest]),

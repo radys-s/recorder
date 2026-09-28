@@ -218,6 +218,11 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase>
     await (update(savedNotes)..where((t) => t.meetingId.equals(id))).write(
       const SavedNotesCompanion(meetingId: Value(null)),
     );
+    // Study cards outlive the lesson they came from, like saved notes.
+    final study = attachedDatabase.studyCards;
+    await (update(study)..where((t) => t.meetingId.equals(id))).write(
+      const StudyCardsCompanion(meetingId: Value(null)),
+    );
     await (delete(meetings)..where((t) => t.id.equals(id))).go();
   });
 
@@ -309,6 +314,11 @@ class MeetingsDao extends DatabaseAccessor<AppDatabase>
           (t) => t.meetingId.isNotNull() & t.meetingId.isNotInQuery(existing),
         ))
         .write(const SavedNotesCompanion(meetingId: Value(null)));
+    final study = attachedDatabase.studyCards;
+    await (update(study)..where(
+          (t) => t.meetingId.isNotNull() & t.meetingId.isNotInQuery(existing),
+        ))
+        .write(const StudyCardsCompanion(meetingId: Value(null)));
     return removed;
   });
 

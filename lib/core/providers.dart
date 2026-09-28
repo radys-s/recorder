@@ -14,6 +14,7 @@ import '../ai/ai_router.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
+import '../learning/study_card_generator.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
 import '../ai/subject_summary_service.dart';
@@ -226,6 +227,7 @@ final llmProvider = Provider<LlmProvider>(
 final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final suggestions = ref.watch(cardSuggestionServiceProvider);
+  final studyCards = ref.watch(studyCardGeneratorProvider);
   return NotesGenerator(
     ref.watch(llmProvider),
     db.transcriptSegmentsDao,
@@ -257,7 +259,18 @@ final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
         );
       }
       await suggestions.suggest(meetingId, notes);
+      await studyCards.fromLessonNotes(meetingId, notes);
     },
+  );
+});
+
+/// Výpisky turned into cards for „Opakování".
+final studyCardGeneratorProvider = Provider<StudyCardGenerator>((ref) {
+  return StudyCardGenerator(
+    ref.watch(appDatabaseProvider),
+    llm: ref.watch(llmProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
   );
 });
 

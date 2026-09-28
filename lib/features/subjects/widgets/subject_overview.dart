@@ -1,3 +1,4 @@
+import '../../study/study_entry.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -77,6 +78,8 @@ class SubjectOverview extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.xl),
           children: [
+            SubjectStudySection(subjectId: subjectId),
+            const SizedBox(height: Gap.xl),
             _Progress(overview: overview, onOpenSettings: onOpenSettings),
             const SizedBox(height: Gap.lg),
             _SummaryBlock(

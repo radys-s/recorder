@@ -143,6 +143,8 @@ class SubjectsDao extends DatabaseAccessor<AppDatabase>
             .go();
         // The docs themselves stay in the student's Drive; only the link goes.
         await (delete(driveDocs)..where((t) => t.subjectId.equals(id))).go();
+        final study = attachedDatabase.studyCards;
+        await (delete(study)..where((t) => t.subjectId.equals(id))).go();
         await (update(savedNotes)..where((t) => t.folderId.equals(id)))
             .write(const SavedNotesCompanion(folderId: Value(null)));
         await (update(meetings)..where((t) => t.subjectId.equals(id)))

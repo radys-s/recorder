@@ -11,6 +11,7 @@ import 'daos/meetings_dao.dart';
 import 'daos/preferences_dao.dart';
 import 'daos/refined_segments_dao.dart';
 import 'daos/saved_notes_dao.dart';
+import 'daos/study_cards_dao.dart';
 import 'daos/subjects_dao.dart';
 import 'daos/transcript_segments_dao.dart';
 import 'daos/upload_queue_dao.dart';
@@ -23,6 +24,7 @@ import 'tables/meetings_table.dart';
 import 'tables/preferences_table.dart';
 import 'tables/refined_segments_table.dart';
 import 'tables/saved_notes_table.dart';
+import 'tables/study_cards_table.dart';
 import 'tables/subject_terms_table.dart';
 import 'tables/syllabus_topics_table.dart';
 import 'tables/subjects_table.dart';
@@ -50,6 +52,7 @@ part 'app_database.g.dart';
     SubjectTerms,
     SyllabusTopics,
     DriveDocs,
+    StudyCards,
   ],
   daos: [
     MeetingsDao,
@@ -63,6 +66,7 @@ part 'app_database.g.dart';
     ChatMessagesDao,
     RefinedSegmentsDao,
     DriveDocsDao,
+    StudyCardsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -72,7 +76,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   /// `createTable` always creates the table as it is *now*, so a column added
   /// in a later version must only be added when the table already existed
@@ -204,6 +208,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 24 && from >= 3) {
         await m.addColumn(preferences, preferences.recentSearches);
+      }
+      if (from < 25) {
+        await m.createTable(studyCards);
       }
     },
   );

@@ -10185,6 +10185,839 @@ class DriveDocsCompanion extends UpdateCompanion<DriveDoc> {
   }
 }
 
+class $StudyCardsTable extends StudyCards
+    with TableInfo<$StudyCardsTable, StudyCard> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StudyCardsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<int> subjectId = GeneratedColumn<int>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _meetingIdMeta = const VerificationMeta(
+    'meetingId',
+  );
+  @override
+  late final GeneratedColumn<int> meetingId = GeneratedColumn<int>(
+    'meeting_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noteIdMeta = const VerificationMeta('noteId');
+  @override
+  late final GeneratedColumn<int> noteId = GeneratedColumn<int>(
+    'note_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _frontMeta = const VerificationMeta('front');
+  @override
+  late final GeneratedColumn<String> front = GeneratedColumn<String>(
+    'front',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _backMeta = const VerificationMeta('back');
+  @override
+  late final GeneratedColumn<String> back = GeneratedColumn<String>(
+    'back',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _frontKeyMeta = const VerificationMeta(
+    'frontKey',
+  );
+  @override
+  late final GeneratedColumn<String> frontKey = GeneratedColumn<String>(
+    'front_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<StudySource, int> source =
+      GeneratedColumn<int>(
+        'source',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<StudySource>($StudyCardsTable.$convertersource);
+  static const VerificationMeta _easeMeta = const VerificationMeta('ease');
+  @override
+  late final GeneratedColumn<double> ease = GeneratedColumn<double>(
+    'ease',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(2.5),
+  );
+  static const VerificationMeta _intervalDaysMeta = const VerificationMeta(
+    'intervalDays',
+  );
+  @override
+  late final GeneratedColumn<int> intervalDays = GeneratedColumn<int>(
+    'interval_days',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _repsMeta = const VerificationMeta('reps');
+  @override
+  late final GeneratedColumn<int> reps = GeneratedColumn<int>(
+    'reps',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lapsesMeta = const VerificationMeta('lapses');
+  @override
+  late final GeneratedColumn<int> lapses = GeneratedColumn<int>(
+    'lapses',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _dueAtMeta = const VerificationMeta('dueAt');
+  @override
+  late final GeneratedColumn<DateTime> dueAt = GeneratedColumn<DateTime>(
+    'due_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _suspendedMeta = const VerificationMeta(
+    'suspended',
+  );
+  @override
+  late final GeneratedColumn<bool> suspended = GeneratedColumn<bool>(
+    'suspended',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("suspended" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    meetingId,
+    noteId,
+    front,
+    back,
+    frontKey,
+    source,
+    ease,
+    intervalDays,
+    reps,
+    lapses,
+    dueAt,
+    suspended,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'study_cards';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<StudyCard> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('meeting_id')) {
+      context.handle(
+        _meetingIdMeta,
+        meetingId.isAcceptableOrUnknown(data['meeting_id']!, _meetingIdMeta),
+      );
+    }
+    if (data.containsKey('note_id')) {
+      context.handle(
+        _noteIdMeta,
+        noteId.isAcceptableOrUnknown(data['note_id']!, _noteIdMeta),
+      );
+    }
+    if (data.containsKey('front')) {
+      context.handle(
+        _frontMeta,
+        front.isAcceptableOrUnknown(data['front']!, _frontMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_frontMeta);
+    }
+    if (data.containsKey('back')) {
+      context.handle(
+        _backMeta,
+        back.isAcceptableOrUnknown(data['back']!, _backMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_backMeta);
+    }
+    if (data.containsKey('front_key')) {
+      context.handle(
+        _frontKeyMeta,
+        frontKey.isAcceptableOrUnknown(data['front_key']!, _frontKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_frontKeyMeta);
+    }
+    if (data.containsKey('ease')) {
+      context.handle(
+        _easeMeta,
+        ease.isAcceptableOrUnknown(data['ease']!, _easeMeta),
+      );
+    }
+    if (data.containsKey('interval_days')) {
+      context.handle(
+        _intervalDaysMeta,
+        intervalDays.isAcceptableOrUnknown(
+          data['interval_days']!,
+          _intervalDaysMeta,
+        ),
+      );
+    }
+    if (data.containsKey('reps')) {
+      context.handle(
+        _repsMeta,
+        reps.isAcceptableOrUnknown(data['reps']!, _repsMeta),
+      );
+    }
+    if (data.containsKey('lapses')) {
+      context.handle(
+        _lapsesMeta,
+        lapses.isAcceptableOrUnknown(data['lapses']!, _lapsesMeta),
+      );
+    }
+    if (data.containsKey('due_at')) {
+      context.handle(
+        _dueAtMeta,
+        dueAt.isAcceptableOrUnknown(data['due_at']!, _dueAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dueAtMeta);
+    }
+    if (data.containsKey('suspended')) {
+      context.handle(
+        _suspendedMeta,
+        suspended.isAcceptableOrUnknown(data['suspended']!, _suspendedMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {subjectId, frontKey},
+  ];
+  @override
+  StudyCard map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StudyCard(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      meetingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}meeting_id'],
+      ),
+      noteId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}note_id'],
+      ),
+      front: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}front'],
+      )!,
+      back: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}back'],
+      )!,
+      frontKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}front_key'],
+      )!,
+      source: $StudyCardsTable.$convertersource.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}source'],
+        )!,
+      ),
+      ease: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}ease'],
+      )!,
+      intervalDays: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}interval_days'],
+      )!,
+      reps: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reps'],
+      )!,
+      lapses: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}lapses'],
+      )!,
+      dueAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}due_at'],
+      )!,
+      suspended: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}suspended'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $StudyCardsTable createAlias(String alias) {
+    return $StudyCardsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<StudySource, int, int> $convertersource =
+      const EnumIndexConverter<StudySource>(StudySource.values);
+}
+
+class StudyCard extends DataClass implements Insertable<StudyCard> {
+  final int id;
+  final int subjectId;
+  final int? meetingId;
+  final int? noteId;
+  final String front;
+  final String back;
+  final String frontKey;
+  final StudySource source;
+  final double ease;
+  final int intervalDays;
+  final int reps;
+  final int lapses;
+  final DateTime dueAt;
+  final bool suspended;
+  final DateTime createdAt;
+  const StudyCard({
+    required this.id,
+    required this.subjectId,
+    this.meetingId,
+    this.noteId,
+    required this.front,
+    required this.back,
+    required this.frontKey,
+    required this.source,
+    required this.ease,
+    required this.intervalDays,
+    required this.reps,
+    required this.lapses,
+    required this.dueAt,
+    required this.suspended,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<int>(subjectId);
+    if (!nullToAbsent || meetingId != null) {
+      map['meeting_id'] = Variable<int>(meetingId);
+    }
+    if (!nullToAbsent || noteId != null) {
+      map['note_id'] = Variable<int>(noteId);
+    }
+    map['front'] = Variable<String>(front);
+    map['back'] = Variable<String>(back);
+    map['front_key'] = Variable<String>(frontKey);
+    {
+      map['source'] = Variable<int>(
+        $StudyCardsTable.$convertersource.toSql(source),
+      );
+    }
+    map['ease'] = Variable<double>(ease);
+    map['interval_days'] = Variable<int>(intervalDays);
+    map['reps'] = Variable<int>(reps);
+    map['lapses'] = Variable<int>(lapses);
+    map['due_at'] = Variable<DateTime>(dueAt);
+    map['suspended'] = Variable<bool>(suspended);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  StudyCardsCompanion toCompanion(bool nullToAbsent) {
+    return StudyCardsCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      meetingId: meetingId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(meetingId),
+      noteId: noteId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(noteId),
+      front: Value(front),
+      back: Value(back),
+      frontKey: Value(frontKey),
+      source: Value(source),
+      ease: Value(ease),
+      intervalDays: Value(intervalDays),
+      reps: Value(reps),
+      lapses: Value(lapses),
+      dueAt: Value(dueAt),
+      suspended: Value(suspended),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory StudyCard.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StudyCard(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<int>(json['subjectId']),
+      meetingId: serializer.fromJson<int?>(json['meetingId']),
+      noteId: serializer.fromJson<int?>(json['noteId']),
+      front: serializer.fromJson<String>(json['front']),
+      back: serializer.fromJson<String>(json['back']),
+      frontKey: serializer.fromJson<String>(json['frontKey']),
+      source: $StudyCardsTable.$convertersource.fromJson(
+        serializer.fromJson<int>(json['source']),
+      ),
+      ease: serializer.fromJson<double>(json['ease']),
+      intervalDays: serializer.fromJson<int>(json['intervalDays']),
+      reps: serializer.fromJson<int>(json['reps']),
+      lapses: serializer.fromJson<int>(json['lapses']),
+      dueAt: serializer.fromJson<DateTime>(json['dueAt']),
+      suspended: serializer.fromJson<bool>(json['suspended']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<int>(subjectId),
+      'meetingId': serializer.toJson<int?>(meetingId),
+      'noteId': serializer.toJson<int?>(noteId),
+      'front': serializer.toJson<String>(front),
+      'back': serializer.toJson<String>(back),
+      'frontKey': serializer.toJson<String>(frontKey),
+      'source': serializer.toJson<int>(
+        $StudyCardsTable.$convertersource.toJson(source),
+      ),
+      'ease': serializer.toJson<double>(ease),
+      'intervalDays': serializer.toJson<int>(intervalDays),
+      'reps': serializer.toJson<int>(reps),
+      'lapses': serializer.toJson<int>(lapses),
+      'dueAt': serializer.toJson<DateTime>(dueAt),
+      'suspended': serializer.toJson<bool>(suspended),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  StudyCard copyWith({
+    int? id,
+    int? subjectId,
+    Value<int?> meetingId = const Value.absent(),
+    Value<int?> noteId = const Value.absent(),
+    String? front,
+    String? back,
+    String? frontKey,
+    StudySource? source,
+    double? ease,
+    int? intervalDays,
+    int? reps,
+    int? lapses,
+    DateTime? dueAt,
+    bool? suspended,
+    DateTime? createdAt,
+  }) => StudyCard(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    meetingId: meetingId.present ? meetingId.value : this.meetingId,
+    noteId: noteId.present ? noteId.value : this.noteId,
+    front: front ?? this.front,
+    back: back ?? this.back,
+    frontKey: frontKey ?? this.frontKey,
+    source: source ?? this.source,
+    ease: ease ?? this.ease,
+    intervalDays: intervalDays ?? this.intervalDays,
+    reps: reps ?? this.reps,
+    lapses: lapses ?? this.lapses,
+    dueAt: dueAt ?? this.dueAt,
+    suspended: suspended ?? this.suspended,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  StudyCard copyWithCompanion(StudyCardsCompanion data) {
+    return StudyCard(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      meetingId: data.meetingId.present ? data.meetingId.value : this.meetingId,
+      noteId: data.noteId.present ? data.noteId.value : this.noteId,
+      front: data.front.present ? data.front.value : this.front,
+      back: data.back.present ? data.back.value : this.back,
+      frontKey: data.frontKey.present ? data.frontKey.value : this.frontKey,
+      source: data.source.present ? data.source.value : this.source,
+      ease: data.ease.present ? data.ease.value : this.ease,
+      intervalDays: data.intervalDays.present
+          ? data.intervalDays.value
+          : this.intervalDays,
+      reps: data.reps.present ? data.reps.value : this.reps,
+      lapses: data.lapses.present ? data.lapses.value : this.lapses,
+      dueAt: data.dueAt.present ? data.dueAt.value : this.dueAt,
+      suspended: data.suspended.present ? data.suspended.value : this.suspended,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StudyCard(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('noteId: $noteId, ')
+          ..write('front: $front, ')
+          ..write('back: $back, ')
+          ..write('frontKey: $frontKey, ')
+          ..write('source: $source, ')
+          ..write('ease: $ease, ')
+          ..write('intervalDays: $intervalDays, ')
+          ..write('reps: $reps, ')
+          ..write('lapses: $lapses, ')
+          ..write('dueAt: $dueAt, ')
+          ..write('suspended: $suspended, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    subjectId,
+    meetingId,
+    noteId,
+    front,
+    back,
+    frontKey,
+    source,
+    ease,
+    intervalDays,
+    reps,
+    lapses,
+    dueAt,
+    suspended,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StudyCard &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.meetingId == this.meetingId &&
+          other.noteId == this.noteId &&
+          other.front == this.front &&
+          other.back == this.back &&
+          other.frontKey == this.frontKey &&
+          other.source == this.source &&
+          other.ease == this.ease &&
+          other.intervalDays == this.intervalDays &&
+          other.reps == this.reps &&
+          other.lapses == this.lapses &&
+          other.dueAt == this.dueAt &&
+          other.suspended == this.suspended &&
+          other.createdAt == this.createdAt);
+}
+
+class StudyCardsCompanion extends UpdateCompanion<StudyCard> {
+  final Value<int> id;
+  final Value<int> subjectId;
+  final Value<int?> meetingId;
+  final Value<int?> noteId;
+  final Value<String> front;
+  final Value<String> back;
+  final Value<String> frontKey;
+  final Value<StudySource> source;
+  final Value<double> ease;
+  final Value<int> intervalDays;
+  final Value<int> reps;
+  final Value<int> lapses;
+  final Value<DateTime> dueAt;
+  final Value<bool> suspended;
+  final Value<DateTime> createdAt;
+  const StudyCardsCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.meetingId = const Value.absent(),
+    this.noteId = const Value.absent(),
+    this.front = const Value.absent(),
+    this.back = const Value.absent(),
+    this.frontKey = const Value.absent(),
+    this.source = const Value.absent(),
+    this.ease = const Value.absent(),
+    this.intervalDays = const Value.absent(),
+    this.reps = const Value.absent(),
+    this.lapses = const Value.absent(),
+    this.dueAt = const Value.absent(),
+    this.suspended = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  StudyCardsCompanion.insert({
+    this.id = const Value.absent(),
+    required int subjectId,
+    this.meetingId = const Value.absent(),
+    this.noteId = const Value.absent(),
+    required String front,
+    required String back,
+    required String frontKey,
+    required StudySource source,
+    this.ease = const Value.absent(),
+    this.intervalDays = const Value.absent(),
+    this.reps = const Value.absent(),
+    this.lapses = const Value.absent(),
+    required DateTime dueAt,
+    this.suspended = const Value.absent(),
+    required DateTime createdAt,
+  }) : subjectId = Value(subjectId),
+       front = Value(front),
+       back = Value(back),
+       frontKey = Value(frontKey),
+       source = Value(source),
+       dueAt = Value(dueAt),
+       createdAt = Value(createdAt);
+  static Insertable<StudyCard> custom({
+    Expression<int>? id,
+    Expression<int>? subjectId,
+    Expression<int>? meetingId,
+    Expression<int>? noteId,
+    Expression<String>? front,
+    Expression<String>? back,
+    Expression<String>? frontKey,
+    Expression<int>? source,
+    Expression<double>? ease,
+    Expression<int>? intervalDays,
+    Expression<int>? reps,
+    Expression<int>? lapses,
+    Expression<DateTime>? dueAt,
+    Expression<bool>? suspended,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (meetingId != null) 'meeting_id': meetingId,
+      if (noteId != null) 'note_id': noteId,
+      if (front != null) 'front': front,
+      if (back != null) 'back': back,
+      if (frontKey != null) 'front_key': frontKey,
+      if (source != null) 'source': source,
+      if (ease != null) 'ease': ease,
+      if (intervalDays != null) 'interval_days': intervalDays,
+      if (reps != null) 'reps': reps,
+      if (lapses != null) 'lapses': lapses,
+      if (dueAt != null) 'due_at': dueAt,
+      if (suspended != null) 'suspended': suspended,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  StudyCardsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? subjectId,
+    Value<int?>? meetingId,
+    Value<int?>? noteId,
+    Value<String>? front,
+    Value<String>? back,
+    Value<String>? frontKey,
+    Value<StudySource>? source,
+    Value<double>? ease,
+    Value<int>? intervalDays,
+    Value<int>? reps,
+    Value<int>? lapses,
+    Value<DateTime>? dueAt,
+    Value<bool>? suspended,
+    Value<DateTime>? createdAt,
+  }) {
+    return StudyCardsCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      meetingId: meetingId ?? this.meetingId,
+      noteId: noteId ?? this.noteId,
+      front: front ?? this.front,
+      back: back ?? this.back,
+      frontKey: frontKey ?? this.frontKey,
+      source: source ?? this.source,
+      ease: ease ?? this.ease,
+      intervalDays: intervalDays ?? this.intervalDays,
+      reps: reps ?? this.reps,
+      lapses: lapses ?? this.lapses,
+      dueAt: dueAt ?? this.dueAt,
+      suspended: suspended ?? this.suspended,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<int>(subjectId.value);
+    }
+    if (meetingId.present) {
+      map['meeting_id'] = Variable<int>(meetingId.value);
+    }
+    if (noteId.present) {
+      map['note_id'] = Variable<int>(noteId.value);
+    }
+    if (front.present) {
+      map['front'] = Variable<String>(front.value);
+    }
+    if (back.present) {
+      map['back'] = Variable<String>(back.value);
+    }
+    if (frontKey.present) {
+      map['front_key'] = Variable<String>(frontKey.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<int>(
+        $StudyCardsTable.$convertersource.toSql(source.value),
+      );
+    }
+    if (ease.present) {
+      map['ease'] = Variable<double>(ease.value);
+    }
+    if (intervalDays.present) {
+      map['interval_days'] = Variable<int>(intervalDays.value);
+    }
+    if (reps.present) {
+      map['reps'] = Variable<int>(reps.value);
+    }
+    if (lapses.present) {
+      map['lapses'] = Variable<int>(lapses.value);
+    }
+    if (dueAt.present) {
+      map['due_at'] = Variable<DateTime>(dueAt.value);
+    }
+    if (suspended.present) {
+      map['suspended'] = Variable<bool>(suspended.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StudyCardsCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('noteId: $noteId, ')
+          ..write('front: $front, ')
+          ..write('back: $back, ')
+          ..write('frontKey: $frontKey, ')
+          ..write('source: $source, ')
+          ..write('ease: $ease, ')
+          ..write('intervalDays: $intervalDays, ')
+          ..write('reps: $reps, ')
+          ..write('lapses: $lapses, ')
+          ..write('dueAt: $dueAt, ')
+          ..write('suspended: $suspended, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10208,6 +11041,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SubjectTermsTable subjectTerms = $SubjectTermsTable(this);
   late final $SyllabusTopicsTable syllabusTopics = $SyllabusTopicsTable(this);
   late final $DriveDocsTable driveDocs = $DriveDocsTable(this);
+  late final $StudyCardsTable studyCards = $StudyCardsTable(this);
   late final MeetingsDao meetingsDao = MeetingsDao(this as AppDatabase);
   late final TranscriptSegmentsDao transcriptSegmentsDao =
       TranscriptSegmentsDao(this as AppDatabase);
@@ -10232,6 +11066,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this as AppDatabase,
   );
   late final DriveDocsDao driveDocsDao = DriveDocsDao(this as AppDatabase);
+  late final StudyCardsDao studyCardsDao = StudyCardsDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10254,6 +11089,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     subjectTerms,
     syllabusTopics,
     driveDocs,
+    studyCards,
   ];
 }
 
@@ -15261,6 +16097,397 @@ typedef $$DriveDocsTableProcessedTableManager =
       DriveDoc,
       PrefetchHooks Function()
     >;
+typedef $$StudyCardsTableCreateCompanionBuilder = StudyCardsCompanion Function({
+  Value<int> id,
+  required int subjectId,
+  Value<int?> meetingId,
+  Value<int?> noteId,
+  required String front,
+  required String back,
+  required String frontKey,
+  required StudySource source,
+  Value<double> ease,
+  Value<int> intervalDays,
+  Value<int> reps,
+  Value<int> lapses,
+  required DateTime dueAt,
+  Value<bool> suspended,
+  required DateTime createdAt,
+});
+typedef $$StudyCardsTableUpdateCompanionBuilder = StudyCardsCompanion Function({
+  Value<int> id,
+  Value<int> subjectId,
+  Value<int?> meetingId,
+  Value<int?> noteId,
+  Value<String> front,
+  Value<String> back,
+  Value<String> frontKey,
+  Value<StudySource> source,
+  Value<double> ease,
+  Value<int> intervalDays,
+  Value<int> reps,
+  Value<int> lapses,
+  Value<DateTime> dueAt,
+  Value<bool> suspended,
+  Value<DateTime> createdAt,
+});
+
+class $$StudyCardsTableFilterComposer
+    extends Composer<_$AppDatabase, $StudyCardsTable> {
+  $$StudyCardsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get meetingId => $composableBuilder(
+    column: $table.meetingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get front => $composableBuilder(
+    column: $table.front,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get back => $composableBuilder(
+    column: $table.back,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get frontKey => $composableBuilder(
+    column: $table.frontKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<StudySource, StudySource, int> get source =>
+      $composableBuilder(
+        column: $table.source,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<double> get ease => $composableBuilder(
+    column: $table.ease,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get intervalDays => $composableBuilder(
+    column: $table.intervalDays,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get reps => $composableBuilder(
+    column: $table.reps,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lapses => $composableBuilder(
+    column: $table.lapses,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get dueAt => $composableBuilder(
+    column: $table.dueAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get suspended => $composableBuilder(
+    column: $table.suspended,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$StudyCardsTableOrderingComposer
+    extends Composer<_$AppDatabase, $StudyCardsTable> {
+  $$StudyCardsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get meetingId => $composableBuilder(
+    column: $table.meetingId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get noteId => $composableBuilder(
+    column: $table.noteId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get front => $composableBuilder(
+    column: $table.front,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get back => $composableBuilder(
+    column: $table.back,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get frontKey => $composableBuilder(
+    column: $table.frontKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get ease => $composableBuilder(
+    column: $table.ease,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get intervalDays => $composableBuilder(
+    column: $table.intervalDays,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get reps => $composableBuilder(
+    column: $table.reps,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lapses => $composableBuilder(
+    column: $table.lapses,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get dueAt => $composableBuilder(
+    column: $table.dueAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get suspended => $composableBuilder(
+    column: $table.suspended,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$StudyCardsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StudyCardsTable> {
+  $$StudyCardsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<int> get meetingId =>
+      $composableBuilder(column: $table.meetingId, builder: (column) => column);
+
+  GeneratedColumn<int> get noteId =>
+      $composableBuilder(column: $table.noteId, builder: (column) => column);
+
+  GeneratedColumn<String> get front =>
+      $composableBuilder(column: $table.front, builder: (column) => column);
+
+  GeneratedColumn<String> get back =>
+      $composableBuilder(column: $table.back, builder: (column) => column);
+
+  GeneratedColumn<String> get frontKey =>
+      $composableBuilder(column: $table.frontKey, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<StudySource, int> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<double> get ease =>
+      $composableBuilder(column: $table.ease, builder: (column) => column);
+
+  GeneratedColumn<int> get intervalDays => $composableBuilder(
+    column: $table.intervalDays,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get reps =>
+      $composableBuilder(column: $table.reps, builder: (column) => column);
+
+  GeneratedColumn<int> get lapses =>
+      $composableBuilder(column: $table.lapses, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dueAt =>
+      $composableBuilder(column: $table.dueAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get suspended =>
+      $composableBuilder(column: $table.suspended, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$StudyCardsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $StudyCardsTable,
+          StudyCard,
+          $$StudyCardsTableFilterComposer,
+          $$StudyCardsTableOrderingComposer,
+          $$StudyCardsTableAnnotationComposer,
+          $$StudyCardsTableCreateCompanionBuilder,
+          $$StudyCardsTableUpdateCompanionBuilder,
+          (
+            StudyCard,
+            BaseReferences<_$AppDatabase, $StudyCardsTable, StudyCard>,
+          ),
+          StudyCard,
+          PrefetchHooks Function()
+        > {
+  $$StudyCardsTableTableManager(_$AppDatabase db, $StudyCardsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StudyCardsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StudyCardsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StudyCardsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> subjectId = const Value.absent(),
+                Value<int?> meetingId = const Value.absent(),
+                Value<int?> noteId = const Value.absent(),
+                Value<String> front = const Value.absent(),
+                Value<String> back = const Value.absent(),
+                Value<String> frontKey = const Value.absent(),
+                Value<StudySource> source = const Value.absent(),
+                Value<double> ease = const Value.absent(),
+                Value<int> intervalDays = const Value.absent(),
+                Value<int> reps = const Value.absent(),
+                Value<int> lapses = const Value.absent(),
+                Value<DateTime> dueAt = const Value.absent(),
+                Value<bool> suspended = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => StudyCardsCompanion(
+                id: id,
+                subjectId: subjectId,
+                meetingId: meetingId,
+                noteId: noteId,
+                front: front,
+                back: back,
+                frontKey: frontKey,
+                source: source,
+                ease: ease,
+                intervalDays: intervalDays,
+                reps: reps,
+                lapses: lapses,
+                dueAt: dueAt,
+                suspended: suspended,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int subjectId,
+                Value<int?> meetingId = const Value.absent(),
+                Value<int?> noteId = const Value.absent(),
+                required String front,
+                required String back,
+                required String frontKey,
+                required StudySource source,
+                Value<double> ease = const Value.absent(),
+                Value<int> intervalDays = const Value.absent(),
+                Value<int> reps = const Value.absent(),
+                Value<int> lapses = const Value.absent(),
+                required DateTime dueAt,
+                Value<bool> suspended = const Value.absent(),
+                required DateTime createdAt,
+              }) => StudyCardsCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                meetingId: meetingId,
+                noteId: noteId,
+                front: front,
+                back: back,
+                frontKey: frontKey,
+                source: source,
+                ease: ease,
+                intervalDays: intervalDays,
+                reps: reps,
+                lapses: lapses,
+                dueAt: dueAt,
+                suspended: suspended,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$StudyCardsTable, StudyCard>(table),
+                  BaseReferences<_$AppDatabase, $StudyCardsTable, StudyCard>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$StudyCardsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $StudyCardsTable,
+      StudyCard,
+      $$StudyCardsTableFilterComposer,
+      $$StudyCardsTableOrderingComposer,
+      $$StudyCardsTableAnnotationComposer,
+      $$StudyCardsTableCreateCompanionBuilder,
+      $$StudyCardsTableUpdateCompanionBuilder,
+      (StudyCard, BaseReferences<_$AppDatabase, $StudyCardsTable, StudyCard>),
+      StudyCard,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15299,4 +16526,6 @@ class $AppDatabaseManager {
       $$SyllabusTopicsTableTableManager(_db, _db.syllabusTopics);
   $$DriveDocsTableTableManager get driveDocs =>
       $$DriveDocsTableTableManager(_db, _db.driveDocs);
+  $$StudyCardsTableTableManager get studyCards =>
+      $$StudyCardsTableTableManager(_db, _db.studyCards);
 }

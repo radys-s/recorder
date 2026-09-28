@@ -16,11 +16,15 @@ import '../../core/widgets/notes_text.dart';
 import '../../core/widgets/status_chip.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
+import '../../ai/llm_provider.dart';
+import '../../core/providers.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
+import '../study/review_screen.dart';
+import '../subjects/subjects_providers.dart' show czechCount;
 import 'notes_library_providers.dart';
 import 'widgets/folder_sheets.dart';
 
-enum _NoteAction { share, move, openMeeting, delete }
+enum _NoteAction { share, move, openMeeting, studyCards, delete }
 
 /// One saved note, read in full.
 class SavedNoteScreen extends ConsumerWidget {
@@ -84,9 +88,55 @@ class SavedNoteScreen extends ConsumerWidget {
         _move(context, ref, note);
       case _NoteAction.openMeeting:
         Navigator.of(context).push(MeetingDetailScreen.route(note.meetingId!));
+      case _NoteAction.studyCards:
+        _makeStudyCards(context, ref, note);
       case _NoteAction.delete:
         _delete(context, ref, note);
     }
+  }
+
+  Future<void> _makeStudyCards(
+    BuildContext context,
+    WidgetRef ref,
+    SavedNote note,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Vytvářím kartičky…'),
+          duration: Duration(minutes: 1),
+        ),
+      );
+    String text;
+    SnackBarAction? action;
+    try {
+      final added = await ref
+          .read(studyCardGeneratorProvider)
+          .fromSavedNote(note);
+      text = added == 0
+          ? 'Nové kartičky nevznikly — poznámka je už má, nebo v ní nebylo co zkoušet.'
+          : 'Přidáno ${czechCount(added, 'kartička', 'kartičky', 'kartiček')}.';
+      if (added > 0) {
+        action = SnackBarAction(
+          label: 'Opakovat',
+          onPressed: () =>
+              navigator.push(ReviewScreen.route(subjectId: note.folderId)),
+        );
+      }
+    } on AiException catch (e) {
+      AppLog.e('learning.generate', 'note ${note.id}: ${e.message}');
+      text = 'Kartičky se nepodařilo vytvořit. Zkus to později, nebo '
+          'zkontroluj klíče v Nastavení.';
+    } catch (e, st) {
+      AppLog.e('learning.generate', 'note ${note.id}: failed', e, st);
+      text = 'Kartičky se nepodařilo vytvořit.';
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text), action: action));
   }
 
   @override
@@ -133,6 +183,14 @@ class SavedNoteScreen extends ConsumerWidget {
                         child: MenuRow(
                           icon: Icons.open_in_new,
                           label: 'Otevřít hodinu',
+                        ),
+                      ),
+                    if (note.folderId != null)
+                      const PopupMenuItem(
+                        value: _NoteAction.studyCards,
+                        child: MenuRow(
+                          icon: Icons.style_outlined,
+                          label: 'Vytvořit kartičky',
                         ),
                       ),
                     const PopupMenuItem(

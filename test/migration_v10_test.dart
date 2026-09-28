@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:recorder/data/db/daos/study_cards_dao.dart';
+import 'package:recorder/data/db/tables/study_cards_table.dart';
 import 'package:recorder/ai/syllabus.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
@@ -213,6 +215,16 @@ void main() {
     expect(await db.preferencesDao.recentSearches(), ['VLAN', 'směrování']);
     await db.preferencesDao.clearRecentSearches();
     expect(await db.preferencesDao.recentSearches(), isEmpty);
+    // v25 adds study cards, which go with their subject.
+    final sid = await db.savedNotesDao.createFolder('Sítě');
+    expect(
+      await db.studyCardsDao.addCards(sid, const [
+        StudyItem('OSPF', 'link-state protokol', StudySource.terms),
+      ], now: DateTime(2026, 9, 28)),
+      1,
+    );
+    await db.subjectsDao.deleteSubject(sid);
+    expect(await db.studyCardsDao.dueCards(DateTime(2026, 9, 28)), isEmpty);
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {
