@@ -27,8 +27,8 @@ final savedNoteProvider = StreamProvider.family<SavedNote?, int>((ref, id) {
 /// notes on screen are already saved.
 final savedNotesForMeetingProvider =
     StreamProvider.family<List<SavedNote>, int>((ref, meetingId) {
-  return ref.watch(savedNotesDaoProvider).watchForMeeting(meetingId);
-});
+      return ref.watch(savedNotesDaoProvider).watchForMeeting(meetingId);
+    });
 
 enum FolderFilterKind { all, unfiled, folder }
 
@@ -47,10 +47,10 @@ class FolderFilter {
   final int? folderId;
 
   bool matches(SavedNote note) => switch (kind) {
-        FolderFilterKind.all => true,
-        FolderFilterKind.unfiled => note.folderId == null,
-        FolderFilterKind.folder => note.folderId == folderId,
-      };
+    FolderFilterKind.all => true,
+    FolderFilterKind.unfiled => note.folderId == null,
+    FolderFilterKind.folder => note.folderId == folderId,
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -69,6 +69,7 @@ List<SavedNote> filterSavedNotes(
   List<SavedNote> notes, {
   FolderFilter filter = FolderFilter.all,
   String query = '',
+  Set<int> hiddenIds = const {},
 }) {
   final words = normalizeForArtifactMatch(query)
       .split(' ')
@@ -77,7 +78,10 @@ List<SavedNote> filterSavedNotes(
 
   return [
     for (final note in notes)
-      if (filter.matches(note) && _containsAll(note, words)) note,
+      if (!hiddenIds.contains(note.id) &&
+          filter.matches(note) &&
+          _containsAll(note, words))
+        note,
   ];
 }
 

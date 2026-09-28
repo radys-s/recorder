@@ -43,6 +43,30 @@ class MeetingsListScreen extends ConsumerStatefulWidget {
 }
 
 class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
+  // Show the persistent recording strip before the dashboard's own status
+  // scrolls out of sight. The generous overlap is intentional: seeing both
+  // briefly is safer than having no recording indicator at all.
+  static const _showStripAfter = 120.0;
+  static const _hideStripBefore = 40.0;
+  late final ScrollController _scrollController = ScrollController()
+    ..addListener(_syncStageInView);
+
+  void _syncStageInView() {
+    final notifier = ref.read(dashboardStageInViewProvider.notifier);
+    // The strip changes the viewport height. Separate thresholds stop that
+    // layout change from toggling the strip back and forth near one boundary.
+    final inView = notifier.state
+        ? _scrollController.offset < _showStripAfter
+        : _scrollController.offset < _hideStripBefore;
+    if (notifier.state != inView) notifier.state = inView;
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   /// Day groups whose entrance has already played. Rows of a group arrive
   /// together, so the group — not the row — is what enters.
   final _seen = <String>{};
@@ -191,6 +215,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
 
     return Scaffold(
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           SliverToBoxAdapter(
             child: DashboardStage(
@@ -272,15 +297,22 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
             if (named) ?subject?.name,
             formatDateGroup(s.meeting.createdAt).toLowerCase(),
           ].join(' · '),
-          onTap: () => Navigator.of(
-            context,
-          ).push(MeetingDetailScreen.route(s.meeting.id)),
+          onTap: () =>
+              Navigator.of(context)
+                  .push(MeetingDetailScreen.route(s.meeting.id)),
         );
       }
     }
     final saved = ref.watch(savedNotesProvider).valueOrNull;
     if (saved == null || saved.isEmpty) return null;
-    final note = saved.first;
+    // The library hides a note as soon as delete-with-undo is scheduled; the
+    // dashboard must not keep linking to that still-present database row.
+    final visible = filterSavedNotes(
+      saved,
+      hiddenIds: ref.watch(pendingIdsProvider(DeletionKind.note)),
+    );
+    if (visible.isEmpty) return null;
+    final note = visible.first;
     return ListRow(
       leading: Icon(
         Icons.bookmark_rounded,
@@ -302,7 +334,8 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
         child: EmptyState(
           icon: Icons.mic_none_outlined,
           title: 'Zatím žádné nahrávky',
-          message: 'Klepni na zlaté tlačítko nahoře. Přepis začne přibývat '
+          message:
+              'Klepni na zlaté tlačítko nahoře. Přepis začne přibývat '
               'během pár vteřin.',
         ),
       );

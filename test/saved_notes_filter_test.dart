@@ -29,6 +29,11 @@ void main() {
       expect(ids(filterSavedNotes(notes)), [1, 2, 3]);
     });
 
+    test('pending deletions cannot reappear in the dashboard preview', () {
+      expect(ids(filterSavedNotes(notes, hiddenIds: {1, 3})), [2]);
+      expect(ids(filterSavedNotes(notes, hiddenIds: {1, 2, 3})), isEmpty);
+    });
+
     test('folder filters', () {
       expect(
         ids(filterSavedNotes(notes, filter: const FolderFilter.folder(5))),
@@ -58,11 +63,9 @@ void main() {
 
     test('query and folder combine', () {
       expect(
-        ids(filterSavedNotes(
-          notes,
-          filter: FolderFilter.unfiled,
-          query: 'jmena',
-        )),
+        ids(
+          filterSavedNotes(notes, filter: FolderFilter.unfiled, query: 'jmena'),
+        ),
         isEmpty,
       );
     });
@@ -70,14 +73,19 @@ void main() {
 
   test('FolderFilter equality', () {
     expect(const FolderFilter.folder(3), const FolderFilter.folder(3));
-    expect(const FolderFilter.folder(3) == const FolderFilter.folder(4), isFalse);
+    expect(
+      const FolderFilter.folder(3) == const FolderFilter.folder(4),
+      isFalse,
+    );
     expect(FolderFilter.all == FolderFilter.unfiled, isFalse);
   });
 
   group('notePreview', () {
     test('drops bullet marks and blank lines', () {
       expect(
-        notePreview('Rozhodnutí:\n- Jan pošle nabídku\n\n• Eva zavolá\n* hotovo'),
+        notePreview(
+          'Rozhodnutí:\n- Jan pošle nabídku\n\n• Eva zavolá\n* hotovo',
+        ),
         'Rozhodnutí: Jan pošle nabídku, Eva zavolá, hotovo.',
       );
     });

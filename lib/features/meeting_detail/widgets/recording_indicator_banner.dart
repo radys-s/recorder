@@ -88,7 +88,8 @@ class _RecordingIndicatorBannerState
   Widget build(BuildContext context) {
     final isRecording =
         ref.watch(recordingControllerProvider.select((s) => s.isRecording)) &&
-        !ref.watch(dashboardStageVisibleProvider);
+        !(ref.watch(dashboardStageVisibleProvider) &&
+            ref.watch(dashboardStageInViewProvider));
 
     // Reduced motion gets the end state on the spot; everyone else gets the
     // strip sliding the routes down instead of teleporting them.
@@ -110,15 +111,11 @@ class _RecordingIndicatorBannerState
 
         final media = MediaQuery.of(context);
         return Column(
+          // Navigator's active route uses BlockSemantics. Painting it after
+          // the strip hid the strip from screen readers even while visible.
+          // Reverse paint order, then lay out upwards to keep the strip above.
+          verticalDirection: VerticalDirection.up,
           children: [
-            // Animating a height, against the usual rule. It is one element,
-            // and the alternative — overlaying the strip — would cover the top
-            // of whatever screen the user is on.
-            SizeTransition(
-              sizeFactor: _curve,
-              alignment: Alignment.topCenter,
-              child: const _Banner(),
-            ),
             // The banner consumes the status bar inset itself (the SafeArea in
             // _Banner), so the routes below must not consume it again or every
             // Scaffold grows a second, empty status-bar-sized gap above its
@@ -134,6 +131,12 @@ class _RecordingIndicatorBannerState
                 ),
                 child: child!,
               ),
+            ),
+            // Animate layout instead of overlaying the strip across content.
+            SizeTransition(
+              sizeFactor: _curve,
+              alignment: Alignment.topCenter,
+              child: const _Banner(),
             ),
           ],
         );
@@ -272,11 +275,18 @@ class _BannerState extends ConsumerState<_Banner> {
           icon: Icon(paused ? Icons.play_arrow : Icons.pause, size: 18),
           label: Text(paused ? 'Pokračovat' : 'Pozastavit'),
         ),
-        IconButton(
-          tooltip: 'Ukončit nahrávání',
-          onPressed: () => _confirmStop(context),
-          icon: Icon(Icons.stop, size: 20, color: foreground),
-          style: IconButton.styleFrom(foregroundColor: foreground),
+        // This banner is built above Navigator, so an IconButton tooltip has
+        // no Overlay ancestor and throws as soon as the strip opens.
+        Semantics(
+          button: true,
+          label: 'Ukončit nahrávání',
+          onTap: () => _confirmStop(context),
+          excludeSemantics: true,
+          child: IconButton(
+            onPressed: () => _confirmStop(context),
+            icon: Icon(Icons.stop, size: 20, color: foreground),
+            style: IconButton.styleFrom(foregroundColor: foreground),
+          ),
         ),
       ],
     );
@@ -356,10 +366,15 @@ class _WeakSignalNotice extends StatelessWidget {
                   ?.copyWith(color: scheme.onErrorContainer),
             ),
           ),
-          IconButton(
-            tooltip: 'Skrýt',
-            onPressed: onDismiss,
-            icon: Icon(Icons.close, size: 18, color: scheme.onErrorContainer),
+          Semantics(
+            button: true,
+            label: 'Skrýt upozornění',
+            onTap: onDismiss,
+            excludeSemantics: true,
+            child: IconButton(
+              onPressed: onDismiss,
+              icon: Icon(Icons.close, size: 18, color: scheme.onErrorContainer),
+            ),
           ),
         ],
       ),

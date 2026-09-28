@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../audio/recording_controller.dart';
 import '../../../core/accent.dart';
 import '../../../core/formatting.dart';
+import '../../../core/logging.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
@@ -123,12 +124,20 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
     final startedAt = state.startedAt;
     if (meetingId == null || startedAt == null) return;
     unawaited(HapticFeedback.mediumImpact());
-    await ref
-        .read(chatMessagesDaoProvider)
-        .addImportant(
-          meetingId: meetingId,
-          atMs: DateTime.now().difference(startedAt).inMilliseconds,
+    try {
+      await ref.read(chatMessagesDaoProvider).addImportant(
+        meetingId: meetingId,
+        atMs: DateTime.now().difference(startedAt).inMilliseconds,
+      );
+    } catch (e, st) {
+      AppLog.e('dashboard.stage', 'could not mark important', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Důležité se nepodařilo uložit.')),
         );
+      }
+      return;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -164,7 +173,13 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
     final paused = ref.watch(
       recordingControllerProvider.select((s) => s.isPaused),
     );
-    _syncTicker(recording);
+    // IndexedStack keeps this widget mounted on hidden tabs; a Dart Timer is
+    // not suspended by TickerMode, so only tick while the stage is foreground.
+    _syncTicker(
+      recording &&
+          ref.watch(dashboardStageVisibleProvider) &&
+          ref.watch(dashboardStageInViewProvider),
+    );
     final live = recording && !paused;
     final reduced = reducedMotion(context);
 
@@ -347,7 +362,7 @@ class _GlassIconButton extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
-    this.size = 40,
+    this.size = 44,
     this.color = AftermindPalette.stageInk,
     this.iconSize = 21,
   });
@@ -366,6 +381,7 @@ class _GlassIconButton extends StatelessWidget {
       child: Semantics(
         button: true,
         label: tooltip,
+        onTap: onTap,
         excludeSemantics: true,
         child: Material(
           color: Colors.white.withValues(alpha: 0.10),
@@ -411,6 +427,7 @@ class _IdleStage extends StatelessWidget {
           button: true,
           label: 'Nahrát hodinu',
           hint: 'Otevře nastavení nové nahrávky.',
+          onTap: onStart,
           excludeSemantics: true,
           child: GestureDetector(
             onTap: onStart,
@@ -853,6 +870,7 @@ class _BigControl extends StatelessWidget {
           label: label == 'Ukončit'
               ? 'Ukončit nahrávání'
               : 'Pokračovat v nahrávání',
+          onTap: onTap,
           excludeSemantics: true,
           child: GestureDetector(
             onTap: onTap,

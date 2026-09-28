@@ -76,10 +76,14 @@ final appNavigatorKey = GlobalKey<NavigatorState>();
 /// Lets the home shell know when a route covers it.
 final appRouteObserver = RouteObserver<ModalRoute<void>>();
 
-/// True while the dashboard's stage is on screen. The stage then shows the
-/// recording itself, so the global strip stays closed instead of saying the
-/// same thing twice.
+/// True when the dashboard tab is the foreground route. Scroll visibility is
+/// tracked separately: an IndexedStack keeps the stage mounted after it has
+/// left the viewport.
 final dashboardStageVisibleProvider = StateProvider<bool>((ref) => false);
+
+/// The dashboard remains mounted in the home stack even when its stage has
+/// scrolled away. In that case the global recording strip must take over.
+final dashboardStageInViewProvider = StateProvider<bool>((ref) => true);
 
 /// Internal, privacy-safe trace for the capture-to-answer path. The detailed
 /// in-memory history is only retained in debug builds.

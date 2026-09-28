@@ -76,6 +76,8 @@ class _Swatch extends StatelessWidget {
       button: true,
       selected: selected,
       label: 'Barva ${preset.label}',
+      enabled: onTap != null,
+      onTap: onTap,
       excludeSemantics: true,
       child: GestureDetector(
         onTap: onTap,

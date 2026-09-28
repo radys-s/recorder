@@ -254,6 +254,7 @@ class _DockItem extends StatelessWidget {
       selected: selected,
       button: true,
       label: tab.label,
+      onTap: onTap,
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
