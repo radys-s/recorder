@@ -14,6 +14,7 @@ import '../ai/ai_router.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
+import '../learning/exam_prep.dart';
 import '../learning/study_card_generator.dart';
 import '../ai/card_lookup_service.dart';
 import '../ai/photo_text_service.dart';
@@ -287,6 +288,16 @@ final cardSuggestionServiceProvider = Provider<CardSuggestionService>((ref) {
 /// „Shrnutí předmětu" on the subject's Přehled tab.
 final subjectSummaryServiceProvider = Provider<SubjectSummaryService>((ref) {
   return SubjectSummaryService(
+    ref.watch(appDatabaseProvider),
+    llm: ref.watch(llmProvider),
+    gemini: ref.watch(geminiProvider),
+    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+  );
+});
+
+/// „Před testem": summary and quiz from a subject's výpisky.
+final examPrepServiceProvider = Provider<ExamPrepService>((ref) {
+  return ExamPrepService(
     ref.watch(appDatabaseProvider),
     llm: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),

@@ -5,6 +5,7 @@ import '../../core/accent.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/inset_group.dart';
 import '../subjects/subjects_providers.dart';
+import 'exam_prep_screen.dart';
 import 'review_screen.dart';
 import 'study_cards_screen.dart';
 import 'study_providers.dart';
@@ -112,6 +113,13 @@ class SubjectStudySection extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: Gap.sm),
+        OutlinedButton.icon(
+          onPressed: () =>
+              Navigator.of(context).push(ExamPrepScreen.route(subjectId)),
+          icon: const Icon(Icons.quiz_outlined),
+          label: const Text('Před testem'),
         ),
       ],
     );

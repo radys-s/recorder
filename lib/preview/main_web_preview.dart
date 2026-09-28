@@ -20,6 +20,7 @@ import '../core/providers.dart';
 import '../data/db/app_database.dart';
 import '../data/db/tables/preferences_table.dart';
 import '../data/secure/api_key_store.dart';
+import '../learning/exam_prep.dart';
 import 'demo_seed.dart';
 
 /// Test-only web entry point for Playwright: demo data, fake keys, no network,
@@ -66,6 +67,10 @@ Future<void> main() async {
         customAiBaseUrlStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         customAiModelStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         llmProvider.overrideWithValue(_FakeLlm()),
+        examPrepServiceProvider.overrideWith(
+          (ref) =>
+              ExamPrepService(ref.watch(appDatabaseProvider), llm: _FakeLlm()),
+        ),
         photoPickerProvider.overrideWithValue(_FakePicker()),
         timetableImportServiceProvider.overrideWith(
           (ref) => TimetableImportService(
@@ -153,6 +158,9 @@ class _FakeLlm extends LlmProvider {
     Duration? timeout,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (messages.first.content.startsWith('A student has a test soon')) {
+      return const LlmCompletion(content: _examReply);
+    }
     return LlmCompletion(
       content: jsonMode ? '{}' : '- Ukázková odpověď náhledu.',
     );
@@ -240,3 +248,14 @@ class _PreviewRecordingController extends RecordingController {
   @override
   bool cutNow() => false;
 }
+
+const _examReply = r"""
+{"summary": "- Babička je próza, obrazy venkovského života.\n- Autorka: Božena Němcová.\n- Realismus: věrné zobrazení skutečnosti.",
+ "questions": [
+  {"q": "Kdo napsal Babičku?", "options": ["Karel Hynek Mácha", "Božena Němcová", "Jan Neruda", "Karel Havlíček"], "correct": 1,
+   "explanation": "Babičku vydala Božena Němcová v roce 1855."},
+  {"q": "Jaký literární druh je Babička?", "options": ["lyrika", "drama", "epika (próza)", "poezie"], "correct": 2,
+   "explanation": "Je psaná souvislým textem, tedy próza."},
+  {"q": "Jak se jmenuje dívka, která žije u splavu?", "a": "Viktorka",
+   "explanation": "Viktorka je tragická postava u splavu."}
+ ]}""";
