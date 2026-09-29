@@ -7,7 +7,9 @@ import '../../ai/ai_router.dart';
 import '../../ai/llm_provider.dart';
 import '../../ai/openai_compatible_provider.dart';
 import '../../core/constants.dart';
+import '../../ai/custom_endpoint.dart';
 import '../../core/providers.dart';
+import '../../core/redaction.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/secure/api_key_store.dart';
@@ -141,17 +143,38 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
 
   Future<void> _save() => _run(() async {
     final key = _key.text.trim();
+    var hostChanged = false;
     if (_custom) {
-      final base = _baseUrl.text.trim();
       final model = _model.text.trim();
-      if (base.isEmpty || model.isEmpty) {
+      final endpoint = checkCustomEndpoint(_baseUrl.text);
+      if (!endpoint.valid) {
+        _notify(endpoint.problem!);
+        return;
+      }
+      if (model.isEmpty) {
         _notify('Vyplň adresu i model.');
         return;
       }
-      await ref.read(customAiBaseUrlStoreProvider).write(base);
+      // The saved key belongs to the service it was typed for. Pointing the
+      // address somewhere else must not carry it along.
+      final storedBase = ref.read(customAiBaseUrlStoreProvider);
+      final before = checkCustomEndpoint(await storedBase.read());
+      if (_masked != null && before.valid && before.host != endpoint.host) {
+        await _store.delete();
+        _masked = null;
+        hostChanged = true;
+      }
+      await storedBase.write(endpoint.url!);
       await ref.read(customAiModelStoreProvider).write(model);
+      _baseUrl.text = endpoint.url!;
       if (key.isEmpty && _masked == null) {
-        _notify('Doplň ještě klíč (když ho služba nechce, cokoli).');
+        _notify(
+          hostChanged
+              ? 'Adresa se změnila, uložený klíč jsem proto smazal. '
+                    'Zadej klíč znovu.'
+              : 'Doplň ještě klíč (když ho služba nechce, cokoli).',
+        );
+        if (hostChanged) await _load();
         return;
       }
     } else if (key.isEmpty) {
@@ -163,7 +186,10 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
     _verified = null;
     ref.invalidate(hasVisionKeyProvider);
     await _load();
-    _notify('${widget.vendor.label}: uloženo.');
+    final hint = key.isEmpty
+        ? null
+        : apiKeyFormatHint(widget.vendor.label, cleanApiKey(key));
+    _notify('${widget.vendor.label}: uloženo.${hint == null ? '' : ' $hint'}');
   });
 
   Future<void> _clear() => _run(() async {
@@ -181,12 +207,25 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
   });
 
   Future<void> _verify() => _run(() async {
-    final base = switch (widget.vendor) {
-      AiVendor.mistral => kMistralBaseUrl,
-      AiVendor.cerebras => kCerebrasBaseUrl,
-      AiVendor.groq => kGroqBaseUrl,
-      AiVendor.custom => _baseUrl.text.trim(),
-    };
+    // Only the address that was saved: a typed-but-unsaved one would receive
+    // the stored key without the student ever having confirmed it.
+    final String base;
+    if (_custom) {
+      final saved = checkCustomEndpoint(
+        await ref.read(customAiBaseUrlStoreProvider).read(),
+      );
+      if (!saved.valid) {
+        setState(() => _verified = saved.problem);
+        return;
+      }
+      base = saved.url!;
+    } else {
+      base = switch (widget.vendor) {
+        AiVendor.mistral => kMistralBaseUrl,
+        AiVendor.cerebras => kCerebrasBaseUrl,
+        _ => kGroqBaseUrl,
+      };
+    }
     try {
       final ids = await listOpenAiModels(
         _store,
@@ -196,7 +235,7 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
       final wanted = switch (widget.vendor) {
         AiVendor.mistral => {...kMistralFastModels, ...kMistralStrongModels},
         AiVendor.cerebras => kCerebrasModels.toSet(),
-        _ => {_model.text.trim()},
+        _ => {(await ref.read(customAiModelStoreProvider).read()) ?? ''},
       };
       final found = wanted.where(ids.contains).toList();
       setState(
@@ -210,8 +249,11 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
     }
   });
 
-  String _friendly(Object e) =>
-      e is AiException ? e.message : 'Nastala neočekávaná chyba.';
+  String _friendly(Object e) => e is AiException
+      ? redactSecrets(e.message)
+      : e is ApiKeyProblem
+      ? e.message
+      : 'Nastala neočekávaná chyba.';
 
   String _status() {
     final health = ref.read(aiRouteHealthProvider);

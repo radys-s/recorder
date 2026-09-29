@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../ai/syllabus_import_service.dart';
 import '../ai/term_alias_service.dart';
 import '../ai/ai_router.dart';
+import '../ai/custom_endpoint.dart';
 import '../ai/board_photo_service.dart';
 import '../ai/card_digest_service.dart';
 import '../ai/card_suggestions.dart';
@@ -174,7 +175,12 @@ List<AiRoute> _aiRoutes(Ref ref, {String? reasoningEffort}) {
       provider: OpenAiCompatibleProvider(
         ref.watch(customAiKeyStoreProvider),
         vendor: 'Vlastní',
-        baseUrl: ref.watch(customAiBaseUrlStoreProvider).read,
+        // Re-checked on every request, so an address saved before the https
+        // rule (or edited in the Keychain) can never receive the key.
+        baseUrl: () async =>
+            checkCustomEndpoint(
+              await ref.watch(customAiBaseUrlStoreProvider).read(),
+            ).url,
       ),
       models: (tier, _) async {
         final id = (await customModel.read())?.trim() ?? '';

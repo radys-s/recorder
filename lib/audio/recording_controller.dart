@@ -250,7 +250,7 @@ class RecordingController extends Notifier<RecordingState> {
         title: 'Nahrávání pozastaveno',
         text: 'Hodina zůstává otevřená. Klepni na Pokračovat.',
       );
-      AppLog.d(_tag, 'meeting $_meetingId paused');
+      AppLog.i(_tag, 'meeting $_meetingId paused');
     } catch (e, st) {
       AppLog.e(_tag, 'failed to pause recording', e, st);
       state = state.copyWith(error: 'Nahrávání se nepodařilo pozastavit.');
@@ -287,7 +287,7 @@ class RecordingController extends Notifier<RecordingState> {
         title: 'Nahrávání běží',
         text: 'Zvuk se ukládá a přepisuje.',
       );
-      AppLog.d(_tag, 'meeting $_meetingId resumed');
+      AppLog.i(_tag, 'meeting $_meetingId resumed');
     } catch (e, st) {
       AppLog.e(_tag, 'failed to resume recording', e, st);
       state = state.copyWith(error: 'V nahrávání se nepodařilo pokračovat.');
@@ -355,7 +355,7 @@ class RecordingController extends Notifier<RecordingState> {
       final docs = await getApplicationDocumentsDirectory();
       _docsPath = docs.path;
       _sessionDir = meetingRecordingsDir(docs.path, meetingId);
-      AppLog.d(_tag, 'meeting $meetingId, chunks in $_sessionDir');
+      AppLog.i(_tag, 'meeting $meetingId started');
 
       // A full phone loses the lesson without a word; better to say so before
       // it starts. Unknown free space (web, tests) skips the check.
@@ -544,7 +544,7 @@ class RecordingController extends Notifier<RecordingState> {
     }
     // The flushed tail chunk is still being written at this point, so the
     // counts here are "everything but the tail" by definition.
-    AppLog.d(
+    AppLog.i(
       _tag,
       'stopped after ${state.totalBytes} bytes; ${state.chunkCount} chunks '
       'persisted so far, tail still landing',
@@ -618,7 +618,7 @@ class RecordingController extends Notifier<RecordingState> {
   void _onFrameLevel(double rms) {
     if (_quality?.add(rms) ?? false) {
       final q = _quality!;
-      AppLog.d(
+      AppLog.w(
         _tag,
         'signal ${q.weak ? 'weak' : 'recovered'}: '
         '${q.snrDb!.toStringAsFixed(1)} dB',
@@ -627,7 +627,7 @@ class RecordingController extends Notifier<RecordingState> {
     }
     if (_silentMic?.add(rms) ?? false) {
       final silent = _silentMic!.silent;
-      AppLog.d(_tag, silent ? 'microphone hears nothing' : 'microphone hears again');
+      AppLog.w(_tag, silent ? 'microphone hears nothing' : 'microphone hears again');
       state = state.copyWith(micSilent: silent);
     }
     final next = _calibrator?.add(rms);
@@ -692,7 +692,7 @@ class RecordingController extends Notifier<RecordingState> {
       return;
     }
     _lastRepause = now;
-    AppLog.d(_tag, 'audio arrived while paused; pausing the microphone again');
+    AppLog.w(_tag, 'audio arrived while paused; pausing the microphone again');
     final source = _source;
     if (source == null) return;
     unawaited(
@@ -730,7 +730,7 @@ class RecordingController extends Notifier<RecordingState> {
     final source = _source;
     if (source == null) return;
     _restarting = true;
-    AppLog.d(
+    AppLog.w(
       _tag,
       'no audio for a while; restarting the microphone '
       '(attempt ${_watchdog.restarts})',

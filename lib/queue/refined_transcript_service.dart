@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../ai/llm_provider.dart';
 import '../audio/wav_concat.dart';
+import '../core/redaction.dart';
 import '../core/constants.dart';
 import '../core/logging.dart';
 import '../data/db/app_database.dart';
@@ -312,7 +313,7 @@ class RefinedTranscriptService {
       AppLog.e(_tag, 'window ${window.id} failed: $message');
     } catch (e, st) {
       AppLog.e(_tag, 'window ${window.id} failed unexpectedly', e, st);
-      await dao.markFailed(window.id, '$e');
+      await dao.markFailed(window.id, describeError(e));
     } finally {
       try {
         if (wav != null && await wav.exists()) await wav.delete();
@@ -352,7 +353,7 @@ class RefinedTranscriptService {
         error = e.message;
       } catch (e) {
         // Unclassified (a disk error, a parsing bug): transient, but bounded.
-        error = '$e';
+        error = describeError(e);
       }
       AppLog.d(_tag, '${engine.name} try ${attempt + 1} failed: $error');
     }

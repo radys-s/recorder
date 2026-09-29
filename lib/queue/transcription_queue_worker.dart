@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import '../core/redaction.dart';
 import '../core/logging.dart';
 import '../core/listening_diagnostics.dart';
 import '../core/paths.dart';
@@ -432,7 +433,7 @@ class TranscriptionQueueWorker {
         segmentId: row.segmentId,
         metrics: {'pause_s': wait.inSeconds},
       );
-      AppLog.d(_tag, 'rate limited — queue rests for ${wait.inSeconds}s');
+      AppLog.w(_tag, 'rate limited — queue rests for ${wait.inSeconds}s');
     } on SttKeyMissing {
       _keyBlocked = true;
       await _queueDao.release(row.id);
@@ -448,7 +449,7 @@ class TranscriptionQueueWorker {
         queueId: row.id,
         segmentId: row.segmentId,
       );
-      AppLog.d(_tag, 'no transcription key — rows wait, no attempt spent');
+      AppLog.w(_tag, 'no transcription key — rows wait, no attempt spent');
     } on SttPermanentException catch (e) {
       diagnostics?.record(
         ListeningStage.transcription,
@@ -484,7 +485,7 @@ class TranscriptionQueueWorker {
         segmentId: row.segmentId,
         metrics: {'attempt': attempt},
       );
-      await _scheduleRetry(row, attempt, '$e');
+      await _scheduleRetry(row, attempt, describeError(e));
     }
   }
 

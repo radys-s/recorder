@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../core/redaction.dart';
 import '../app_database.dart';
 import '../tables/meeting_notes_table.dart';
 import '../tables/preferences_table.dart';
@@ -103,7 +104,7 @@ class MeetingNotesDao extends DatabaseAccessor<AppDatabase>
       (update(meetingNotes)..where((t) => t.meetingId.equals(meetingId))).write(
         MeetingNotesCompanion(
           status: const Value(NotesStatus.failed),
-          error: Value(error),
+          error: Value(redactSecrets(error)),
         ),
       );
 

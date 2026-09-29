@@ -53,7 +53,7 @@ void main() {
 
     test('a plain-text or HTML body is kept, clipped', () {
       expect(groqErrorMessage(' upstream timeout '), 'upstream timeout');
-      final html = '<html>${'x' * 1000}</html>';
+      final html = '<html>${'upstream down ' * 80}</html>';
       final clipped = groqErrorMessage(html)!;
       expect(clipped, hasLength(301));
       expect(clipped, endsWith('…'));
@@ -61,7 +61,7 @@ void main() {
 
     test('a long nested message is clipped too', () {
       final long = groqErrorMessage({
-        'error': {'message': 'y' * 500},
+        'error': {'message': 'quota reached ' * 40},
       })!;
       expect(long, hasLength(301));
     });

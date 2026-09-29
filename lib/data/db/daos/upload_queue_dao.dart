@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../core/redaction.dart';
 import '../app_database.dart';
 import '../tables/upload_queue_table.dart';
 
@@ -110,7 +111,7 @@ class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDao
           status: const Value(QueueStatus.failedRetryable),
           attemptCount: Value(attemptCount),
           nextRetryAt: Value(nextRetryAt),
-          lastError: Value(error),
+          lastError: Value(redactSecrets(error)),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -154,7 +155,7 @@ class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDao
       (update(uploadQueue)..where((t) => t.id.equals(id))).write(
         UploadQueueCompanion(
           status: const Value(QueueStatus.failedPermanent),
-          lastError: Value(error),
+          lastError: Value(redactSecrets(error)),
           updatedAt: Value(DateTime.now()),
         ),
       );

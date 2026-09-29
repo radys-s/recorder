@@ -8,9 +8,11 @@ import '../../core/accent.dart';
 import '../../ai/gemini_key_check.dart';
 import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
+import '../../ai/llm_provider.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/constants.dart';
 import '../../core/providers.dart';
+import '../../core/redaction.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/db/tables/preferences_table.dart';
@@ -40,6 +42,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _obscured = true;
   bool _busy = false;
 
+  /// What the last „Ověřit klíč" found; shown on the Groq key card.
+  String? _verified;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -66,23 +71,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Chunks waiting for a key, or parked because the old one was refused,
       // start moving again now rather than at the next tick.
       unawaited(ref.read(queueWorkerProvider).keysChanged());
-      _notify('Klíč uložen.');
+      final hint = apiKeyFormatHint('Groq', cleanApiKey(value));
+      _verified = null;
+      _notify('Klíč uložen.${hint == null ? '' : ' $hint'}');
     } catch (e) {
-      _notify('Klíč se nepodařilo uložit: $e');
+      _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Asks Groq which models the key can use — the one call that separates a
+  /// wrong key from a wrong model from no connection. Works in release, since
+  /// a tester's first question is "is my key any good".
+  Future<void> _verify() async {
+    setState(() {
+      _busy = true;
+      _verified = null;
+    });
+    String result;
+    try {
+      final ids = await listGroqModels(ref.read(apiKeyStoreProvider));
+      final hasWhisper =
+          ids.contains(kGroqWhisperModel) ||
+          ids.contains(kGroqWhisperTurboModel);
+      result = hasWhisper
+          ? 'Klíč funguje · přepis je dostupný.'
+          : 'Klíč funguje, ale přepisovací model tam chybí — aplikace zkusí '
+                'záložní.';
+    } on AiException catch (e) {
+      result = 'Ověření selhalo: ${redactSecrets(e.message)}';
+    } catch (_) {
+      result = 'Ověření selhalo. Zkontroluj připojení a zkus to znovu.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _verified = result;
+    });
   }
 
   Future<void> _clear() async {
     setState(() => _busy = true);
     try {
       await ref.read(apiKeyStoreProvider).delete();
+      _verified = null;
       _invalidateKeyProviders();
       unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Klíč smazán.');
     } catch (e) {
-      _notify('Klíč se nepodařilo smazat: $e');
+      _notify('Klíč se nepodařilo smazat: ${userMessage(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -121,9 +159,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               title: Text(masked.valueOrNull ?? 'Žádný klíč není uložený'),
               subtitle: Text(
-                masked.valueOrNull == null
-                    ? 'Bez klíče se přepis nespustí.'
-                    : 'Uložením nového klíče tenhle přepíšeš.',
+                _verified ??
+                    (masked.valueOrNull == null
+                        ? 'Bez klíče se přepis nespustí.'
+                        : 'Uložením nového klíče tenhle přepíšeš.'),
               ),
             ),
           ),
@@ -166,6 +205,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
+          if (masked.valueOrNull != null) ...[
+            const SizedBox(height: Gap.sm),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _verify,
+              icon: const Icon(Icons.verified_outlined),
+              label: const Text('Ověřit klíč'),
+            ),
+          ],
           const DataProcessorNotice(DataProcessor.groq),
           const _GeminiKeySection(),
           const AiServicesSection(),
@@ -243,9 +290,10 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       _controller.clear();
       _invalidate();
       unawaited(ref.read(queueWorkerProvider).keysChanged());
-      _notify('Gemini klíč uložen.');
+      final hint = apiKeyFormatHint('Gemini', cleanApiKey(value));
+      _notify('Gemini klíč uložen.${hint == null ? '' : ' $hint'}');
     } catch (e) {
-      _notify('Klíč se nepodařilo uložit: $e');
+      _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     }
   });
 
@@ -256,7 +304,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Gemini klíč smazán.');
     } catch (e) {
-      _notify('Klíč se nepodařilo smazat: $e');
+      _notify('Klíč se nepodařilo smazat: ${userMessage(e)}');
     }
   });
 
@@ -1013,7 +1061,7 @@ class _DiagnosticsSection extends ConsumerWidget {
     } catch (e) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Nepovedlo se: $e')));
+        ..showSnackBar(SnackBar(content: Text('Nepovedlo se: ${userMessage(e)}')));
       return;
     }
 

@@ -1,3 +1,4 @@
+import '../core/redaction.dart';
 import '../core/constants.dart';
 import '../core/logging.dart';
 import '../data/db/tables/meeting_notes_table.dart';
@@ -103,7 +104,7 @@ class NotesGenerator {
         try {
           notes = (await _generateGemini(transcript, depth, lesson)).trim();
         } on AiException catch (e) {
-          AppLog.e(_tag, 'meeting $meetingId: Gemini failed, using Groq: $e');
+          AppLog.e(_tag, 'meeting $meetingId: Gemini failed, using Groq: ${describeError(e)}');
           await _notesDao.markGenerating(meetingId, depth, kGroqNotesModel);
         }
       }
@@ -129,10 +130,10 @@ class NotesGenerator {
         }
       }
     } on AiException catch (e) {
-      AppLog.e(_tag, 'meeting $meetingId failed: $e');
+      AppLog.e(_tag, 'meeting $meetingId failed: ${describeError(e)}');
       await _fail(meetingId, e.message);
     } catch (e) {
-      AppLog.e(_tag, 'meeting $meetingId failed: $e');
+      AppLog.e(_tag, 'meeting $meetingId failed: ${describeError(e)}');
       await _fail(
         meetingId,
         'Nastala neočekávaná chyba. Zkus to prosím znovu.',

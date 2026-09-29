@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../core/redaction.dart';
 import '../app_database.dart';
 import '../tables/drive_docs_table.dart';
 
@@ -45,14 +46,14 @@ class DriveDocsDao extends DatabaseAccessor<AppDatabase>
             DriveDocsCompanion.insert(
               subjectId: subjectId,
               kind: kind,
-              error: Value(error),
+              error: Value(redactSecrets(error)),
             ),
           );
         } else {
           await (update(driveDocs)..where(
                 (t) => t.subjectId.equals(subjectId) & t.kind.equalsValue(kind),
               ))
-              .write(DriveDocsCompanion(error: Value(error)));
+              .write(DriveDocsCompanion(error: Value(redactSecrets(error))));
         }
       });
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import 'groq_failure.dart';
+import 'redaction.dart';
 
 /// What went wrong with a Gemini request, in the terms the user can act on.
 ///
@@ -177,7 +178,7 @@ GeminiFailure classifyGeminiFailure(DioException e) {
   return (
     googleStatus: status is String ? status : null,
     reason: message is String && message.trim().isNotEmpty
-        ? clipReason(message.trim())
+        ? clipReason(redactSecrets(message.trim()))
         : null,
   );
 }

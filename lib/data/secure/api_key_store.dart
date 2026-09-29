@@ -1,6 +1,7 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/constants.dart';
+import '../../core/redaction.dart';
 
 /// The only place the user's API keys are ever persisted — one instance per
 /// key: Groq by default, Gemini with [kGeminiApiKeyStorageKey].
@@ -31,15 +32,25 @@ class ApiKeyStore {
   final String storageKey;
 
   /// Returns the stored key, or null if none is set. Whitespace-only values
-  /// are treated as absent so a stray paste can't produce a 401 loop.
+  /// are treated as absent so a stray paste can't produce a 401 loop, and a
+  /// value that could not travel in an HTTP header is treated as absent too
+  /// (it would only throw a `FormatException` that quotes it).
   Future<String?> read() async {
     final value = await _storage.read(key: storageKey);
-    final trimmed = value?.trim();
-    return (trimmed == null || trimmed.isEmpty) ? null : trimmed;
+    if (value == null) return null;
+    final cleaned = cleanApiKey(value);
+    return apiKeyProblem(cleaned) == null ? cleaned : null;
   }
 
-  Future<void> write(String key) =>
-      _storage.write(key: storageKey, value: key.trim());
+  /// Stores [key] after removing whitespace, zero-width characters and wrapping
+  /// quotes. Throws [ApiKeyFormatException] when what is left could not be a
+  /// key — nothing is stored then.
+  Future<void> write(String key) async {
+    final cleaned = cleanApiKey(key);
+    final problem = apiKeyProblem(cleaned);
+    if (problem != null) throw ApiKeyFormatException(problem);
+    await _storage.write(key: storageKey, value: cleaned);
+  }
 
   Future<void> delete() => _storage.delete(key: storageKey);
 
@@ -53,4 +64,15 @@ class ApiKeyStore {
     if (key.length <= 8) return '•' * key.length;
     return '${key.substring(0, 4)}…${key.substring(key.length - 4)}';
   }
+}
+
+/// A pasted key that cannot be stored; [message] is safe to show (it never
+/// contains the key).
+class ApiKeyFormatException implements ApiKeyProblem {
+  const ApiKeyFormatException(this.message);
+  @override
+  final String message;
+
+  @override
+  String toString() => message;
 }

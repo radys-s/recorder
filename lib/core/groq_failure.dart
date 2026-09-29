@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import 'redaction.dart';
+
 /// The retry decision for one failed Groq request, independent of which
 /// endpoint produced it.
 ///
@@ -46,14 +48,15 @@ GroqFailure classifyGroqFailure(DioException e, {String vendor = 'Groq'}) {
       // Almost always a socket-level failure that a later attempt may survive.
       return GroqFailure(
         transient: true,
-        message: 'Request failed: ${e.message ?? e}',
+        message: 'Request failed: ${e.error?.runtimeType ?? e.type.name}',
       );
     case DioExceptionType.badResponse:
       break;
   }
 
   final status = e.response?.statusCode;
-  final detail = groqErrorMessage(e.response?.data) ?? e.message ?? 'no detail';
+  final detail = groqErrorMessage(e.response?.data) ??
+      (e.message == null ? 'no detail' : redactSecrets(e.message!));
 
   // 429 and 5xx are the classic "come back later" answers, and Groq adds 413:
   // it answers "request too large … tokens per minute" with that status, which
@@ -98,8 +101,10 @@ String? groqErrorMessage(Object? data) {
   return null;
 }
 
-String _clip(String value) =>
-    value.length <= 300 ? value : '${value.substring(0, 300)}…';
+String _clip(String value) {
+  final safe = redactSecrets(value);
+  return safe.length <= 300 ? safe : '${safe.substring(0, 300)}…';
+}
 
 /// A non-blank string, trimmed; null for anything else.
 String? _text(Object? value) =>

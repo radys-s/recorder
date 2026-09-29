@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../core/redaction.dart';
 import '../app_database.dart';
 import '../tables/refined_segments_table.dart';
 
@@ -131,7 +132,7 @@ class RefinedSegmentsDao extends DatabaseAccessor<AppDatabase>
         id,
         RefinedSegmentsCompanion(
           status: const Value(RefinedStatus.failed),
-          error: Value(error),
+          error: Value(redactSecrets(error)),
         ),
       );
 

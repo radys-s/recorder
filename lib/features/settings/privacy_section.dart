@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../audio/recording_controller.dart';
 import '../../core/providers.dart';
+import '../../core/redaction.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/section_header.dart';
@@ -92,7 +93,7 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
         ),
       );
     } catch (e) {
-      _notify('Export se nepovedl: $e');
+      _notify('Export se nepovedl: ${userMessage(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -136,7 +137,7 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
       // Back to the root, where the consent screen now waits.
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
-      _notify('Mazání se nepovedlo celé: $e');
+      _notify('Mazání se nepovedlo celé: ${userMessage(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

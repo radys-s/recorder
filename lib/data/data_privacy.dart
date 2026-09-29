@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/paths.dart';
+import '../core/redaction.dart';
 import '../core/photo_files.dart';
 import 'db/app_database.dart';
 import 'db/tables/preferences_table.dart';
@@ -23,7 +24,7 @@ Future<Map<String, Object?>> exportAllData(
     final rows = await db.select(table).get();
     tables[table.actualTableName] = [
       for (final row in rows)
-        if (row is DataClass) row.toJson() else row.toString(),
+        if (row is DataClass) _redactErrors(row.toJson()) else row.toString(),
     ];
   }
   return {
@@ -33,6 +34,15 @@ Future<Map<String, Object?>> exportAllData(
     'tables': tables,
   };
 }
+
+/// Error columns come from servers and exceptions, so they are the one place a
+/// secret could have slipped into a row written before redaction existed.
+Map<String, dynamic> _redactErrors(Map<String, dynamic> json) => {
+  for (final e in json.entries)
+    e.key: e.key.toLowerCase().endsWith('error') && e.value is String
+        ? redactSecrets(e.value as String)
+        : e.value,
+};
 
 /// Removes everything the app keeps: every database row, recordings, photos,
 /// the stored keys and the Google sign-in. What is left is a fresh install
