@@ -35,6 +35,7 @@ import '../ai/web_answer_service.dart';
 import '../audio/audio_capture_service.dart';
 import '../audio/pcm_audio_source.dart';
 import '../audio/wav_replay_audio_source.dart';
+import 'storage_info.dart';
 import '../data/db/app_database.dart';
 import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/chat_messages_dao.dart';
@@ -133,6 +134,9 @@ final audioSourceProvider = Provider<PcmAudioSource>((ref) {
   ref.onDispose(source.dispose);
   return source;
 });
+
+/// Free space on the device; overridden in tests.
+final storageInfoProvider = Provider<StorageInfo>((ref) => const StorageInfo());
 
 final meetingNotesDaoProvider = Provider<MeetingNotesDao>((ref) {
   return ref.watch(appDatabaseProvider).meetingNotesDao;

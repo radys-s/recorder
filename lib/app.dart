@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'audio/pending_audio.dart';
 import 'core/logging.dart';
 import 'core/pending_deletions.dart';
 import 'core/providers.dart';
@@ -59,6 +61,20 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
   Future<void> _startup() async {
     final db = ref.read(appDatabaseProvider);
 
+    // Whatever the killed run had buffered but not yet cut into a chunk is
+    // still in pending.pcm. It becomes an ordinary chunk before anything else
+    // looks at the meeting, so the interrupted lesson loses seconds, not the
+    // half minute the chunker was holding.
+    final interrupted = <int>{};
+    await _step('recover unsaved audio', () async {
+      final docs = await getApplicationDocumentsDirectory();
+      final recovered = await recoverPendingAudio(db: db, docsPath: docs.path);
+      if (recovered.isNotEmpty) {
+        AppLog.d(_tag, 'recovered unsaved audio of meeting(s): $recovered');
+        interrupted.addAll(recovered);
+      }
+    });
+
     // Closing comes first: deleteEmptyMeetings only considers closed rows, so
     // running it the other way round would let an interrupted meeting that
     // never produced a chunk sit in the list for exactly one more launch.
@@ -66,6 +82,7 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
       final orphans = await db.meetingsDao.closeOrphanedMeetings();
       if (orphans.isNotEmpty) {
         AppLog.d(_tag, 'closed interrupted meeting(s): $orphans');
+        interrupted.addAll(orphans);
       }
     });
 
@@ -124,7 +141,12 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     );
     // Not awaited: a pass can take minutes and must not hold up launch.
     await _step('resume refined transcripts', () async {
-      unawaited(ref.read(refinedTranscriptServiceProvider).resume());
+      final refined = ref.read(refinedTranscriptServiceProvider);
+      // A lesson the app died in never reached its own second pass.
+      for (final id in interrupted) {
+        unawaited(refined.refine(id));
+      }
+      unawaited(refined.resume());
     });
 
     // Reminders are concrete notifications for the next fortnight rather than

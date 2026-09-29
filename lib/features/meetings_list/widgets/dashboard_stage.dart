@@ -685,10 +685,14 @@ class _LiveStage extends ConsumerWidget {
               ),
             ),
           ),
-          if (state.weakSignal) ...[
+          if (state.micSilent || state.lowDisk || state.weakSignal) ...[
             const SizedBox(height: Gap.xs),
             Text(
-              'Slabý signál — polož telefon blíž k vyučujícímu',
+              state.micSilent
+                  ? 'Mikrofon nic neslyší — zkontroluj, jestli není zakrytý'
+                  : state.lowDisk
+                  ? 'V telefonu dochází místo'
+                  : 'Slabý signál — polož telefon blíž k vyučujícímu',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: context.accent.palette.darkText.withValues(alpha: 0.9),

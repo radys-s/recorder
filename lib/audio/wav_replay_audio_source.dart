@@ -113,6 +113,23 @@ class WavReplayAudioSource implements PcmAudioSource {
     AppLog.d(_tag, 'replay resumed');
   }
 
+  /// Continues from where the file was, on a fresh stream. Only the recording
+  /// controller's watchdog calls this, and only after cancelling the old
+  /// subscription.
+  @override
+  Future<Stream<Uint8List>> restart() async {
+    if (_pcm == null) return start();
+    _timer?.cancel();
+    final old = _controller;
+    if (old != null && !old.isClosed) await old.close();
+    final controller = StreamController<Uint8List>();
+    _controller = controller;
+    if (!_paused) {
+      _timer = Timer.periodic(sliceDuration, (_) => _emitSlice());
+    }
+    return controller.stream;
+  }
+
   void _emitSlice() {
     final controller = _controller;
     final pcm = _pcm;

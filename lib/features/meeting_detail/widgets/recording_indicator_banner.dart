@@ -157,7 +157,9 @@ class _BannerState extends ConsumerState<_Banner> {
 
   /// The lesson whose weak-signal warning has been read and waved away. Kept
   /// per meeting, so the next lesson is warned again.
-  int? _signalNoticeDismissed;
+  /// `<lesson>:<kind>` of the notice the student closed, so a different
+  /// problem in the same lesson is still shown.
+  String? _noticeDismissed;
 
   @override
   void initState() {
@@ -227,9 +229,17 @@ class _BannerState extends ConsumerState<_Banner> {
     final meetingId = recording.meetingId;
     final paused = recording.isPaused;
     final elapsed = recording.elapsed;
-    final weakSignal = recording.weakSignal;
+    // One notice at a time, the most serious first.
+    final (noticeKind, noticeText) = recording.micSilent
+        ? ('silent', 'Mikrofon nic neslyší — zkontroluj, jestli není zakrytý nebo ztlumený')
+        : recording.lowDisk
+        ? ('disk', 'V telefonu dochází místo — uvolni ho, ať se hodina uloží celá')
+        : recording.weakSignal
+        ? ('weak', 'Slabý signál — polož telefon blíž k vyučujícímu')
+        : ('', '');
+    final noticeKey = '$meetingId:$noticeKind';
     final scheme = Theme.of(context).colorScheme;
-    final warn = weakSignal && _signalNoticeDismissed != meetingId;
+    final warn = noticeKind.isNotEmpty && _noticeDismissed != noticeKey;
     final background = paused
         ? scheme.secondaryContainer
         : scheme.errorContainer;
@@ -338,9 +348,9 @@ class _BannerState extends ConsumerState<_Banner> {
                   },
                 ),
                 if (warn)
-                  _WeakSignalNotice(
-                    onDismiss: () =>
-                        setState(() => _signalNoticeDismissed = meetingId),
+                  _RecordingNotice(
+                    message: noticeText,
+                    onDismiss: () => setState(() => _noticeDismissed = noticeKey),
                   ),
               ],
             ),
@@ -351,12 +361,14 @@ class _BannerState extends ConsumerState<_Banner> {
   }
 }
 
-/// Said once per lesson, and only after a full minute of it: the microphone
-/// is hearing the room more than the teacher, and no amount of processing
-/// afterwards can put back what never reached it. Moving the phone can.
-class _WeakSignalNotice extends StatelessWidget {
-  const _WeakSignalNotice({required this.onDismiss});
+/// A weak signal is said once per lesson, and only after a full minute of it:
+/// the microphone is hearing the room more than the teacher, and no amount of
+/// processing afterwards can put back what never reached it. Moving the phone
+/// can. A silent microphone and a filling disk use the same strip.
+class _RecordingNotice extends StatelessWidget {
+  const _RecordingNotice({required this.message, required this.onDismiss});
 
+  final String message;
   final VoidCallback onDismiss;
 
   @override
@@ -374,7 +386,7 @@ class _WeakSignalNotice extends StatelessWidget {
           const SizedBox(width: Gap.sm),
           Expanded(
             child: Text(
-              'Slabý signál — polož telefon blíž k vyučujícímu',
+              message,
               style: Theme.of(context).textTheme.bodySmall
                   ?.copyWith(color: scheme.onErrorContainer),
             ),

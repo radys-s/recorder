@@ -31,7 +31,6 @@ class AudioCaptureService implements PcmAudioSource {
 
   bool _isCapturing = false;
   bool _isPaused = false;
-  bool get isCapturing => _isCapturing;
 
   /// Asks for microphone access, requesting it from the user if not yet
   /// granted. Returns whether we ended up with permission.
@@ -52,6 +51,20 @@ class AudioCaptureService implements PcmAudioSource {
       throw const MicrophonePermissionDeniedException();
     }
 
+    final stream = await _open();
+    _isCapturing = true;
+    _isPaused = false;
+    AppLog.d(
+      _tag,
+      'capture started (${kSampleRateHz}Hz, $kChannels ch, PCM16)',
+    );
+
+    return stream;
+  }
+
+  /// One shared config, so a restart opens the microphone exactly as the
+  /// first start did.
+  Future<Stream<Uint8List>> _open() {
     const config = RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: kSampleRateHz,
@@ -69,22 +82,43 @@ class AudioCaptureService implements PcmAudioSource {
       // automatically is the only behaviour that degrades to a gap in the audio
       // rather than to a lost second half.
       audioInterruption: AudioInterruptionMode.pauseResume,
+      // Never take the input from Bluetooth headphones. The hands-free profile
+      // that would give AirPods a microphone is 16 kHz narrowband with heavy
+      // processing, and makes iOS switch the route mid-lesson. Wired and USB-C
+      // microphones are still picked by iOS on its own. `mixWithOthers` keeps
+      // other apps' audio from ending the session.
+      iosConfig: IosRecordConfig(
+        categoryOptions: [
+          IosAudioCategoryOption.defaultToSpeaker,
+          IosAudioCategoryOption.allowBluetoothA2DP,
+          IosAudioCategoryOption.mixWithOthers,
+        ],
+      ),
     );
 
-    final stream = await _recorder.startStream(config);
+    return _recorder.startStream(config);
+  }
+
+  @override
+  Future<Stream<Uint8List>> restart() async {
+    try {
+      await _recorder.stop();
+    } catch (e) {
+      // The session is already dead — that is why we are restarting.
+      AppLog.d(_tag, 'stop before restart failed (${e.runtimeType})');
+    }
+    final stream = await _open();
     _isCapturing = true;
     _isPaused = false;
-    AppLog.d(
-      _tag,
-      'capture started (${kSampleRateHz}Hz, $kChannels ch, PCM16)',
-    );
-
+    AppLog.d(_tag, 'capture restarted');
     return stream;
   }
 
   @override
   Future<void> pause() async {
-    if (!_isCapturing || _isPaused) return;
+    // Not short-circuited on _isPaused: the platform can resume by itself after
+    // a call or Siri, and the controller then asks for the pause again.
+    if (!_isCapturing) return;
     await _recorder.pause();
     _isPaused = true;
     AppLog.d(_tag, 'capture paused');

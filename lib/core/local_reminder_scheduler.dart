@@ -138,6 +138,29 @@ class LocalReminderScheduler implements ReminderScheduler {
     }
   }
 
+  /// A notification right now, for something the student must not miss while
+  /// the phone is in a pocket — a recording that stopped. Shows only if the
+  /// permission was already given (by the reminder switch); it never asks.
+  Future<void> showNow({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    if (kIsWeb) return;
+    await init();
+    if (!_ready) return;
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: _details,
+      );
+    } catch (e, st) {
+      AppLog.e(_tag, 'showing a notification failed', e, st);
+    }
+  }
+
   void _handlePayload(String? payload) {
     final subjectId = _subjectOf(payload);
     if (subjectId != null) onTap?.call(subjectId);

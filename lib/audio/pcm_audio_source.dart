@@ -30,6 +30,11 @@ abstract class PcmAudioSource {
   /// Stops producing audio. Safe to call when not started.
   Future<void> stop();
 
+  /// Opens the source again after it went quiet on its own — a route change,
+  /// a call — and returns the new stream. The caller keeps the same chunker,
+  /// so the recording continues with a gap instead of ending.
+  Future<Stream<Uint8List>> restart();
+
   /// Releases the underlying resource. The source is unusable afterwards.
   Future<void> dispose();
 }

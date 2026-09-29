@@ -19,6 +19,38 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "WebAuthPlugin") {
       WebAuthPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "StoragePlugin") {
+      StoragePlugin.register(with: registrar)
+    }
+  }
+}
+
+
+/// Free space for the recorder's low-disk warning. Dart side:
+/// `lib/core/storage_info.dart`.
+final class StoragePlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(
+      name: "recorder/storage", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(StoragePlugin(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "freeBytes" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    do {
+      let values = try URL(fileURLWithPath: NSHomeDirectory())
+        .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+      if let bytes = values.volumeAvailableCapacityForImportantUsage {
+        result(NSNumber(value: bytes))
+      } else {
+        result(nil)
+      }
+    } catch {
+      result(FlutterError(code: "FAILED", message: "Free space is unknown", details: nil))
+    }
   }
 }
 

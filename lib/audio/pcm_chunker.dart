@@ -217,6 +217,27 @@ class PcmChunker {
     return true;
   }
 
+  /// The audio that has not left in a chunk yet — the whole buffered part plus
+  /// the partial frame — with the position the next chunk will have. Written
+  /// to disk every few seconds so a killed app loses only that much. Null when
+  /// nothing is buffered.
+  ({int sequence, int startMs, Uint8List bytes})? snapshot() {
+    final total = _bufferedBytes + _frameFill;
+    if (total == 0) return null;
+    final bytes = Uint8List(total);
+    var offset = 0;
+    for (final f in _frames) {
+      bytes.setRange(offset, offset + f.length, f);
+      offset += f.length;
+    }
+    bytes.setRange(offset, offset + _frameFill, _frame);
+    return (
+      sequence: _sequence,
+      startMs: _msForBytes(_emittedBytes),
+      bytes: bytes,
+    );
+  }
+
   /// Clears all state, including the sequence counter. Use between meetings.
   void reset() {
     _frames.clear();
