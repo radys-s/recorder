@@ -36,12 +36,14 @@ class TranscriptSegmentsDao extends DatabaseAccessor<AppDatabase>
     SegmentStatus status, {
     double? confidence,
     String? rawContent,
+    String? sttEngine,
   }) => (update(transcriptSegments)..where((t) => t.id.equals(id))).write(
     TranscriptSegmentsCompanion(
       content: Value(text),
       status: Value(status),
       confidence: Value(confidence),
       rawContent: rawContent == null ? const Value.absent() : Value(rawContent),
+      sttEngine: sttEngine == null ? const Value.absent() : Value(sttEngine),
     ),
   );
 

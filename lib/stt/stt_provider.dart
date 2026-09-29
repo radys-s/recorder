@@ -10,7 +10,12 @@ class TranscriptionResult {
     this.durationSeconds,
     this.droppedSegments = 0,
     this.confidence,
+    this.engine,
   });
+
+  /// Which engine wrote [text] (`groq-large`, `groq-turbo`, `gemini`), for the
+  /// diagnostics report. Null when the provider does not say.
+  final String? engine;
 
   /// How sure Whisper was, as a mean `avg_logprob`; see
   /// `filterWhisperSegments`. Null when the provider does not say.
@@ -53,10 +58,25 @@ class SttTransientException extends SttException {
   const SttTransientException(super.message, {super.statusCode});
 }
 
+/// The service asked us to slow down (HTTP 429). Not a fault of this chunk:
+/// the whole queue rests for [retryAfter] and no attempt is counted.
+class SttRateLimited extends SttTransientException {
+  const SttRateLimited(super.message, {this.retryAfter, super.statusCode});
+
+  /// What the service said to wait; null when it did not say.
+  final Duration? retryAfter;
+}
+
 /// Do not retry: bad or missing API key, malformed request, rejected audio.
 /// The UI is expected to surface these — retrying only burns quota.
 class SttPermanentException extends SttException {
   const SttPermanentException(super.message, {super.statusCode});
+}
+
+/// No engine has a key. The chunk is fine and the queue is not broken — it
+/// just cannot start until a key is saved, so the row waits instead of failing.
+class SttKeyMissing extends SttPermanentException {
+  const SttKeyMissing(super.message);
 }
 
 /// Speech-to-text backend. Groq Whisper is the only implementation for now;
@@ -74,11 +94,19 @@ abstract class SttProvider {
   ///
   /// [glossary] is a short list of names and terms from the lesson's cards,
   /// placed in the prompt ahead of [promptContext].
+  ///
+  /// [noSpeechProbThreshold] and [lowAvgLogprobThreshold] are the segment
+  /// filter's limits as they stood when the chunk was recorded; they win over
+  /// [sensitivity], which is only what the setting says at upload time.
+  /// [timeout] replaces the engine's default request timeout, for long windows.
   Future<TranscriptionResult> transcribe({
     required File audioFile,
     String? promptContext,
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
     String? glossary,
+    double? noSpeechProbThreshold,
+    double? lowAvgLogprobThreshold,
+    Duration? timeout,
   });
 }

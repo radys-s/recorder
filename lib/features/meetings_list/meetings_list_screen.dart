@@ -33,6 +33,7 @@ import 'meeting_actions.dart';
 import 'meetings_list_providers.dart';
 import 'widgets/dashboard_stage.dart';
 import 'widgets/onboarding_card.dart';
+import 'widgets/transcription_key_sheet.dart';
 
 /// Home screen: a dark stage with the record control (and, while a lesson
 /// runs, the recording itself), then the latest notes and every lesson as
@@ -87,6 +88,14 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     _starting = true;
     try {
       if (!await confirmRecordingNotice(context, ref) || !mounted) return;
+      if (!await confirmTranscriptionKey(
+            context,
+            ref,
+            openSettings: _openSettings,
+          ) ||
+          !mounted) {
+        return;
+      }
       final setup = await showStartRecordingSheet(
         context,
         ref,

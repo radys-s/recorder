@@ -180,12 +180,14 @@ class RefinedTranscriber {
       languageCode: context.languageCode,
       sensitivity: context.sensitivity,
       glossary: context.glossary,
+      // A window is minutes of audio: the request needs time to go up and be
+      // decoded, and the live default would fail it for being slow.
+      timeout: refinedWhisperTimeoutFor(await wav.length()),
     );
-    final text = limitToSpeakingRate(
-      collapseRepeats(sanitizeTranscript(result.text)),
-      voicedMs: voicedMs,
-      durationMs: durationMs,
-    );
+    // No speaking-rate cut here: over a window of minutes the voiced estimate
+    // is far too rough to judge a transcript by, and the live pass already
+    // applies it chunk by chunk.
+    final text = collapseRepeats(sanitizeTranscript(result.text));
     if (isPromptEcho(text, context.previousText) ||
         isPromptEcho(
           text,

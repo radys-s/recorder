@@ -216,12 +216,18 @@ bool isPromptEcho(String text, String? prompt) {
 /// Whole sentences are removed from the end until the text fits; a first
 /// sentence that alone is too long is cut at a word boundary. Null
 /// [voicedMs] (rows older than the measurement) disables the check.
+///
+/// The check only applies when voiced time is under 10 % of the chunk. A quiet
+/// or distant teacher is under-counted by the voiced gate, and a chunk with
+/// real speech in a tenth of it or more is not the room-tone-plus-invention
+/// case this exists for; cutting it would throw away words that were said.
 String limitToSpeakingRate(
   String text, {
   required int? voicedMs,
   required int durationMs,
 }) {
   if (voicedMs == null || text.isEmpty) return text;
+  if (voicedMs * 10 >= durationMs) return text;
   final voicedSec = voicedMs.clamp(0, durationMs) / 1000;
   final unvoicedSec = (durationMs - voicedMs).clamp(0, durationMs) / 1000;
   final allowed = (30 + 20 * voicedSec + 10 * unvoicedSec).round();

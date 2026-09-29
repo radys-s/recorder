@@ -733,6 +733,40 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sttEngineMeta = const VerificationMeta(
+    'sttEngine',
+  );
+  @override
+  late final GeneratedColumn<String> sttEngine = GeneratedColumn<String>(
+    'stt_engine',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noSpeechThresholdMeta = const VerificationMeta(
+    'noSpeechThreshold',
+  );
+  @override
+  late final GeneratedColumn<double> noSpeechThreshold =
+      GeneratedColumn<double>(
+        'no_speech_threshold',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lowLogprobThresholdMeta =
+      const VerificationMeta('lowLogprobThreshold');
+  @override
+  late final GeneratedColumn<double> lowLogprobThreshold =
+      GeneratedColumn<double>(
+        'low_logprob_threshold',
+        aliasedName,
+        true,
+        type: DriftSqlType.double,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -748,6 +782,9 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     rawContent,
     confidence,
     cutReason,
+    sttEngine,
+    noSpeechThreshold,
+    lowLogprobThreshold,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -845,6 +882,30 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         cutReason.isAcceptableOrUnknown(data['cut_reason']!, _cutReasonMeta),
       );
     }
+    if (data.containsKey('stt_engine')) {
+      context.handle(
+        _sttEngineMeta,
+        sttEngine.isAcceptableOrUnknown(data['stt_engine']!, _sttEngineMeta),
+      );
+    }
+    if (data.containsKey('no_speech_threshold')) {
+      context.handle(
+        _noSpeechThresholdMeta,
+        noSpeechThreshold.isAcceptableOrUnknown(
+          data['no_speech_threshold']!,
+          _noSpeechThresholdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('low_logprob_threshold')) {
+      context.handle(
+        _lowLogprobThresholdMeta,
+        lowLogprobThreshold.isAcceptableOrUnknown(
+          data['low_logprob_threshold']!,
+          _lowLogprobThresholdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -908,6 +969,18 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.string,
         data['${effectivePrefix}cut_reason'],
       ),
+      sttEngine: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stt_engine'],
+      ),
+      noSpeechThreshold: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}no_speech_threshold'],
+      ),
+      lowLogprobThreshold: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}low_logprob_threshold'],
+      ),
     );
   }
 
@@ -947,6 +1020,16 @@ class TranscriptSegment extends DataClass
 
   /// How the PCM chunk ended. Null only for rows written before v22.
   final String? cutReason;
+
+  /// Which engine wrote [content] (`groq-large`, `groq-turbo`, `gemini`), for
+  /// the problem report. Null before v27 or while nothing is written.
+  final String? sttEngine;
+
+  /// The Whisper segment filter's limits as they stood when the chunk was
+  /// recorded. The room may have changed by the time it is uploaded, and a
+  /// backlog can be uploaded minutes later; null before v27.
+  final double? noSpeechThreshold;
+  final double? lowLogprobThreshold;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -961,6 +1044,9 @@ class TranscriptSegment extends DataClass
     this.rawContent,
     this.confidence,
     this.cutReason,
+    this.sttEngine,
+    this.noSpeechThreshold,
+    this.lowLogprobThreshold,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -992,6 +1078,15 @@ class TranscriptSegment extends DataClass
     if (!nullToAbsent || cutReason != null) {
       map['cut_reason'] = Variable<String>(cutReason);
     }
+    if (!nullToAbsent || sttEngine != null) {
+      map['stt_engine'] = Variable<String>(sttEngine);
+    }
+    if (!nullToAbsent || noSpeechThreshold != null) {
+      map['no_speech_threshold'] = Variable<double>(noSpeechThreshold);
+    }
+    if (!nullToAbsent || lowLogprobThreshold != null) {
+      map['low_logprob_threshold'] = Variable<double>(lowLogprobThreshold);
+    }
     return map;
   }
 
@@ -1020,6 +1115,15 @@ class TranscriptSegment extends DataClass
       cutReason: cutReason == null && nullToAbsent
           ? const Value.absent()
           : Value(cutReason),
+      sttEngine: sttEngine == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sttEngine),
+      noSpeechThreshold: noSpeechThreshold == null && nullToAbsent
+          ? const Value.absent()
+          : Value(noSpeechThreshold),
+      lowLogprobThreshold: lowLogprobThreshold == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lowLogprobThreshold),
     );
   }
 
@@ -1044,6 +1148,13 @@ class TranscriptSegment extends DataClass
       rawContent: serializer.fromJson<String?>(json['rawContent']),
       confidence: serializer.fromJson<double?>(json['confidence']),
       cutReason: serializer.fromJson<String?>(json['cutReason']),
+      sttEngine: serializer.fromJson<String?>(json['sttEngine']),
+      noSpeechThreshold: serializer.fromJson<double?>(
+        json['noSpeechThreshold'],
+      ),
+      lowLogprobThreshold: serializer.fromJson<double?>(
+        json['lowLogprobThreshold'],
+      ),
     );
   }
   @override
@@ -1065,6 +1176,9 @@ class TranscriptSegment extends DataClass
       'rawContent': serializer.toJson<String?>(rawContent),
       'confidence': serializer.toJson<double?>(confidence),
       'cutReason': serializer.toJson<String?>(cutReason),
+      'sttEngine': serializer.toJson<String?>(sttEngine),
+      'noSpeechThreshold': serializer.toJson<double?>(noSpeechThreshold),
+      'lowLogprobThreshold': serializer.toJson<double?>(lowLogprobThreshold),
     };
   }
 
@@ -1082,6 +1196,9 @@ class TranscriptSegment extends DataClass
     Value<String?> rawContent = const Value.absent(),
     Value<double?> confidence = const Value.absent(),
     Value<String?> cutReason = const Value.absent(),
+    Value<String?> sttEngine = const Value.absent(),
+    Value<double?> noSpeechThreshold = const Value.absent(),
+    Value<double?> lowLogprobThreshold = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -1096,6 +1213,13 @@ class TranscriptSegment extends DataClass
     rawContent: rawContent.present ? rawContent.value : this.rawContent,
     confidence: confidence.present ? confidence.value : this.confidence,
     cutReason: cutReason.present ? cutReason.value : this.cutReason,
+    sttEngine: sttEngine.present ? sttEngine.value : this.sttEngine,
+    noSpeechThreshold: noSpeechThreshold.present
+        ? noSpeechThreshold.value
+        : this.noSpeechThreshold,
+    lowLogprobThreshold: lowLogprobThreshold.present
+        ? lowLogprobThreshold.value
+        : this.lowLogprobThreshold,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -1118,6 +1242,13 @@ class TranscriptSegment extends DataClass
           ? data.confidence.value
           : this.confidence,
       cutReason: data.cutReason.present ? data.cutReason.value : this.cutReason,
+      sttEngine: data.sttEngine.present ? data.sttEngine.value : this.sttEngine,
+      noSpeechThreshold: data.noSpeechThreshold.present
+          ? data.noSpeechThreshold.value
+          : this.noSpeechThreshold,
+      lowLogprobThreshold: data.lowLogprobThreshold.present
+          ? data.lowLogprobThreshold.value
+          : this.lowLogprobThreshold,
     );
   }
 
@@ -1136,7 +1267,10 @@ class TranscriptSegment extends DataClass
           ..write('voicedMs: $voicedMs, ')
           ..write('rawContent: $rawContent, ')
           ..write('confidence: $confidence, ')
-          ..write('cutReason: $cutReason')
+          ..write('cutReason: $cutReason, ')
+          ..write('sttEngine: $sttEngine, ')
+          ..write('noSpeechThreshold: $noSpeechThreshold, ')
+          ..write('lowLogprobThreshold: $lowLogprobThreshold')
           ..write(')'))
         .toString();
   }
@@ -1156,6 +1290,9 @@ class TranscriptSegment extends DataClass
     rawContent,
     confidence,
     cutReason,
+    sttEngine,
+    noSpeechThreshold,
+    lowLogprobThreshold,
   );
   @override
   bool operator ==(Object other) =>
@@ -1173,7 +1310,10 @@ class TranscriptSegment extends DataClass
           other.voicedMs == this.voicedMs &&
           other.rawContent == this.rawContent &&
           other.confidence == this.confidence &&
-          other.cutReason == this.cutReason);
+          other.cutReason == this.cutReason &&
+          other.sttEngine == this.sttEngine &&
+          other.noSpeechThreshold == this.noSpeechThreshold &&
+          other.lowLogprobThreshold == this.lowLogprobThreshold);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -1190,6 +1330,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<String?> rawContent;
   final Value<double?> confidence;
   final Value<String?> cutReason;
+  final Value<String?> sttEngine;
+  final Value<double?> noSpeechThreshold;
+  final Value<double?> lowLogprobThreshold;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
     this.meetingId = const Value.absent(),
@@ -1204,6 +1347,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.rawContent = const Value.absent(),
     this.confidence = const Value.absent(),
     this.cutReason = const Value.absent(),
+    this.sttEngine = const Value.absent(),
+    this.noSpeechThreshold = const Value.absent(),
+    this.lowLogprobThreshold = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
     this.id = const Value.absent(),
@@ -1219,6 +1365,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.rawContent = const Value.absent(),
     this.confidence = const Value.absent(),
     this.cutReason = const Value.absent(),
+    this.sttEngine = const Value.absent(),
+    this.noSpeechThreshold = const Value.absent(),
+    this.lowLogprobThreshold = const Value.absent(),
   }) : meetingId = Value(meetingId),
        sequence = Value(sequence),
        startMs = Value(startMs),
@@ -1240,6 +1389,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<String>? rawContent,
     Expression<double>? confidence,
     Expression<String>? cutReason,
+    Expression<String>? sttEngine,
+    Expression<double>? noSpeechThreshold,
+    Expression<double>? lowLogprobThreshold,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1255,6 +1407,10 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (rawContent != null) 'raw_content': rawContent,
       if (confidence != null) 'confidence': confidence,
       if (cutReason != null) 'cut_reason': cutReason,
+      if (sttEngine != null) 'stt_engine': sttEngine,
+      if (noSpeechThreshold != null) 'no_speech_threshold': noSpeechThreshold,
+      if (lowLogprobThreshold != null)
+        'low_logprob_threshold': lowLogprobThreshold,
     });
   }
 
@@ -1272,6 +1428,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<String?>? rawContent,
     Value<double?>? confidence,
     Value<String?>? cutReason,
+    Value<String?>? sttEngine,
+    Value<double?>? noSpeechThreshold,
+    Value<double?>? lowLogprobThreshold,
   }) {
     return TranscriptSegmentsCompanion(
       id: id ?? this.id,
@@ -1287,6 +1446,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       rawContent: rawContent ?? this.rawContent,
       confidence: confidence ?? this.confidence,
       cutReason: cutReason ?? this.cutReason,
+      sttEngine: sttEngine ?? this.sttEngine,
+      noSpeechThreshold: noSpeechThreshold ?? this.noSpeechThreshold,
+      lowLogprobThreshold: lowLogprobThreshold ?? this.lowLogprobThreshold,
     );
   }
 
@@ -1334,6 +1496,17 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (cutReason.present) {
       map['cut_reason'] = Variable<String>(cutReason.value);
     }
+    if (sttEngine.present) {
+      map['stt_engine'] = Variable<String>(sttEngine.value);
+    }
+    if (noSpeechThreshold.present) {
+      map['no_speech_threshold'] = Variable<double>(noSpeechThreshold.value);
+    }
+    if (lowLogprobThreshold.present) {
+      map['low_logprob_threshold'] = Variable<double>(
+        lowLogprobThreshold.value,
+      );
+    }
     return map;
   }
 
@@ -1352,7 +1525,10 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('voicedMs: $voicedMs, ')
           ..write('rawContent: $rawContent, ')
           ..write('confidence: $confidence, ')
-          ..write('cutReason: $cutReason')
+          ..write('cutReason: $cutReason, ')
+          ..write('sttEngine: $sttEngine, ')
+          ..write('noSpeechThreshold: $noSpeechThreshold, ')
+          ..write('lowLogprobThreshold: $lowLogprobThreshold')
           ..write(')'))
         .toString();
   }
@@ -11565,6 +11741,9 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       Value<String?> rawContent,
       Value<double?> confidence,
       Value<String?> cutReason,
+      Value<String?> sttEngine,
+      Value<double?> noSpeechThreshold,
+      Value<double?> lowLogprobThreshold,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -11581,6 +11760,9 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<String?> rawContent,
       Value<double?> confidence,
       Value<String?> cutReason,
+      Value<String?> sttEngine,
+      Value<double?> noSpeechThreshold,
+      Value<double?> lowLogprobThreshold,
     });
 
 class $$TranscriptSegmentsTableFilterComposer
@@ -11655,6 +11837,21 @@ class $$TranscriptSegmentsTableFilterComposer
 
   ColumnFilters<String> get cutReason => $composableBuilder(
     column: $table.cutReason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sttEngine => $composableBuilder(
+    column: $table.sttEngine,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get noSpeechThreshold => $composableBuilder(
+    column: $table.noSpeechThreshold,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lowLogprobThreshold => $composableBuilder(
+    column: $table.lowLogprobThreshold,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11732,6 +11929,21 @@ class $$TranscriptSegmentsTableOrderingComposer
     column: $table.cutReason,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get sttEngine => $composableBuilder(
+    column: $table.sttEngine,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get noSpeechThreshold => $composableBuilder(
+    column: $table.noSpeechThreshold,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lowLogprobThreshold => $composableBuilder(
+    column: $table.lowLogprobThreshold,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TranscriptSegmentsTableAnnotationComposer
@@ -11787,6 +11999,19 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<String> get cutReason =>
       $composableBuilder(column: $table.cutReason, builder: (column) => column);
+
+  GeneratedColumn<String> get sttEngine =>
+      $composableBuilder(column: $table.sttEngine, builder: (column) => column);
+
+  GeneratedColumn<double> get noSpeechThreshold => $composableBuilder(
+    column: $table.noSpeechThreshold,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get lowLogprobThreshold => $composableBuilder(
+    column: $table.lowLogprobThreshold,
+    builder: (column) => column,
+  );
 }
 
 class $$TranscriptSegmentsTableTableManager
@@ -11842,6 +12067,9 @@ class $$TranscriptSegmentsTableTableManager
                 Value<String?> rawContent = const Value.absent(),
                 Value<double?> confidence = const Value.absent(),
                 Value<String?> cutReason = const Value.absent(),
+                Value<String?> sttEngine = const Value.absent(),
+                Value<double?> noSpeechThreshold = const Value.absent(),
+                Value<double?> lowLogprobThreshold = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
                 meetingId: meetingId,
@@ -11856,6 +12084,9 @@ class $$TranscriptSegmentsTableTableManager
                 rawContent: rawContent,
                 confidence: confidence,
                 cutReason: cutReason,
+                sttEngine: sttEngine,
+                noSpeechThreshold: noSpeechThreshold,
+                lowLogprobThreshold: lowLogprobThreshold,
               ),
           createCompanionCallback:
               ({
@@ -11872,6 +12103,9 @@ class $$TranscriptSegmentsTableTableManager
                 Value<String?> rawContent = const Value.absent(),
                 Value<double?> confidence = const Value.absent(),
                 Value<String?> cutReason = const Value.absent(),
+                Value<String?> sttEngine = const Value.absent(),
+                Value<double?> noSpeechThreshold = const Value.absent(),
+                Value<double?> lowLogprobThreshold = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
                 meetingId: meetingId,
@@ -11886,6 +12120,9 @@ class $$TranscriptSegmentsTableTableManager
                 rawContent: rawContent,
                 confidence: confidence,
                 cutReason: cutReason,
+                sttEngine: sttEngine,
+                noSpeechThreshold: noSpeechThreshold,
+                lowLogprobThreshold: lowLogprobThreshold,
               ),
           withReferenceMapper: (p0) => p0
               .map(

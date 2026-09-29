@@ -17,8 +17,12 @@ import 'whisper_segment_filter.dart';
 /// The key is read per request rather than cached, so changing it in Settings
 /// takes effect on the very next chunk without restarting anything.
 class GroqWhisperSttProvider implements SttProvider {
-  GroqWhisperSttProvider(this._apiKeyStore, {Dio? dio})
-    : _dio =
+  GroqWhisperSttProvider(
+    this._apiKeyStore, {
+    Dio? dio,
+    this.model = kGroqWhisperModel,
+    this.engine = 'groq-large',
+  }) : _dio =
           dio ??
           Dio(
             BaseOptions(
@@ -47,6 +51,13 @@ class GroqWhisperSttProvider implements SttProvider {
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
 
+  /// `whisper-large-v3` or `whisper-large-v3-turbo` — each has its own limit,
+  /// so the second is a real fallback when the first is rate limited.
+  final String model;
+
+  /// The label stored beside a segment this engine wrote.
+  final String engine;
+
   @override
   Future<TranscriptionResult> transcribe({
     required File audioFile,
@@ -54,10 +65,13 @@ class GroqWhisperSttProvider implements SttProvider {
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
     String? glossary,
+    double? noSpeechProbThreshold,
+    double? lowAvgLogprobThreshold,
+    Duration? timeout,
   }) async {
     final apiKey = await _apiKeyStore.read();
     if (apiKey == null) {
-      throw const SttPermanentException(
+      throw const SttKeyMissing(
         'No Groq API key configured. Add one in Settings.',
       );
     }
@@ -72,7 +86,7 @@ class GroqWhisperSttProvider implements SttProvider {
         filename: p.basename(audioFile.path),
         contentType: DioMediaType('audio', 'wav'),
       ),
-      'model': kGroqWhisperModel,
+      'model': model,
       // verbose_json also returns the detected language and duration, which
       // are worth having for diagnostics and cost nothing extra.
       'response_format': 'verbose_json',
@@ -90,9 +104,18 @@ class GroqWhisperSttProvider implements SttProvider {
       final response = await _dio.post<Object?>(
         kGroqTranscriptionUrl,
         data: form,
-        options: Options(headers: {'Authorization': 'Bearer $apiKey'}),
+        options: Options(
+          headers: {'Authorization': 'Bearer $apiKey'},
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
+        ),
       );
-      return _parse(response.data, SensitivityProfile.of(sensitivity));
+      final profile = SensitivityProfile.of(sensitivity);
+      return _parse(
+        response.data,
+        noSpeechProbThreshold ?? profile.noSpeechProbThreshold,
+        lowAvgLogprobThreshold ?? profile.lowAvgLogprobThreshold,
+      );
     } on DioException catch (e) {
       throw _classify(e);
     }
@@ -123,7 +146,11 @@ class GroqWhisperSttProvider implements SttProvider {
     return prompt.isEmpty ? null : prompt;
   }
 
-  TranscriptionResult _parse(Object? data, SensitivityProfile profile) {
+  TranscriptionResult _parse(
+    Object? data,
+    double noSpeechProbThreshold,
+    double lowAvgLogprobThreshold,
+  ) {
     if (data is! Map) {
       throw SttPermanentException(
         'Unexpected response shape: ${data.runtimeType}',
@@ -139,8 +166,8 @@ class GroqWhisperSttProvider implements SttProvider {
     // the notes.
     final filtered = filterWhisperSegments(
       data['segments'],
-      noSpeechProbThreshold: profile.noSpeechProbThreshold,
-      lowAvgLogprobThreshold: profile.lowAvgLogprobThreshold,
+      noSpeechProbThreshold: noSpeechProbThreshold,
+      lowAvgLogprobThreshold: lowAvgLogprobThreshold,
     );
     final kept = filtered != null && filtered.dropped > 0
         ? filtered.text
@@ -151,6 +178,7 @@ class GroqWhisperSttProvider implements SttProvider {
       text: kept,
       droppedSegments: filtered?.dropped ?? 0,
       confidence: filtered?.confidence,
+      engine: engine,
       language: data['language'] is String ? data['language'] as String : null,
       durationSeconds: duration is num ? duration.toDouble() : null,
     );
@@ -164,6 +192,13 @@ class GroqWhisperSttProvider implements SttProvider {
       AppLog.e(
         _tag,
         'HTTP ${failure.statusCode} from Groq: ${failure.message}',
+      );
+    }
+    if (failure.statusCode == 429) {
+      return SttRateLimited(
+        failure.message,
+        retryAfter: failure.retryAfter,
+        statusCode: 429,
       );
     }
     return failure.transient

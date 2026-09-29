@@ -31,4 +31,14 @@ class TranscriptSegments extends Table {
 
   /// How the PCM chunk ended. Null only for rows written before v22.
   TextColumn get cutReason => text().nullable()();
+
+  /// Which engine wrote [content] (`groq-large`, `groq-turbo`, `gemini`), for
+  /// the problem report. Null before v27 or while nothing is written.
+  TextColumn get sttEngine => text().nullable()();
+
+  /// The Whisper segment filter's limits as they stood when the chunk was
+  /// recorded. The room may have changed by the time it is uploaded, and a
+  /// backlog can be uploaded minutes later; null before v27.
+  RealColumn get noSpeechThreshold => real().nullable()();
+  RealColumn get lowLogprobThreshold => real().nullable()();
 }

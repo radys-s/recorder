@@ -238,6 +238,22 @@ void main() {
     expect(consent.termsAcceptedVersion, 1);
     expect(consent.termsAcceptedAt, DateTime(2026, 9, 28, 8));
     expect(consent.recordingNoticeDismissed, isTrue);
+
+    // v27: which engine wrote a chunk and the room limits it was recorded
+    // under. Old rows have neither, and a new write keeps them apart.
+    final old = await (db.select(db.transcriptSegments)).getSingle();
+    expect(
+      (old.sttEngine, old.noSpeechThreshold, old.lowLogprobThreshold),
+      (null, null, null),
+    );
+    await db.transcriptSegmentsDao.updateSegmentText(
+      old.id,
+      'Máj',
+      SegmentStatus.transcribed,
+      sttEngine: 'groq-turbo',
+    );
+    final written = await (db.select(db.transcriptSegments)).getSingle();
+    expect(written.sttEngine, 'groq-turbo');
   });
 
   test('the upgraded schema matches a fresh v10 database', () async {

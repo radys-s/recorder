@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,6 +63,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(apiKeyStoreProvider).write(value);
       _controller.clear();
       _invalidateKeyProviders();
+      // Chunks waiting for a key, or parked because the old one was refused,
+      // start moving again now rather than at the next tick.
+      unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Klíč uložen.');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: $e');
@@ -74,6 +79,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await ref.read(apiKeyStoreProvider).delete();
       _invalidateKeyProviders();
+      unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Klíč smazán.');
     } catch (e) {
       _notify('Klíč se nepodařilo smazat: $e');
@@ -236,6 +242,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       await ref.read(geminiKeyStoreProvider).write(value);
       _controller.clear();
       _invalidate();
+      unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Gemini klíč uložen.');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: $e');
@@ -246,6 +253,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
     try {
       await ref.read(geminiKeyStoreProvider).delete();
       _invalidate();
+      unawaited(ref.read(queueWorkerProvider).keysChanged());
       _notify('Gemini klíč smazán.');
     } catch (e) {
       _notify('Klíč se nepodařilo smazat: $e');

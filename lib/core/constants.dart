@@ -35,6 +35,10 @@ const String kGroqTranscriptionUrl =
     'https://api.groq.com/openai/v1/audio/transcriptions';
 const String kGroqWhisperModel = 'whisper-large-v3';
 
+/// Faster and cheaper, with its own rate limit - the fallback when the large
+/// model has none left.
+const String kGroqWhisperTurboModel = 'whisper-large-v3-turbo';
+
 /// Groq chat completions, used for meeting notes and (later) live answers.
 const String kGroqChatUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -349,6 +353,21 @@ const double kRefinedVoicedRms = 0.003;
 /// Five minutes of audio in, a few thousand words out.
 const Duration kRefinedGeminiTimeout = Duration(seconds: 180);
 const Duration kRefinedWhisperTimeout = Duration(seconds: 120);
+
+/// One live chunk sent to Gemini as audio.
+const Duration kGeminiSttTimeout = Duration(seconds: 60);
+
+/// A Whisper request for a window of [bytes] of audio: a base allowance plus
+/// time to upload and decode each megabyte, so a slow connection does not turn
+/// a long window into a false failure. Never below the flat default.
+Duration refinedWhisperTimeoutFor(int bytes) {
+  final seconds = 45 + 15 * (bytes / (1024 * 1024));
+  final clamped = seconds.clamp(
+    kRefinedWhisperTimeout.inSeconds.toDouble(),
+    300.0,
+  );
+  return Duration(seconds: clamped.round());
+}
 
 /// How long a failed window waits before its next try. Long on purpose:
 /// the usual failure is a per-minute rate limit, and nobody is waiting.

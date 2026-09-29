@@ -22,8 +22,9 @@ class _FakeKeyStore implements ApiKeyStore {
 
 /// Answers every request with one canned response and keeps what was sent.
 class _Adapter implements HttpClientAdapter {
-  _Adapter(this.status, this.body);
+  _Adapter(this.status, this.body, {this.headers = const {}});
 
+  final Map<String, String> headers;
   final int status;
   final Object body;
   RequestOptions? lastOptions;
@@ -45,6 +46,7 @@ class _Adapter implements HttpClientAdapter {
       status,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
+        for (final e in headers.entries) e.key: [e.value],
       },
     );
   }
@@ -69,8 +71,9 @@ void main() {
     int status,
     Object body, {
     String? key = 'gsk_test',
+    Map<String, String> headers = const {},
   }) {
-    final adapter = _Adapter(status, body);
+    final adapter = _Adapter(status, body, headers: headers);
     final dio = Dio()..httpClientAdapter = adapter;
     return (GroqWhisperSttProvider(_FakeKeyStore(key), dio: dio), adapter);
   }
@@ -180,6 +183,26 @@ void main() {
         throwsA(
           isA<SttPermanentException>()
               .having((e) => e.statusCode, 'statusCode', 401),
+        ),
+      );
+    });
+
+    test('a 429 is a rate limit that carries the wait it asked for', () async {
+      final (stt, _) = provider(
+        429,
+        {
+          'error': {'message': 'try later'},
+        },
+        headers: {'retry-after': '42'},
+      );
+      await expectLater(
+        stt.transcribe(audioFile: audio),
+        throwsA(
+          isA<SttRateLimited>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 42),
+          ),
         ),
       );
     });

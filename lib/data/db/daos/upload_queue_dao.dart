@@ -5,6 +5,10 @@ import '../tables/upload_queue_table.dart';
 
 part 'upload_queue_dao.g.dart';
 
+/// Prefix of `last_error` on a row parked because a key was refused, so a
+/// saved key can find those rows again.
+const String kKeyErrorTag = 'key:';
+
 @DriftAccessor(tables: [UploadQueue])
 class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDaoMixin {
   UploadQueueDao(super.db);
@@ -110,6 +114,41 @@ class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDao
           updatedAt: Value(DateTime.now()),
         ),
       );
+
+  /// Back in line without counting an attempt: the chunk was never at fault,
+  /// the queue is resting (rate limit) or waiting for a key.
+  Future<void> release(int id) =>
+      (update(uploadQueue)..where((t) => t.id.equals(id))).write(
+        UploadQueueCompanion(
+          status: const Value(QueueStatus.pending),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
+  /// Puts every row that was parked because a key was refused back in play,
+  /// with a fresh budget, and returns their segment ids. Called when the
+  /// student saves a key — the reason those rows failed has just changed.
+  Future<List<int>> requeueKeyFailures() async {
+    final rows =
+        await (select(uploadQueue)..where(
+              (t) =>
+                  t.status.equalsValue(QueueStatus.failedPermanent) &
+                  t.lastError.like('$kKeyErrorTag%'),
+            ))
+            .get();
+    if (rows.isEmpty) return const [];
+    await (update(uploadQueue)..where((t) => t.id.isIn(rows.map((r) => r.id))))
+        .write(
+      UploadQueueCompanion(
+        status: const Value(QueueStatus.pending),
+        attemptCount: const Value(0),
+        nextRetryAt: const Value(null),
+        lastError: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    return [for (final r in rows) r.segmentId];
+  }
 
   Future<void> markFailedPermanent(int id, String error) =>
       (update(uploadQueue)..where((t) => t.id.equals(id))).write(

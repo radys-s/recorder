@@ -40,6 +40,19 @@ void main() {
       expect(out.split(' ').every((w) => w == 'slovo'), isTrue);
     });
 
+    test('a chunk with speech in a tenth of it or more is never cut', () {
+      // 10 s chunk, 1 s voiced (exactly 10 %): far over the allowance, yet a
+      // quiet teacher under-counted by the gate must keep every word.
+      final text = List.filled(60, 'slovo').join(' ');
+      expect(limitToSpeakingRate(text, voicedMs: 1000, durationMs: 10000),
+          text);
+      // Just under 10 %: the guard is back on.
+      expect(
+        limitToSpeakingRate(text, voicedMs: 999, durationMs: 10000).length,
+        lessThan(text.length),
+      );
+    });
+
     test('unknown voiced time disables the check', () {
       final text = 'a' * 5000;
       expect(limitToSpeakingRate(text, voicedMs: null, durationMs: 1000), text);

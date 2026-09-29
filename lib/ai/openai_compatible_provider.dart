@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/groq_failure.dart';
+
+export '../core/groq_failure.dart' show parseRetryAfter;
 import '../core/logging.dart';
 import '../data/secure/api_key_store.dart';
 import 'gemini_provider.dart' show LlmImage;
@@ -237,14 +239,6 @@ LlmCompletion parseOpenAiCompletion(Object? data) {
     content: content.trim(),
     executedTools: tools is List ? tools : const [],
   );
-}
-
-/// `retry-after` in seconds (the only form these services send); null when
-/// absent or unreadable.
-Duration? parseRetryAfter(String? header) {
-  final seconds = double.tryParse(header?.trim() ?? '');
-  if (seconds == null || seconds < 0) return null;
-  return Duration(milliseconds: (seconds * 1000).round());
 }
 
 /// The model ids a key can use at `{base}/models`, sorted. Same envelope for

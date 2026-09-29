@@ -105,6 +105,24 @@ class TranscriptionQueueWorker {
   bool _running = false;
   bool _draining = false;
 
+  /// While set and in the future, nothing is sent: a 429 rests the whole
+  /// queue, because every chunk behind the refused one would be refused too.
+  DateTime? _pausedUntil;
+
+  /// True while no engine has a key. Rows stay pending and no attempt is
+  /// spent; saving a key ([keysChanged]) lifts it.
+  bool _keyBlocked = false;
+
+  bool get _resting =>
+      _keyBlocked ||
+      (_pausedUntil != null && _pausedUntil!.isAfter(DateTime.now()));
+
+  /// When the queue will try again after a rate limit, if it is resting.
+  DateTime? get pausedUntil => _resting ? _pausedUntil : null;
+
+  /// Whether rows are waiting for a key rather than for time.
+  bool get waitingForKey => _keyBlocked;
+
   /// Starts true so the first event — which reports the current state, not a
   /// change — is not mistaken for a recovery.
   bool _wasOnline = true;
@@ -163,6 +181,22 @@ class TranscriptionQueueWorker {
   /// collapse into the one already in flight.
   Future<void> poke() => _drain();
 
+  /// A key was saved or removed. Lifts the waiting for a key and any pause,
+  /// puts the chunks that failed because a key was refused back in line, and
+  /// starts a pass.
+  Future<void> keysChanged() async {
+    _keyBlocked = false;
+    _pausedUntil = null;
+    final segmentIds = await _queueDao.requeueKeyFailures();
+    for (final id in segmentIds) {
+      await _segmentsDao.updateSegmentStatus(id, SegmentStatus.pending);
+    }
+    if (segmentIds.isNotEmpty) {
+      AppLog.d(_tag, 'requeued ${segmentIds.length} chunk(s) after a key change');
+    }
+    await _drain();
+  }
+
   /// The network came back. Every row waiting out a backoff was waiting for
   /// exactly this, so drop the remaining delay instead of making the user wait
   /// out a timer that is now measuring nothing.
@@ -185,7 +219,7 @@ class TranscriptionQueueWorker {
     _draining = true;
 
     try {
-      while (_running) {
+      while (_running && !_resting) {
         final rows = await _queueDao.dueRows(DateTime.now());
         if (rows.isEmpty) {
           // Nothing more is coming right now, so a half-full batch would
@@ -197,6 +231,7 @@ class TranscriptionQueueWorker {
 
         for (final row in rows) {
           if (!_running) return;
+          if (_resting) break;
           await _process(row);
         }
         // Loop again: chunks finished while we were uploading are now due.
@@ -257,6 +292,10 @@ class TranscriptionQueueWorker {
         languageCode: prefs.transcriptLanguage.code,
         sensitivity: prefs.micSensitivity,
         glossary: glossary,
+        // The limits of the room the chunk was recorded in, not of whatever
+        // the setting says by the time a backlog is uploaded.
+        noSpeechProbThreshold: segment?.noSpeechThreshold,
+        lowAvgLogprobThreshold: segment?.lowLogprobThreshold,
       );
 
       // Whisper answers silence with a plausible sentence rather than nothing,
@@ -339,6 +378,7 @@ class TranscriptionQueueWorker {
           SegmentStatus.transcribed,
           confidence: result.confidence,
           rawContent: heard,
+          sttEngine: result.engine,
         );
         diagnostics?.record(
           ListeningStage.transcription,
@@ -372,6 +412,43 @@ class TranscriptionQueueWorker {
         _tag,
         'row ${row.id} transcribed (${text.length} chars, lang=${prefs.transcriptLanguage.code ?? 'auto'}/${result.language})',
       );
+    } on SttRateLimited catch (e) {
+      // Not a fault of this chunk and not an attempt: everything behind it
+      // would be refused too, so the whole queue rests for as long as the
+      // service asked.
+      final wait = _pauseFor(e.retryAfter);
+      _pausedUntil = DateTime.now().add(wait);
+      await _queueDao.release(row.id);
+      await _segmentsDao.updateSegmentStatus(
+        row.segmentId,
+        SegmentStatus.pending,
+      );
+      diagnostics?.record(
+        ListeningStage.transcription,
+        ListeningOutcome.progress,
+        'rate_limited',
+        meetingId: row.meetingId,
+        queueId: row.id,
+        segmentId: row.segmentId,
+        metrics: {'pause_s': wait.inSeconds},
+      );
+      AppLog.d(_tag, 'rate limited — queue rests for ${wait.inSeconds}s');
+    } on SttKeyMissing {
+      _keyBlocked = true;
+      await _queueDao.release(row.id);
+      await _segmentsDao.updateSegmentStatus(
+        row.segmentId,
+        SegmentStatus.pending,
+      );
+      diagnostics?.record(
+        ListeningStage.transcription,
+        ListeningOutcome.progress,
+        'waiting_for_key',
+        meetingId: row.meetingId,
+        queueId: row.id,
+        segmentId: row.segmentId,
+      );
+      AppLog.d(_tag, 'no transcription key — rows wait, no attempt spent');
     } on SttPermanentException catch (e) {
       diagnostics?.record(
         ListeningStage.transcription,
@@ -381,7 +458,8 @@ class TranscriptionQueueWorker {
         queueId: row.id,
         segmentId: row.segmentId,
       );
-      await _park(row, e.message);
+      final keyRefused = e.statusCode == 401 || e.statusCode == 403;
+      await _park(row, keyRefused ? '$kKeyErrorTag ${e.message}' : e.message);
     } on SttTransientException catch (e) {
       diagnostics?.record(
         ListeningStage.transcription,
@@ -613,6 +691,15 @@ class TranscriptionQueueWorker {
     final flat = text.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (flat.isEmpty) return '(empty)';
     return flat.length <= 60 ? '"$flat"' : '"${flat.substring(0, 60)}…"';
+  }
+
+  /// How long a 429 rests the queue: what the service said, else a minute,
+  /// but never less than a second or more than ten minutes.
+  static Duration _pauseFor(Duration? retryAfter) {
+    final wait = retryAfter ?? const Duration(seconds: 60);
+    if (wait < const Duration(seconds: 1)) return const Duration(seconds: 1);
+    if (wait > const Duration(minutes: 10)) return const Duration(minutes: 10);
+    return wait;
   }
 
   Future<void> _park(UploadQueueData row, String error) async {

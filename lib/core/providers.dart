@@ -53,6 +53,8 @@ import 'listening_diagnostics.dart';
 import '../queue/refined_transcript_service.dart';
 import '../queue/transcription_queue_worker.dart';
 import '../data/db/daos/refined_segments_dao.dart';
+import '../stt/fallback_stt_provider.dart';
+import '../stt/gemini_stt_provider.dart';
 import '../stt/groq_whisper_stt_provider.dart';
 import '../stt/lesson_vocabulary.dart';
 import '../stt/refined_transcriber.dart';
@@ -497,8 +499,48 @@ final transcriptCorrectorProvider = Provider<TranscriptCorrector>((ref) {
   );
 });
 
+/// Groq's two Whisper models — each has its own limit — used for the long
+/// windows of the second pass, which already has Gemini as its own engine.
+final whisperSttProvider = Provider<SttProvider>((ref) {
+  final keys = ref.watch(apiKeyStoreProvider);
+  return FallbackSttProvider([
+    SttEngine('groq-large', GroqWhisperSttProvider(keys), keys.hasKey),
+    SttEngine(
+      'groq-turbo',
+      GroqWhisperSttProvider(
+        keys,
+        model: kGroqWhisperTurboModel,
+        engine: 'groq-turbo',
+      ),
+      keys.hasKey,
+    ),
+  ]);
+});
+
+/// Live transcription: Groq large, then Groq turbo, then Gemini listening to
+/// the chunk. Whichever engine has a key and is not resting takes the chunk,
+/// so one running dry never stops the transcript. Mistral's Voxtral is left
+/// out on purpose: Czech is not among its documented languages.
 final sttProvider = Provider<SttProvider>((ref) {
-  return GroqWhisperSttProvider(ref.watch(apiKeyStoreProvider));
+  final keys = ref.watch(apiKeyStoreProvider);
+  final gemini = ref.watch(geminiKeyStoreProvider);
+  return FallbackSttProvider([
+    SttEngine('groq-large', GroqWhisperSttProvider(keys), keys.hasKey),
+    SttEngine(
+      'groq-turbo',
+      GroqWhisperSttProvider(
+        keys,
+        model: kGroqWhisperTurboModel,
+        engine: 'groq-turbo',
+      ),
+      keys.hasKey,
+    ),
+    SttEngine(
+      'gemini',
+      GeminiSttProvider(ref.watch(geminiProvider)),
+      gemini.hasKey,
+    ),
+  ]);
 });
 
 /// The single queue worker for the whole app. Created lazily but started
@@ -585,7 +627,7 @@ final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
     db,
     RefinedTranscriber(
       gemini: ref.watch(geminiProvider),
-      stt: ref.watch(sttProvider),
+      stt: ref.watch(whisperSttProvider),
     ),
     hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
     resolvePath: resolveStoredPath,

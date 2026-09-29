@@ -11,7 +11,11 @@ class GroqFailure {
     required this.transient,
     required this.message,
     this.statusCode,
+    this.retryAfter,
   });
+
+  /// What a 429 said to wait (`retry-after`); null when it did not say.
+  final Duration? retryAfter;
 
   /// True when a later attempt has a real chance: rate limits, server errors,
   /// timeouts, no connectivity. False means the request will never succeed as
@@ -56,7 +60,12 @@ GroqFailure classifyGroqFailure(DioException e, {String vendor = 'Groq'}) {
   // is a rate condition dressed as a size one. Everything else in the 4xx range
   // means this request will never succeed as sent.
   if (status == 429 || status == 413 || (status != null && status >= 500)) {
-    return GroqFailure(transient: true, message: detail, statusCode: status);
+    return GroqFailure(
+      transient: true,
+      message: detail,
+      statusCode: status,
+      retryAfter: parseRetryAfter(e.response?.headers.value('retry-after')),
+    );
   }
   if (status == 401 || status == 403) {
     return GroqFailure(
@@ -95,3 +104,11 @@ String _clip(String value) =>
 /// A non-blank string, trimmed; null for anything else.
 String? _text(Object? value) =>
     value is String && value.trim().isNotEmpty ? value.trim() : null;
+
+/// `retry-after` in seconds (the only form these services send); null when
+/// absent or unreadable.
+Duration? parseRetryAfter(String? header) {
+  final seconds = double.tryParse(header?.trim() ?? '');
+  if (seconds == null || seconds < 0) return null;
+  return Duration(milliseconds: (seconds * 1000).round());
+}

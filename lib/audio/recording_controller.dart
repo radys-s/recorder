@@ -943,6 +943,9 @@ class RecordingController extends Notifier<RecordingState> {
           createdAt: DateTime.now(),
           voicedMs: Value(chunk.voicedMs),
           cutReason: Value(chunk.cutReason.name),
+          // The filter must judge this chunk by the room it was recorded in.
+          noSpeechThreshold: Value(profile.noSpeechProbThreshold),
+          lowLogprobThreshold: Value(profile.lowAvgLogprobThreshold),
         ),
       );
 

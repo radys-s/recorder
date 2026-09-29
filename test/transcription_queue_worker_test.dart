@@ -93,6 +93,31 @@ class _Queue implements UploadQueueDao {
   );
 
   @override
+  Future<void> release(int id) async =>
+      _change(id, (x) => x.copyWith(status: QueueStatus.pending));
+
+  @override
+  Future<List<int>> requeueKeyFailures() async {
+    final ids = <int>[];
+    for (final r in [...rows]) {
+      if (r.status == QueueStatus.failedPermanent &&
+          (r.lastError ?? '').startsWith(kKeyErrorTag)) {
+        ids.add(r.segmentId);
+        _change(
+          r.id,
+          (x) => x.copyWith(
+            status: QueueStatus.pending,
+            attemptCount: 0,
+            nextRetryAt: const Value(null),
+            lastError: const Value(null),
+          ),
+        );
+      }
+    }
+    return ids;
+  }
+
+  @override
   Future<void> markFailedPermanent(int id, String error) async => _change(
     id,
     (x) => x.copyWith(
@@ -131,12 +156,14 @@ class _Segments implements TranscriptSegmentsDao {
     SegmentStatus status, {
     double? confidence,
     String? rawContent,
+    String? sttEngine,
   }) async {
     byId[id] = byId[id]!.copyWith(
       content: Value(text),
       status: status,
       confidence: Value(confidence),
       rawContent: rawContent == null ? const Value.absent() : Value(rawContent),
+      sttEngine: sttEngine == null ? const Value.absent() : Value(sttEngine),
     );
     (statusLog[id] ??= []).add(status);
   }
@@ -193,6 +220,8 @@ typedef _SttCall = ({
   String? prompt,
   String? language,
   MicSensitivity sensitivity,
+  double? noSpeech,
+  double? lowLogprob,
 });
 
 class _Stt implements SttProvider {
@@ -210,6 +239,9 @@ class _Stt implements SttProvider {
     String? languageCode,
     MicSensitivity sensitivity = MicSensitivity.medium,
     String? glossary,
+    double? noSpeechProbThreshold,
+    double? lowAvgLogprobThreshold,
+    Duration? timeout,
   }) async {
     glossaries.add(glossary);
     calls.add((
@@ -217,6 +249,8 @@ class _Stt implements SttProvider {
       prompt: promptContext,
       language: languageCode,
       sensitivity: sensitivity,
+      noSpeech: noSpeechProbThreshold,
+      lowLogprob: lowAvgLogprobThreshold,
     ));
     return respond(audioFile.path);
   }
@@ -629,7 +663,7 @@ void main() {
       await world.worker.stop();
 
       expect(world.row(1).attemptCount, 0);
-      expect(world.row(1).lastError, 'bad key');
+      expect(world.row(1).lastError, '$kKeyErrorTag bad key');
       expect(world.segment(1).status, SegmentStatus.failed);
       expect(world.stt.calls, hasLength(1));
     });
@@ -662,6 +696,176 @@ void main() {
       expect(world.stt.calls.map((c) => c.path), [_path(1), _path(2)]);
       // Serial and in order, so the second chunk sees the first one's text.
       expect(world.stt.calls.last.prompt, 'První věta.');
+    });
+  });
+
+  group('limits and missing keys', () {
+    test('a 429 rests the queue and does not count as an attempt', () async {
+      final world = _World(
+        (_) => throw const SttRateLimited(
+          'slow down',
+          retryAfter: Duration(minutes: 5),
+          statusCode: 429,
+        ),
+      );
+      world.enqueue(1);
+      world.enqueue(2);
+
+      await world.worker.start();
+      await _until(() => world.worker.pausedUntil != null);
+      await _settle();
+      await world.worker.stop();
+
+      expect(world.row(1).status, QueueStatus.pending);
+      expect(world.row(1).attemptCount, 0);
+      expect(world.row(1).lastError, isNull);
+      expect(world.segment(1).status, SegmentStatus.pending);
+      expect(world.row(2).status, QueueStatus.pending);
+      expect(
+        world.stt.calls,
+        hasLength(1),
+        reason: 'the second chunk must not be sent into the same wall',
+      );
+      expect(
+        world.worker.pausedUntil!.isAfter(
+          DateTime.now().add(const Duration(minutes: 4)),
+        ),
+        isTrue,
+      );
+    });
+
+    test('a reconnect does not lift a rate-limit pause', () async {
+      final world = _World(
+        (_) => throw const SttRateLimited(
+          'slow down',
+          retryAfter: Duration(minutes: 5),
+        ),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.worker.pausedUntil != null);
+
+      world.connectivity.changes.add([ConnectivityResult.none]);
+      await _settle();
+      world.connectivity.changes.add([ConnectivityResult.wifi]);
+      await _settle();
+      await world.worker.stop();
+
+      expect(world.worker.pausedUntil, isNotNull);
+      expect(world.stt.calls, hasLength(1));
+    });
+
+    test('a missing key leaves the rows waiting, with no attempts spent',
+        () async {
+      final world = _World(
+        (_) => throw const SttKeyMissing('Chybí klíč pro přepis.'),
+      );
+      world.enqueue(1);
+      world.enqueue(2);
+
+      await world.worker.start();
+      await _until(() => world.worker.waitingForKey);
+      await _settle();
+      await world.worker.stop();
+
+      for (final n in [1, 2]) {
+        expect(world.row(n).status, QueueStatus.pending);
+        expect(world.row(n).attemptCount, 0);
+        expect(world.segment(n).status, SegmentStatus.pending);
+      }
+      expect(world.stt.calls, hasLength(1));
+    });
+
+    test('saving a key wakes the waiting rows', () async {
+      var hasKey = false;
+      final world = _World(
+        (_) => hasKey
+            ? _text('Teď už to jde.')
+            : throw const SttKeyMissing('Chybí klíč pro přepis.'),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.worker.waitingForKey);
+
+      hasKey = true;
+      await world.worker.keysChanged();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
+
+      expect(world.worker.waitingForKey, isFalse);
+      expect(world.segment(1).content, 'Teď už to jde.');
+    });
+
+    test('a refused key parks the row as a key failure, and a new key '
+        'requeues it', () async {
+      var accepted = false;
+      final world = _World(
+        (_) => accepted
+            ? _text('Už to projde.')
+            : throw const SttPermanentException('bad key', statusCode: 401),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.failedPermanent);
+      expect(world.row(1).lastError, startsWith(kKeyErrorTag));
+
+      accepted = true;
+      await world.worker.keysChanged();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
+
+      expect(world.segment(1).content, 'Už to projde.');
+    });
+
+    test('other permanent failures are not requeued by a key change',
+        () async {
+      final world = _World(
+        (_) => throw const SttPermanentException('bad audio', statusCode: 400),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.failedPermanent);
+      await world.worker.keysChanged();
+      await _settle();
+      await world.worker.stop();
+
+      expect(world.row(1).status, QueueStatus.failedPermanent);
+      expect(world.stt.calls, hasLength(1));
+    });
+
+    test('the filter limits of the recording room go with the chunk',
+        () async {
+      final world = _World((_) => _text('Nějaká věta.'));
+      world.enqueue(1);
+      world.segments.byId[world.segmentId(1)] = world
+          .segments
+          .byId[world.segmentId(1)]!
+          .copyWith(
+            noSpeechThreshold: const Value(0.42),
+            lowLogprobThreshold: const Value(-1.4),
+          );
+
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
+
+      expect(world.stt.calls.single.noSpeech, 0.42);
+      expect(world.stt.calls.single.lowLogprob, -1.4);
+    });
+
+    test('the engine that wrote the text is stored', () async {
+      final world = _World(
+        (_) => const TranscriptionResult(
+          text: 'Přepsáno záložním.',
+          engine: 'groq-turbo',
+        ),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
+
+      expect(world.segment(1).sttEngine, 'groq-turbo');
     });
   });
 
