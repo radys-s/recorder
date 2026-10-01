@@ -16,6 +16,7 @@ class GeminiWithVisionFallback extends GeminiProvider {
     super.apiKeyStore, {
     required this.router,
     super.models,
+    super.health,
     super.dio,
     super.overloadDelay,
   });

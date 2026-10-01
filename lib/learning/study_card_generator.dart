@@ -3,6 +3,7 @@ import '../core/constants.dart';
 import '../core/logging.dart';
 import '../data/db/app_database.dart';
 import '../data/db/tables/study_cards_table.dart';
+import '../ai/gemini_first.dart';
 import 'study_items.dart';
 
 /// Longest note text sent to the model when the note has no „Co si
@@ -102,8 +103,8 @@ class StudyCardGenerator {
 
     try {
       final useGemini = _gemini != null && await _geminiAvailable();
-      final raw = await (useGemini ? _gemini : _llm).complete(
-        model: useGemini ? kGeminiLiteModel : kGroqNotesModel,
+      Future<String> ask(LlmProvider llm, String model) => llm.complete(
+        model: model,
         messages: [
           const LlmMessage.system(_systemPrompt),
           LlmMessage.user(
@@ -117,6 +118,12 @@ class StudyCardGenerator {
         maxTokens: 3000,
         jsonMode: true,
         timeout: kCardSuggestionTimeout,
+      );
+      final raw = await geminiFirst(
+        preferGemini: useGemini,
+        tag: _tag,
+        onGemini: () => ask(_gemini!, kGeminiLiteModel),
+        onRouter: () => ask(_llm, kGroqNotesModel),
       );
       added += await _db.studyCardsDao.addCards(
         subjectId,

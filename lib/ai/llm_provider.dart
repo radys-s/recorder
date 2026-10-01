@@ -27,6 +27,7 @@ abstract class AiException implements Exception {
     this.kind,
     this.reason,
     this.retryAfter,
+    this.source,
   });
 
   final String message;
@@ -41,6 +42,9 @@ abstract class AiException implements Exception {
   /// How long the provider asked to wait (`retry-after`), when it said.
   final Duration? retryAfter;
 
+  /// The service that failed, by its label, when the router knows.
+  final String? source;
+
   @override
   String toString() =>
       '$runtimeType($message${statusCode == null ? '' : ', HTTP $statusCode'})';
@@ -49,13 +53,17 @@ abstract class AiException implements Exception {
 /// Rate limits, server errors, timeouts, no connectivity.
 class AiTransientException extends AiException {
   const AiTransientException(super.message,
-      {super.statusCode, super.kind, super.reason, super.retryAfter});
+      {super.statusCode,
+      super.kind,
+      super.reason,
+      super.retryAfter,
+      super.source});
 }
 
 /// Bad or missing API key, a retired model id, a malformed request.
 class AiPermanentException extends AiException {
   const AiPermanentException(super.message,
-      {super.statusCode, super.kind, super.reason});
+      {super.statusCode, super.kind, super.reason, super.source});
 }
 
 /// One completed reply, with whatever the backend did on its own to produce

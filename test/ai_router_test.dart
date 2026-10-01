@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/ai_router.dart';
+import 'package:recorder/ai/context_builder.dart';
+import 'package:recorder/ai/gemini_first.dart';
 import 'package:recorder/ai/gemini_provider.dart';
 import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/ai/openai_compatible_provider.dart';
@@ -88,6 +90,30 @@ class _Clock {
 }
 
 void main() {
+  group('AiRouteHealth', () {
+    test('counts requests and limits, and tells listeners', () {
+      final health = AiRouteHealth();
+      var notified = 0;
+      health.addListener(() => notified++);
+      health.succeeded(AiVendor.gemini, 'flash');
+      health.cool(AiVendor.gemini, const Duration(seconds: 34));
+      health.cool(AiVendor.gemini, null, network: true);
+      expect(health.requests(AiVendor.gemini), 3);
+      expect(health.rateLimits(AiVendor.gemini), 1);
+      expect(health.lastModel(AiVendor.gemini), 'flash');
+      expect(health.lastSuccess(AiVendor.gemini), isNotNull);
+      expect(notified, 3);
+    });
+
+    test('a success lifts the rest', () {
+      final health = AiRouteHealth();
+      health.cool(AiVendor.groq, const Duration(minutes: 1));
+      expect(health.coolingDown(AiVendor.groq), isTrue);
+      health.succeeded(AiVendor.groq, 'm');
+      expect(health.coolingDown(AiVendor.groq), isFalse);
+    });
+  });
+
   group('orderFor', () {
     test('fast, strong, large strong and vision', () {
       expect(
@@ -303,14 +329,14 @@ void main() {
       );
     });
 
-    test('a network failure stops instead of trying every service', () async {
+    test('a network failure rests that service and tries the next', () async {
       final cerebras = _Scripted(
         'c_test',
         'Cerebras',
-        (_) => const AiTransientException('offline'),
+        (_) => const AiTransientException('timeout'),
       );
       final groq = _Scripted('gsk_test', 'Groq', (_) => 'g');
-      final health = AiRouteHealth();
+      final health = AiRouteHealth(now: () => DateTime(2026, 10, 1, 9));
       final router = RoutedLlmProvider(
         routes: [
           _route(AiVendor.cerebras, cerebras),
@@ -318,12 +344,81 @@ void main() {
         ],
         health: health,
       );
+      expect(
+        await router.complete(model: kGroqAnswerModel, messages: _msgs),
+        'g',
+      );
+      expect(health.coolingDown(AiVendor.cerebras), isTrue);
+      expect(health.rateLimits(AiVendor.cerebras), 0);
+      expect(
+        health.cooldownUntil(AiVendor.cerebras)!.difference(health.now),
+        kNetworkCooldown,
+      );
+    });
+
+    test('a second unreachable service means the phone is offline', () async {
+      AiTransientException offline() => const AiTransientException('offline');
+      final cerebras = _Scripted('c_test', 'Cerebras', (_) => offline());
+      final mistral = _Scripted('m_test', 'Mistral', (_) => offline());
+      final groq = _Scripted('gsk_test', 'Groq', (_) => 'g');
+      final router = RoutedLlmProvider(
+        routes: [
+          _route(AiVendor.cerebras, cerebras),
+          _route(AiVendor.mistral, mistral),
+          _route(AiVendor.groq, groq, requestedOnly: true),
+        ],
+        health: AiRouteHealth(),
+      );
       await expectLater(
         router.complete(model: kGroqAnswerModel, messages: _msgs),
-        throwsA(isA<AiTransientException>()),
+        throwsA(
+          isA<AiTransientException>().having(
+            (e) => e.source,
+            'source',
+            'Mistral',
+          ),
+        ),
       );
       expect(groq.calls, isEmpty);
-      expect(health.coolingDown(AiVendor.cerebras), isFalse);
+    });
+
+    test('a model that answered 404 is not asked again', () async {
+      final mistral = _Scripted(
+        'm_test',
+        'Mistral',
+        (m) => m == 's1'
+            ? const AiPermanentException('no model', statusCode: 404)
+            : 'from $m',
+      );
+      final router = RoutedLlmProvider(
+        routes: [_route(AiVendor.mistral, mistral)],
+        health: AiRouteHealth(),
+      );
+      await router.complete(model: kGroqAnswerModel, messages: _msgs);
+      await router.complete(model: kGroqAnswerModel, messages: _msgs);
+      expect(mistral.calls, ['s1', 's2', 's2']);
+    });
+
+    test('hasRoomyRoute needs a key, no rest and no refusal', () async {
+      final mistral = _Scripted('m_test', 'Mistral', (_) => 'm');
+      final groq = _Scripted('gsk_test', 'Groq', (_) => 'g');
+      final health = AiRouteHealth();
+      final router = RoutedLlmProvider(
+        routes: [
+          _route(AiVendor.mistral, mistral),
+          _route(AiVendor.groq, groq, requestedOnly: true),
+        ],
+        health: health,
+      );
+      expect(await router.hasRoomyRoute(), isTrue);
+      health.cool(AiVendor.mistral, const Duration(minutes: 1));
+      expect(await router.hasRoomyRoute(), isFalse);
+
+      final groqOnly = RoutedLlmProvider(
+        routes: [_route(AiVendor.groq, groq, requestedOnly: true)],
+        health: AiRouteHealth(),
+      );
+      expect(await groqOnly.hasRoomyRoute(), isFalse);
     });
 
     test('everything failing throws the transient error first', () async {
@@ -562,6 +657,208 @@ void main() {
         ),
       );
       expect(adapter.paths, hasLength(3));
+    });
+  });
+
+  group('Gemini health', () {
+    GeminiProvider gemini(List<(int, Object)> replies, AiRouteHealth health) =>
+        GeminiProvider(
+          _Keys('AIza_test'),
+          dio: Dio()..httpClientAdapter = _SeqAdapter(replies),
+          health: health,
+          overloadDelay: Duration.zero,
+        );
+
+    test('a 429 with a retry delay rests Gemini for that long', () async {
+      final health = AiRouteHealth(now: () => DateTime(2026, 10, 1, 9));
+      final llm = gemini([
+        (
+          429,
+          {
+            'error': {
+              'code': 429,
+              'message': 'quota',
+              'status': 'RESOURCE_EXHAUSTED',
+              'details': [
+                {
+                  '@type': 'type.googleapis.com/google.rpc.RetryInfo',
+                  'retryDelay': '34s',
+                },
+              ],
+            },
+          },
+        ),
+      ], health);
+      await expectLater(
+        llm.generate(model: kGeminiModel, messages: _msgs),
+        throwsA(
+          isA<AiTransientException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 34),
+          ),
+        ),
+      );
+      expect(health.coolingDown(AiVendor.gemini), isTrue);
+      expect(
+        health.cooldownUntil(AiVendor.gemini)!.difference(health.now),
+        const Duration(seconds: 34),
+      );
+      expect(health.rateLimits(AiVendor.gemini), 1);
+    });
+
+    test('a success records the model and lifts the rest', () async {
+      final health = AiRouteHealth();
+      health.cool(AiVendor.gemini, const Duration(seconds: 1));
+      final llm = gemini([(200, _geminiOk('ahoj'))], health);
+      await llm.generate(model: kGeminiModel, messages: _msgs);
+      expect(health.coolingDown(AiVendor.gemini), isFalse);
+      expect(health.lastModel(AiVendor.gemini), isNotNull);
+      expect(health.requests(AiVendor.gemini), 2);
+    });
+
+    test('a refused key disables Gemini for that key', () async {
+      final health = AiRouteHealth();
+      final llm = gemini([
+        (400, _geminiError(400, 'API key not valid.', 'INVALID_ARGUMENT')),
+      ], health);
+      await expectLater(
+        llm.generate(model: kGeminiModel, messages: _msgs),
+        throwsA(isA<AiPermanentException>()),
+      );
+      expect(health.disabled(AiVendor.gemini, 'AIza_test'), isTrue);
+      expect(health.disabled(AiVendor.gemini, 'AIza_other'), isFalse);
+    });
+
+    test('geminiRetryDelay reads the RetryInfo detail', () {
+      expect(
+        geminiRetryDelay({
+          'error': {
+            'details': [
+              {'retryDelay': '2.5s'},
+            ],
+          },
+        }),
+        const Duration(milliseconds: 2500),
+      );
+      expect(geminiRetryDelay({'error': {}}), isNull);
+      expect(geminiRetryDelay('not json'), isNull);
+    });
+  });
+
+  group('geminiFirst', () {
+    test('Gemini answers: the router is not touched', () async {
+      var routed = 0;
+      final out = await geminiFirst<String>(
+        preferGemini: true,
+        onGemini: () async => 'g',
+        onRouter: () async {
+          routed++;
+          return 'r';
+        },
+      );
+      expect((out, routed), ('g', 0));
+    });
+
+    test('any Gemini failure falls through to the router', () async {
+      for (final error in <AiException>[
+        const AiTransientException('busy', statusCode: 429),
+        const AiPermanentException('bad key', statusCode: 400),
+      ]) {
+        expect(
+          await geminiFirst<String>(
+            preferGemini: true,
+            onGemini: () async => throw error,
+            onRouter: () async => 'r',
+          ),
+          'r',
+        );
+      }
+    });
+
+    test('not preferred means Gemini is never asked', () async {
+      var asked = 0;
+      final out = await geminiFirst<String>(
+        preferGemini: false,
+        onGemini: () async {
+          asked++;
+          return 'g';
+        },
+        onRouter: () async => 'r',
+      );
+      expect((out, asked), ('r', 0));
+    });
+
+    test('a failing router is the callers problem', () async {
+      await expectLater(
+        geminiFirst<String>(
+          preferGemini: true,
+          onGemini: () async => throw const AiTransientException('busy'),
+          onRouter: () async => throw const AiTransientException('also'),
+        ),
+        throwsA(
+          isA<AiTransientException>().having((e) => e.message, 'm', 'also'),
+        ),
+      );
+    });
+  });
+
+  group('context budget by vendor', () {
+    test('a roomy route gets more than Groq, less than Gemini', () {
+      expect(
+        ContextBudget.routed.cards,
+        greaterThan(ContextBudget.direct.cards),
+      );
+      expect(
+        ContextBudget.routed.total,
+        greaterThan(ContextBudget.direct.total),
+      );
+      expect(
+        ContextBudget.routed.total,
+        lessThan(ContextBudget.geminiLive.total),
+      );
+    });
+  });
+
+  group('reasoning_effort', () {
+    Future<Map<String, Object?>> sent(String model, String? effort) async {
+      final adapter = _SeqAdapter([
+        (
+          200,
+          {
+            'choices': [
+              {
+                'message': {'content': 'ok'},
+              },
+            ],
+          },
+        ),
+      ]);
+      final provider = OpenAiCompatibleProvider(
+        _Keys('csk-test'),
+        vendor: 'Cerebras',
+        baseUrl: () async => 'https://example.invalid/v1',
+        dio: Dio()..httpClientAdapter = adapter,
+        reasoningEffort: effort,
+      );
+      await provider.complete(model: model, messages: _msgs);
+      return adapter.bodies.single;
+    }
+
+    test('only gpt-oss models get it', () async {
+      expect((await sent('gpt-oss-120b', 'low'))['reasoning_effort'], 'low');
+      expect(
+        (await sent('openai/gpt-oss-20b', 'low'))['reasoning_effort'],
+        'low',
+      );
+      expect(
+        (await sent('llama3.1-8b', 'low')).containsKey('reasoning_effort'),
+        isFalse,
+      );
+      expect(
+        (await sent('gpt-oss-120b', null)).containsKey('reasoning_effort'),
+        isFalse,
+      );
     });
   });
 

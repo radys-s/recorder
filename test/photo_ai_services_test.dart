@@ -12,6 +12,7 @@ import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/ai/photo_text_service.dart';
 import 'package:recorder/ai/web_answer_service.dart';
 import 'package:recorder/core/constants.dart';
+import 'package:recorder/core/gemini_failure.dart';
 import 'package:recorder/core/photo_picker.dart';
 import 'package:recorder/features/meeting_detail/lesson_photos.dart';
 import 'package:recorder/data/db/app_database.dart';
@@ -75,6 +76,32 @@ class _FakeWeb implements WebAnswerService {
   Future<WebAnswer?> lookUp(String question) async {
     queries.add(question);
     return answer;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Stands in for the routed services; answers with [reply] or throws it.
+class _FakeRouter extends LlmProvider {
+  _FakeRouter(this.reply);
+
+  final Object reply;
+  final calls = <List<LlmMessage>>[];
+
+  @override
+  Future<LlmCompletion> completeDetailed({
+    required String model,
+    required List<LlmMessage> messages,
+    double temperature = 0.2,
+    int? maxTokens,
+    bool jsonMode = false,
+    Duration? timeout,
+  }) async {
+    calls.add(messages);
+    final r = reply;
+    if (r is Exception) throw r;
+    return LlmCompletion(content: r as String);
   }
 
   @override
@@ -331,6 +358,56 @@ void main() {
         service(_FakeGemini('   '), _FakeWeb(null)).lookUp('Máj'),
         throwsA(isA<AiPermanentException>()),
       );
+    });
+
+    group('from the model memory', () {
+      test('Gemini and the web both failed: the router writes it, unverified',
+          () async {
+        final router = _FakeRouter('Autor:\n- Božena Němcová');
+        final found = await CardLookupService(
+          gemini: _FakeGemini(const AiTransientException('busy', statusCode: 503)),
+          hasGeminiKey: () async => true,
+          web: _FakeWeb(null),
+          router: router,
+        ).lookUp('Babička', subjectName: 'Čeština');
+
+        expect(found.content, 'Autor:\n- Božena Němcová');
+        expect(found.grounded, isFalse);
+        expect(found.viaGemini, isFalse);
+        expect(found.sources, isEmpty);
+        expect(found.geminiProblem, isNotNull);
+        final prompt = _all(router.calls.single);
+        expect(prompt, contains('School subject: Čeština\nTopic: Babička'));
+        expect(prompt, isNot(contains('Search the web')));
+      });
+
+      test('a failing router keeps the Gemini error', () async {
+        await expectLater(
+          CardLookupService(
+            gemini: _FakeGemini(const AiTransientException('busy', statusCode: 503)),
+            hasGeminiKey: () async => true,
+            web: _FakeWeb(null),
+            router: _FakeRouter(const AiTransientException('down')),
+          ).lookUp('Babička'),
+          throwsA(isA<AiTransientException>()
+              .having((e) => e.message, 'message', 'busy')),
+        );
+      });
+
+      test('a bad Gemini key is not hidden behind the router', () async {
+        final router = _FakeRouter('x');
+        await expectLater(
+          CardLookupService(
+            gemini: _FakeGemini(const AiPermanentException('bad',
+                kind: GeminiErrorKind.badKey)),
+            hasGeminiKey: () async => true,
+            web: _FakeWeb(null),
+            router: router,
+          ).lookUp('Babička'),
+          throwsA(isA<AiPermanentException>()),
+        );
+        expect(router.calls, isEmpty);
+      });
     });
 
     test('a blank query is refused before any request', () {

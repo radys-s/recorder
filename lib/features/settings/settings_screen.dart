@@ -19,6 +19,7 @@ import '../../data/db/tables/preferences_table.dart';
 import '../debug/queue_debug_screen.dart';
 import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
+import 'service_status_section.dart';
 import 'appearance_section.dart';
 import 'drive_sync_section.dart';
 import '../../legal/data_processors.dart';
@@ -216,6 +217,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const DataProcessorNotice(DataProcessor.groq),
           const _GeminiKeySection(),
           const AiServicesSection(),
+          const ServiceStatusSection(),
           const StudyProfileSection(),
           const _LanguageSection(),
           const _MicTipsSection(),

@@ -165,7 +165,11 @@ final customAiModelStoreProvider = Provider<ApiKeyStore>(
 
 /// Cooldowns shared by both routers, so the corrector and the answers see
 /// the same busy services.
-final aiRouteHealthProvider = Provider<AiRouteHealth>((ref) => AiRouteHealth());
+final aiRouteHealthProvider = Provider<AiRouteHealth>((ref) {
+  final health = AiRouteHealth();
+  ref.onDispose(health.dispose);
+  return health;
+});
 
 List<AiRoute> _aiRoutes(Ref ref, {String? reasoningEffort}) {
   final customModel = ref.watch(customAiModelStoreProvider);
@@ -249,7 +253,7 @@ final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
     refinedFor: db.refinedSegmentsDao.windows,
     lessonFor: ref.watch(lessonContextSourceProvider).notesInput,
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
     onLessonNotes: (meetingId, notes) async {
       // The terms the notes define join the subject's vocabulary.
       try {
@@ -284,7 +288,7 @@ final studyCardGeneratorProvider = Provider<StudyCardGenerator>((ref) {
     ref.watch(appDatabaseProvider),
     llm: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
   );
 });
 
@@ -294,7 +298,7 @@ final cardSuggestionServiceProvider = Provider<CardSuggestionService>((ref) {
     ref.watch(appDatabaseProvider),
     groq: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
   );
 });
 
@@ -304,7 +308,7 @@ final subjectSummaryServiceProvider = Provider<SubjectSummaryService>((ref) {
     ref.watch(appDatabaseProvider),
     llm: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
   );
 });
 
@@ -314,7 +318,7 @@ final examPrepServiceProvider = Provider<ExamPrepService>((ref) {
     ref.watch(appDatabaseProvider),
     llm: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
   );
 });
 
@@ -344,8 +348,9 @@ final liveAnswerServiceProvider = Provider<LiveAnswerService>((ref) {
     ref.watch(webAnswerServiceProvider),
     lessonContext: ref.watch(lessonContextSourceProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
     diagnostics: ref.watch(listeningDiagnosticsProvider),
+    hasRoomyRoute: _roomyRoute(ref),
   );
 });
 
@@ -370,14 +375,14 @@ final chatMessagesProvider = StreamProvider.family<List<ChatMessage>, int>((
 /// question, so adding or removing it in Settings applies to the next one.
 final chatAnswerServiceProvider = Provider<ChatAnswerService>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  final geminiKeys = ref.watch(geminiKeyStoreProvider);
   return ChatAnswerService(
     ref.watch(llmProvider),
     db.chatMessagesDao,
     db.transcriptSegmentsDao,
     ref.watch(lessonContextSourceProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: geminiKeys.hasKey,
+    hasGeminiKey: _geminiReady(ref),
+    hasRoomyRoute: _roomyRoute(ref),
     refinedFor: db.refinedSegmentsDao.windows,
   );
 });
@@ -402,8 +407,30 @@ final geminiProvider = Provider<GeminiProvider>((ref) {
     ref.watch(geminiKeyStoreProvider),
     models: ref.watch(geminiModelResolverProvider),
     router: ref.watch(routedLlmProvider),
+    health: ref.watch(aiRouteHealthProvider),
   );
 });
+
+/// Whether a service that has another route should try Gemini now: a key is
+/// set, it was not refused, and Gemini is not resting after a limit. Without
+/// this a dry free-tier quota costs every live answer a failed request first.
+Future<bool> Function() _geminiReady(Ref ref) {
+  final keys = ref.watch(geminiKeyStoreProvider);
+  final health = ref.watch(aiRouteHealthProvider);
+  return () async {
+    final key = await keys.read();
+    if (key == null) return false;
+    return !health.disabled(AiVendor.gemini, key) &&
+        !health.coolingDown(AiVendor.gemini);
+  };
+}
+
+/// Whether the routed services include one roomier than Groq's free tier that
+/// is ready now, so a request may carry a larger context.
+Future<bool> Function() _roomyRoute(Ref ref) {
+  final router = ref.watch(routedLlmProvider);
+  return router.hasRoomyRoute;
+}
 
 /// Whether any service can read a photo: Gemini, or Mistral behind it.
 final hasVisionKeyProvider = FutureProvider<bool>((ref) async {
@@ -429,12 +456,11 @@ final termAliasServiceProvider = Provider<TermAliasService>((ref) {
 });
 
 final cardDigestServiceProvider = Provider<CardDigestService>((ref) {
-  final geminiKeys = ref.watch(geminiKeyStoreProvider);
   return CardDigestService(
     ref.watch(appDatabaseProvider).subjectsDao,
     groq: ref.watch(llmProvider),
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: geminiKeys.hasKey,
+    hasGeminiKey: _geminiReady(ref),
   );
 });
 
@@ -482,8 +508,9 @@ final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {
 final cardLookupServiceProvider = Provider<CardLookupService>((ref) {
   return CardLookupService(
     gemini: ref.watch(geminiProvider),
-    hasGeminiKey: ref.watch(geminiKeyStoreProvider).hasKey,
+    hasGeminiKey: _geminiReady(ref),
     web: ref.watch(webAnswerServiceProvider),
+    router: ref.watch(llmProvider),
   );
 });
 

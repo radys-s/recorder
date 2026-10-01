@@ -1,11 +1,15 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/constants.dart';
 import '../core/logging.dart';
 import 'gemini_provider.dart' show LlmImage;
 import 'llm_provider.dart';
 import 'openai_compatible_provider.dart';
 
-/// The services the router can send text to, in no particular order.
-enum AiVendor { custom, cerebras, mistral, groq }
+/// The services the app talks to, in no particular order. [gemini] is never a
+/// route — it has its own provider — but shares the cooldown and the counters
+/// so Settings can show one picture.
+enum AiVendor { custom, cerebras, mistral, groq, gemini }
 
 extension AiVendorLabel on AiVendor {
   String get label => switch (this) {
@@ -13,6 +17,7 @@ extension AiVendorLabel on AiVendor {
     AiVendor.cerebras => 'Cerebras',
     AiVendor.mistral => 'Mistral',
     AiVendor.groq => 'Groq',
+    AiVendor.gemini => 'Gemini',
   };
 }
 
@@ -39,9 +44,9 @@ class AiRoute {
   final int? maxInputTokens;
 }
 
-/// Cooldowns and disabled services, shared by every router instance so the
-/// corrector and the answer services see the same picture.
-class AiRouteHealth {
+/// Cooldowns, refused keys and plain counters, shared by every router instance
+/// and by Gemini so the corrector, the answers and Settings see one picture.
+class AiRouteHealth extends ChangeNotifier {
   AiRouteHealth({DateTime Function()? now}) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
@@ -52,6 +57,13 @@ class AiRouteHealth {
   /// typed in Settings lifts it.
   final Map<AiVendor, int> _disabledKey = {};
   final Map<AiVendor, String> _lastModel = {};
+  final Map<AiVendor, DateTime> _lastSuccess = {};
+  final Map<AiVendor, int> _ok = {};
+  final Map<AiVendor, int> _failed = {};
+  final Map<AiVendor, int> _limited = {};
+
+  /// Models a vendor answered 404 to this session, as `vendor/model`.
+  final Set<String> _missing = {};
 
   DateTime get now => _now();
 
@@ -62,28 +74,56 @@ class AiRouteHealth {
 
   DateTime? cooldownUntil(AiVendor v) => coolingDown(v) ? _until[v] : null;
 
-  void cool(AiVendor v, Duration? retryAfter) {
+  /// Rests [v]. A limit or an overload is counted as such; [network] marks the
+  /// phone's own connection failing, which is not the service's fault.
+  void cool(AiVendor v, Duration? retryAfter, {bool network = false}) {
     final previous = _last[v];
     var wait = retryAfter ?? (previous == null ? kRouteCooldown : previous * 2);
     if (wait > kRouteMaxCooldown) wait = kRouteMaxCooldown;
     if (wait < const Duration(seconds: 1)) wait = const Duration(seconds: 1);
     _last[v] = wait;
     _until[v] = _now().add(wait);
+    _failed[v] = (_failed[v] ?? 0) + 1;
+    if (!network) _limited[v] = (_limited[v] ?? 0) + 1;
+    notifyListeners();
   }
 
   void succeeded(AiVendor v, String model) {
     _last.remove(v);
     _until.remove(v);
     _lastModel[v] = model;
+    _lastSuccess[v] = _now();
+    _ok[v] = (_ok[v] ?? 0) + 1;
+    notifyListeners();
   }
 
-  void disable(AiVendor v, String key) => _disabledKey[v] = key.hashCode;
+  /// A failure that does not rest the vendor (a bad request, a refused key).
+  void failed(AiVendor v) {
+    _failed[v] = (_failed[v] ?? 0) + 1;
+    notifyListeners();
+  }
+
+  void disable(AiVendor v, String key) {
+    _disabledKey[v] = key.hashCode;
+    notifyListeners();
+  }
 
   bool disabled(AiVendor v, String key) => _disabledKey[v] == key.hashCode;
 
   bool anyDisabled(AiVendor v) => _disabledKey.containsKey(v);
 
   String? lastModel(AiVendor v) => _lastModel[v];
+
+  DateTime? lastSuccess(AiVendor v) => _lastSuccess[v];
+
+  int requests(AiVendor v) => (_ok[v] ?? 0) + (_failed[v] ?? 0);
+
+  int rateLimits(AiVendor v) => _limited[v] ?? 0;
+
+  void markMissing(AiVendor v, String model) => _missing.add('${v.name}/$model');
+
+  bool modelMissing(AiVendor v, String model) =>
+      _missing.contains('${v.name}/$model');
 }
 
 /// An [LlmProvider] that spreads requests over every service with a key.
@@ -138,6 +178,23 @@ class RoutedLlmProvider extends LlmProvider {
 
   static int estimateTokens(List<LlmMessage> messages) =>
       (messages.fold<int>(0, (n, m) => n + m.content.length) / 3).ceil();
+
+  /// True when a service with a roomier limit than Groq's free tier is set up
+  /// and rested, so a request may carry more context.
+  Future<bool> hasRoomyRoute() async {
+    for (final v in const [
+      AiVendor.custom,
+      AiVendor.mistral,
+      AiVendor.cerebras,
+    ]) {
+      final route = _route(v);
+      if (route == null || health.coolingDown(v)) continue;
+      final key = await route.provider.keyStore.read();
+      if (key == null || health.disabled(v, key)) continue;
+      if ((await route.models(AiTier.strong, '')).isNotEmpty) return true;
+    }
+    return false;
+  }
 
   /// True when some service with a key can read pictures.
   Future<bool> hasVisionRoute() async {
@@ -212,8 +269,15 @@ class RoutedLlmProvider extends LlmProvider {
       if (max != null && tokens > max) continue;
       final key = await route.provider.keyStore.read();
       if (key == null || health.disabled(v, key)) continue;
-      final models = await route.models(tier, requested);
+      var models = await route.models(tier, requested);
       if (models.isEmpty) continue;
+      // A model that answered 404 earlier is not asked again — unless it is
+      // all there is, so a retired model still reports why.
+      final known = [
+        for (final m in models)
+          if (!health.modelMissing(v, m)) m,
+      ];
+      if (known.isNotEmpty) models = known;
       (health.coolingDown(v) ? cooling : ready).add((route, key, models));
     }
     final candidates = [...ready, ...cooling];
@@ -232,6 +296,9 @@ class RoutedLlmProvider extends LlmProvider {
 
     AiException? transient;
     AiException? permanent;
+    // Vendors that failed on the network itself. One is a slow or unreachable
+    // host; two different ones mean the phone is offline.
+    final unreachable = <AiVendor>{};
     for (final (route, key, models) in candidates) {
       for (final id in models) {
         try {
@@ -250,24 +317,47 @@ class RoutedLlmProvider extends LlmProvider {
           }
           return result;
         } on AiTransientException catch (e) {
-          transient = e;
-          // A status means the service itself pushed back; no status is the
-          // phone's network, which the next service would hit just the same.
-          if (e.statusCode != null) health.cool(route.vendor, e.retryAfter);
+          transient = AiTransientException(
+            e.message,
+            statusCode: e.statusCode,
+            kind: e.kind,
+            reason: e.reason,
+            retryAfter: e.retryAfter,
+            source: route.vendor.label,
+          );
           AppLog.d(_tag, '${route.vendor.name}/$id transient: ${e.message}');
+          if (e.statusCode != null) {
+            // The service itself pushed back.
+            health.cool(route.vendor, e.retryAfter);
+          } else {
+            // No status is the connection: a timeout or an unreachable host.
+            // Rest that vendor briefly and let the next one try.
+            health.cool(route.vendor, kNetworkCooldown, network: true);
+            unreachable.add(route.vendor);
+          }
           break;
         } on AiPermanentException catch (e) {
-          permanent = e;
+          permanent = AiPermanentException(
+            e.message,
+            statusCode: e.statusCode,
+            kind: e.kind,
+            reason: e.reason,
+            source: route.vendor.label,
+          );
           AppLog.d(_tag, '${route.vendor.name}/$id permanent: ${e.message}');
-          if (e.statusCode == 404) continue; // try the vendor's next model
+          if (e.statusCode == 404) {
+            health.markMissing(route.vendor, id);
+            continue; // try the vendor's next model
+          }
+          health.failed(route.vendor);
           if (e.statusCode == 401 || e.statusCode == 403) {
             health.disable(route.vendor, key);
           }
           break;
         }
       }
-      // A network failure with no status will not go better elsewhere.
-      if (transient != null && transient.statusCode == null) break;
+      // Two vendors out of reach means no point trying a third.
+      if (unreachable.length >= 2) break;
     }
     throw transient ?? permanent!;
   }

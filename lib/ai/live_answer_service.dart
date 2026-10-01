@@ -39,6 +39,7 @@ class LiveAnswerService {
     LessonContextSource? lessonContext,
     this._gemini,
     this._hasGeminiKey,
+    this._hasRoomyRoute,
     this.pollInterval = const Duration(milliseconds: 500),
     this.diagnostics,
   })
@@ -54,6 +55,10 @@ class LiveAnswerService {
   final WebAnswerService _webAnswers;
   final ListeningDiagnostics? diagnostics;
   final LessonContextSource? _lessonContext;
+
+  /// True when a service roomier than Groq's free tier can take the request,
+  /// so the lesson context may be larger.
+  final Future<bool> Function()? _hasRoomyRoute;
 
   /// Answers in a lesson when the student has a Gemini key; Groq otherwise,
   /// and after any Gemini failure.
@@ -376,9 +381,21 @@ class LiveAnswerService {
       text,
       previous: previous,
       note: note,
-      budget: ContextBudget.automatic,
+      budget: await _roomy()
+          ? ContextBudget.routed
+          : ContextBudget.automatic,
     );
     return (request: request, decision: await _ask(request));
+  }
+
+  Future<bool> _roomy() async {
+    final check = _hasRoomyRoute;
+    if (check == null) return false;
+    try {
+      return await check();
+    } catch (_) {
+      return false;
+    }
   }
 
   /// The request for the passage [text]: the meeting path exactly as it always

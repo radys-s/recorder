@@ -30,6 +30,7 @@ class ChatAnswerService {
     this._lessonContext, {
     this._gemini,
     this._hasGeminiKey,
+    this._hasRoomyRoute,
     this.refinedFor,
   });
 
@@ -42,8 +43,21 @@ class ChatAnswerService {
   final LlmProvider? _gemini;
   final Future<bool> Function()? _hasGeminiKey;
 
+  /// True when a service roomier than Groq's free tier can take the request.
+  final Future<bool> Function()? _hasRoomyRoute;
+
   /// The refined windows of a meeting, preferred over live text once ready.
   final Future<List<RefinedSegment>> Function(int meetingId)? refinedFor;
+
+  Future<bool> _roomy() async {
+    final check = _hasRoomyRoute;
+    if (check == null) return false;
+    try {
+      return await check();
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<bool> _geminiAvailable() async {
     if (_gemini == null || _hasGeminiKey == null) return false;
@@ -126,7 +140,7 @@ class ChatAnswerService {
           material: material,
           transcript: transcript,
           focus: message.body,
-          budget: ContextBudget.direct,
+          budget: await _roomy() ? ContextBudget.routed : ContextBudget.direct,
         );
         raw = await _llm.complete(
           model: kGroqAnswerModel,
@@ -170,13 +184,14 @@ class ChatAnswerService {
       AppLog.e(_tag, 'message $userMessageId rejected', e);
       await _chat.failReply(
         replyId,
-        'Groq požadavek odmítl. Zkontroluj klíč v Nastavení.',
+        '${e.source ?? 'Služba'} požadavek odmítla. Zkontroluj klíč v Nastavení.',
       );
     } on AiTransientException catch (e) {
       AppLog.e(_tag, 'message $userMessageId: transient failure', e);
       await _chat.failReply(
         replyId,
-        'Groq teď neodpovídá (limit nebo síť). Zkus to za chvíli znovu.',
+        '${e.source ?? 'AI služba'} teď neodpovídá (limit nebo síť). '
+        'Zkus to za chvíli znovu.',
       );
     } catch (e, st) {
       AppLog.e(_tag, 'message $userMessageId failed', e, st);

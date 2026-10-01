@@ -46,6 +46,7 @@ class GeminiFailure extends GroqFailure {
     required super.message,
     required this.kind,
     super.statusCode,
+    super.retryAfter,
     this.reason,
   });
 
@@ -121,6 +122,7 @@ GeminiFailure classifyGeminiFailure(DioException e) {
       message: base.message,
       kind: GeminiErrorKind.quota,
       statusCode: status,
+      retryAfter: base.retryAfter ?? geminiRetryDelay(body),
       reason: reason,
     );
   }
@@ -137,6 +139,7 @@ GeminiFailure classifyGeminiFailure(DioException e) {
       message: base.message,
       kind: GeminiErrorKind.overloaded,
       statusCode: status,
+      retryAfter: base.retryAfter ?? geminiRetryDelay(body),
       reason: reason,
     );
   }
@@ -181,6 +184,31 @@ GeminiFailure classifyGeminiFailure(DioException e) {
         ? clipReason(redactSecrets(message.trim()))
         : null,
   );
+}
+
+/// Google's `RetryInfo` detail (`"retryDelay": "34s"`), when a 429 carries one.
+Duration? geminiRetryDelay(Object? body) {
+  Object? data = body;
+  if (data is String) {
+    try {
+      data = jsonDecode(data);
+    } catch (_) {
+      return null;
+    }
+  }
+  if (data is List && data.isNotEmpty) data = data.first;
+  final error = data is Map ? data['error'] : null;
+  final details = error is Map ? error['details'] : null;
+  if (details is! List) return null;
+  for (final d in details) {
+    final delay = d is Map ? d['retryDelay'] : null;
+    if (delay is! String) continue;
+    final seconds = double.tryParse(delay.replaceAll('s', '').trim());
+    if (seconds != null && seconds >= 0) {
+      return Duration(milliseconds: (seconds * 1000).round());
+    }
+  }
+  return null;
 }
 
 String clipReason(String value, {int max = 160}) =>

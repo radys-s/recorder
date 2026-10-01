@@ -303,7 +303,10 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
         _usedLookup = true;
       });
       final problem = found.geminiProblem;
-      if (problem != null) {
+      if (!found.viaGemini && found.sources.isEmpty) {
+        _say('Dohledáno bez ověření na webu — ověř fakta, hlavně data a jména.'
+            '${problem == null ? '' : ' $problem'}');
+      } else if (problem != null) {
         _say('Přes Gemini to nešlo, dohledáno stručně přes Groq. $problem');
       } else if (!found.viaGemini) {
         _say(

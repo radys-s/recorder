@@ -2,6 +2,7 @@ import '../core/constants.dart';
 import '../core/logging.dart';
 import '../data/db/daos/subjects_dao.dart';
 import '../data/db/tables/subject_terms_table.dart';
+import 'gemini_first.dart';
 import 'json_extract.dart';
 import 'llm_provider.dart';
 
@@ -63,23 +64,34 @@ class CardDigestService {
       final content = card.content.trim();
       if (content.isEmpty) return false;
 
-      final useGemini = _gemini != null && await _geminiAvailable();
-      final llm = useGemini ? _gemini : _groq;
-      final limit = useGemini ? kDigestGeminiChars : kDigestGroqChars;
-      final raw = await llm.complete(
-        model: useGemini ? kGeminiLiteModel : kGroqNotesModel,
-        messages: [
-          const LlmMessage.system(_systemPrompt),
-          LlmMessage.user(
-            'Title: ${card.title}\n\n'
-            '${content.length <= limit ? content : content.substring(0, limit)}',
-          ),
-        ],
-        temperature: 0.2,
-        // Reasoning counts against the cap on both backends.
-        maxTokens: useGemini ? 2000 : 1500,
-        jsonMode: true,
-        timeout: kCardDigestTimeout,
+      var useGemini = _gemini != null && await _geminiAvailable();
+      Future<String> ask(LlmProvider llm, bool gemini) {
+        final limit = gemini ? kDigestGeminiChars : kDigestGroqChars;
+        return llm.complete(
+          model: gemini ? kGeminiLiteModel : kGroqNotesModel,
+          messages: [
+            const LlmMessage.system(_systemPrompt),
+            LlmMessage.user(
+              'Title: ${card.title}\n\n'
+              '${content.length <= limit ? content : content.substring(0, limit)}',
+            ),
+          ],
+          temperature: 0.2,
+          // Reasoning counts against the cap on both backends.
+          maxTokens: gemini ? 2000 : 1500,
+          jsonMode: true,
+          timeout: kCardDigestTimeout,
+        );
+      }
+
+      final raw = await geminiFirst(
+        preferGemini: useGemini,
+        tag: _tag,
+        onGemini: () => ask(_gemini!, true),
+        onRouter: () {
+          useGemini = false;
+          return ask(_groq, false);
+        },
       );
 
       final parsed = parseCardDigest(raw);

@@ -73,6 +73,10 @@ Future<void> main() async {
         customAiBaseUrlStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         customAiModelStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         llmProvider.overrideWithValue(_FakeLlm()),
+        // Nothing in the preview may reach Google.
+        geminiProvider.overrideWith(
+          (ref) => _FakeGemini(ref.read(geminiKeyStoreProvider)),
+        ),
         examPrepServiceProvider.overrideWith(
           (ref) =>
               ExamPrepService(ref.watch(appDatabaseProvider), llm: _FakeLlm()),
@@ -105,6 +109,29 @@ class _FakePicker extends PhotoPicker {
 
   @override
   Future<List<PickedPhoto>> pickPages() async => [_photo];
+}
+
+/// Answers every Gemini call with a short canned text, so a screen that
+/// reaches for Gemini (card lookup, digests, výpisky) works without a network.
+class _FakeGemini extends GeminiProvider {
+  _FakeGemini(super.store);
+
+  @override
+  Future<GeminiCompletion> generate({
+    required String model,
+    required List<LlmMessage> messages,
+    List<LlmImage> images = const [],
+    bool search = false,
+    bool jsonMode = false,
+    int? maxTokens,
+    Duration? timeout,
+    CancelToken? cancelToken,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    return GeminiCompletion(
+      content: jsonMode ? '{}' : '- Ukázková odpověď náhledu.',
+    );
+  }
 }
 
 /// A canned timetable read, as Gemini would return it for a Bakaláři

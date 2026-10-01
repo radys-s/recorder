@@ -6,6 +6,7 @@ import '../data/db/app_database.dart';
 import '../data/db/daos/subjects_dao.dart';
 import '../data/db/tables/meeting_notes_table.dart';
 import '../stt/transcript_sanitizer.dart';
+import 'gemini_first.dart';
 import 'json_extract.dart';
 import 'llm_provider.dart';
 
@@ -122,9 +123,9 @@ class CardSuggestionService {
         for (final c in await _db.subjectsDao.cards(subjectId)) c.title,
       ];
 
-      final useGemini = _gemini != null && await _geminiAvailable();
-      final raw = await (useGemini ? _gemini : _groq).complete(
-        model: useGemini ? kGeminiLiteModel : kGroqNotesModel,
+      var useGemini = _gemini != null && await _geminiAvailable();
+      Future<String> ask(LlmProvider llm, String model) => llm.complete(
+        model: model,
         messages: [
           const LlmMessage.system(_systemPrompt),
           LlmMessage.user(
@@ -138,6 +139,15 @@ class CardSuggestionService {
         maxTokens: 3000,
         jsonMode: true,
         timeout: kCardSuggestionTimeout,
+      );
+      final raw = await geminiFirst(
+        preferGemini: useGemini,
+        tag: _tag,
+        onGemini: () => ask(_gemini!, kGeminiLiteModel),
+        onRouter: () {
+          useGemini = false;
+          return ask(_groq, kGroqNotesModel);
+        },
       );
       final suggestions = parseCardSuggestions(raw, titles);
 

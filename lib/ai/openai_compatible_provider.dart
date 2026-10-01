@@ -50,7 +50,8 @@ class OpenAiCompatibleProvider extends LlmProvider {
   /// Shown when no key is stored.
   final String? missingKeyMessage;
 
-  /// `reasoning_effort` for gpt-oss models; null leaves the service default.
+  /// `reasoning_effort`, sent only with gpt-oss models; null leaves the
+  /// service default.
   final String? reasoningEffort;
 
   ApiKeyStore get keyStore => _apiKeyStore;
@@ -104,7 +105,9 @@ class OpenAiCompatibleProvider extends LlmProvider {
           'messages': buildOpenAiMessages(messages, images),
           'temperature': temperature,
           'max_tokens': ?maxTokens,
-          'reasoning_effort': ?reasoningEffort,
+          // Only the gpt-oss family takes it; other models answer 400.
+          if (reasoningEffort != null && model.contains('gpt-oss'))
+            'reasoning_effort': reasoningEffort,
           if (jsonMode) 'response_format': {'type': 'json_object'},
         },
         options: Options(

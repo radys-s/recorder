@@ -248,6 +248,10 @@ const int kRouterLargeInputTokens = 20000;
 const Duration kRouteCooldown = Duration(seconds: 60);
 const Duration kRouteMaxCooldown = Duration(minutes: 10);
 
+/// How long a vendor rests after its connection failed (timeout, unreachable
+/// host), as opposed to a limit it answered with.
+const Duration kNetworkCooldown = Duration(seconds: 30);
+
 /// Secure storage key for the optional Google Gemini API key.
 const String kGeminiApiKeyStorageKey = 'gemini_api_key';
 

@@ -49,6 +49,7 @@ class CardLookupService {
     required this._gemini,
     required this._hasGeminiKey,
     required this._web,
+    this._router,
   });
 
   static const _tag = 'ai.cards.lookup';
@@ -56,6 +57,9 @@ class CardLookupService {
   final GeminiProvider _gemini;
   final Future<bool> Function() _hasGeminiKey;
   final WebAnswerService _web;
+
+  /// Last resort: the routed chat services, without a web search.
+  final LlmProvider? _router;
 
   /// Throws [AiException] with a message [geminiFailureText] can show.
   Future<CardLookup> lookUp(
@@ -110,6 +114,8 @@ class CardLookupService {
       subjectName == null ? topic : '$topic ($subjectName)',
     );
     if (web == null) {
+      final offline = await _fromModelMemory(topic, subjectName, geminiError);
+      if (offline != null) return offline;
       if (geminiError != null) throw geminiError;
       throw const AiTransientException(
         'Dohledání se nepovedlo. S Gemini klíčem v Nastavení to jde spolehlivěji.',
@@ -123,6 +129,45 @@ class CardLookupService {
     );
   }
 
+  /// The card written from the model's own knowledge, with no web search —
+  /// flagged as unverified, because it may be wrong about the details.
+  Future<CardLookup?> _fromModelMemory(
+    String topic,
+    String? subjectName,
+    AiException? geminiError,
+  ) async {
+    final router = _router;
+    if (router == null) return null;
+    try {
+      final raw = await router.complete(
+        model: kGroqNotesModel,
+        messages: [
+          LlmMessage.system(_memoryPrompt),
+          LlmMessage.user(subjectName == null
+              ? 'Topic: $topic'
+              : 'School subject: $subjectName\nTopic: $topic'),
+        ],
+        temperature: 0.2,
+        maxTokens: 3000,
+        timeout: kCardLookupTimeout,
+      );
+      final content = stripTrailingLinks(cleanModelText(raw));
+      if (content.isEmpty) return null;
+      AppLog.d(_tag, 'looked up from model memory: ${content.length} chars');
+      return CardLookup(
+        content: content,
+        sources: const [],
+        viaGemini: false,
+        grounded: false,
+        geminiProblem:
+            geminiError == null ? null : geminiFailureText(geminiError),
+      );
+    } on AiException catch (e) {
+      AppLog.w(_tag, 'router lookup failed (${e.statusCode ?? e.runtimeType})');
+      return null;
+    }
+  }
+
   Future<bool> _geminiAvailable() async {
     try {
       return await _hasGeminiKey();
@@ -130,6 +175,9 @@ class CardLookupService {
       return false;
     }
   }
+
+  static final String _memoryPrompt =
+      _prompt.replaceFirst('Search the web and write', 'Write');
 
   static const String _prompt = '''
 A student is preparing a study card for school. Search the web and write the

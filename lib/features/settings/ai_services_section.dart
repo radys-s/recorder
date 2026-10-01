@@ -91,6 +91,7 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
     AiVendor.cerebras => ref.read(cerebrasKeyStoreProvider),
     AiVendor.custom => ref.read(customAiKeyStoreProvider),
     AiVendor.groq => ref.read(apiKeyStoreProvider),
+    AiVendor.gemini => ref.read(geminiKeyStoreProvider),
   };
 
   @override
@@ -369,6 +370,7 @@ class _ServiceKeyCardState extends ConsumerState<_ServiceKeyCard> {
                 AiVendor.cerebras => DataProcessor.cerebras,
                 AiVendor.groq => DataProcessor.groq,
                 AiVendor.custom => DataProcessor.custom,
+                AiVendor.gemini => DataProcessor.gemini,
               }),
             ],
           ),

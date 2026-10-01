@@ -7,6 +7,7 @@ import '../core/constants.dart';
 import '../core/gemini_failure.dart';
 import '../core/logging.dart';
 import '../data/secure/api_key_store.dart';
+import 'ai_router.dart' show AiRouteHealth, AiVendor;
 import 'answer_source.dart';
 import 'gemini_model_resolver.dart';
 import 'llm_provider.dart';
@@ -61,6 +62,7 @@ class GeminiProvider extends LlmProvider {
     this._apiKeyStore, {
     Dio? dio,
     this._models,
+    this.health,
     this.overloadDelay = const Duration(seconds: 2),
   })
       : _dio = dio ??
@@ -78,6 +80,10 @@ class GeminiProvider extends LlmProvider {
   final ApiKeyStore _apiKeyStore;
   final Dio _dio;
   final GeminiModelResolver? _models;
+
+  /// Shared cooldowns and counters: a 429 or a lasting overload rests Gemini
+  /// for everyone, so callers with another service stop waiting on it.
+  final AiRouteHealth? health;
 
   /// How long to wait before asking an overloaded model once more.
   final Duration overloadDelay;
@@ -154,6 +160,7 @@ class GeminiProvider extends LlmProvider {
           cancelToken: cancelToken,
         );
         final result = parseGeminiResponse(response.data);
+        health?.succeeded(AiVendor.gemini, id);
         return searchDropped
             ? GeminiCompletion(
                 content: result.content,
@@ -216,16 +223,36 @@ class GeminiProvider extends LlmProvider {
             }
           }
         }
+        _note(failure, apiKey, e.type == DioExceptionType.cancel);
         throw failure.transient
             ? AiTransientException(failure.message,
                 statusCode: failure.statusCode,
                 kind: failure.kind,
-                reason: failure.reason)
+                reason: failure.reason,
+                retryAfter: failure.retryAfter)
             : AiPermanentException(failure.message,
                 statusCode: failure.statusCode,
                 kind: failure.kind,
                 reason: failure.reason);
       }
+    }
+  }
+
+  /// Tells the shared health what this failure means for Gemini as a whole.
+  void _note(GeminiFailure failure, String apiKey, bool cancelled) {
+    final h = health;
+    if (h == null || cancelled) return;
+    switch (failure.kind) {
+      case GeminiErrorKind.quota || GeminiErrorKind.overloaded:
+        h.cool(AiVendor.gemini, failure.retryAfter);
+      case GeminiErrorKind.network:
+        // A timeout is the phone's connection or Google being slow; a short
+        // rest, and not counted as a limit.
+        h.cool(AiVendor.gemini, kNetworkCooldown, network: true);
+      case GeminiErrorKind.badKey:
+        h.disable(AiVendor.gemini, apiKey);
+      default:
+        h.failed(AiVendor.gemini);
     }
   }
 }

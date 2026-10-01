@@ -108,6 +108,12 @@ class ContextBudget {
   static const geminiLive =
       ContextBudget(rules: 800, cards: 10000, chat: 4000, tail: 2500);
 
+  /// A request that goes to a roomier service than Groq's free tier (Mistral,
+  /// Cerebras, a school model): well above [automatic], still far below
+  /// Gemini's whole-card budget because those services are slower to answer.
+  static const routed =
+      ContextBudget(rules: 600, cards: 5000, chat: 1500, tail: 2500);
+
   final int rules;
   final int cards;
   final int chat;
