@@ -203,6 +203,20 @@ void main() {
       },
     );
 
+    test(
+      'short depths without a „Co si zapamatovat" go whole to the model',
+      () async {
+        final id = await lesson();
+        final llm = _Llm(
+          '{"cards": [{"q": "Co je VLAN?", "a": "Virtuální LAN"}]}',
+        );
+        const brief = 'Téma: VLAN\n- VLAN odděluje provoz v jedné síti.';
+        expect(await gen(llm).fromLessonNotes(id, brief), 1);
+        expect(llm.users.single, contains('VLAN odděluje provoz'));
+        expect((await db.studyCardsDao.dueCards(day)).single.meetingId, id);
+      },
+    );
+
     test('a failed model call keeps the term cards', () async {
       final id = await lesson();
       expect(await gen(_Llm('', fail: true)).fromLessonNotes(id, _notes), 1);

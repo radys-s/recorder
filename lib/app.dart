@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'audio/pending_audio.dart';
+import 'audio/recording_controller.dart';
 import 'core/logging.dart';
 import 'core/pending_deletions.dart';
 import 'core/providers.dart';
@@ -16,6 +17,7 @@ import 'features/meeting_detail/widgets/recording_indicator_banner.dart';
 import 'features/home/home_shell.dart';
 import 'features/legal/consent_screen.dart';
 import 'features/subjects/subjects_providers.dart';
+import 'features/subjects/timetable.dart';
 
 class RecorderApp extends ConsumerStatefulWidget {
   const RecorderApp({super.key});
@@ -147,6 +149,14 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
         unawaited(refined.refine(id));
       }
       unawaited(refined.resume());
+      // Výpisky a restart caught in between: lessons that ended, have a
+      // subject and no finished notes. Those whose second pass is still to
+      // report on its own are left to it.
+      unawaited(
+        ref
+            .read(lessonNotesSchedulerProvider)
+            .resumePending(skip: interrupted.toSet()),
+      );
     });
 
     // Reminders are concrete notifications for the next fortnight rather than
@@ -169,6 +179,28 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     );
   }
 
+  Future<void> _armLessonEnd(int? meetingId) async {
+    final watcher = ref.read(lessonEndWatcherProvider);
+    if (meetingId == null) {
+      watcher.stop();
+      return;
+    }
+    try {
+      final db = ref.read(appDatabaseProvider);
+      final meeting = await db.meetingsDao.watchMeetingByIdOnce(meetingId);
+      final subjectId = meeting?.subjectId;
+      if (meeting == null || subjectId == null) return;
+      final end = lessonEndFor(
+        await db.subjectsDao.allSlots(),
+        subjectId,
+        meeting.createdAt,
+      );
+      if (end != null) watcher.start(end: end, meetingId: meetingId);
+    } catch (e, st) {
+      AppLog.e(_tag, 'could not arm the lesson-end notice', e, st);
+    }
+  }
+
   Future<void> _step(String name, Future<void> Function() body) async {
     try {
       await body();
@@ -184,6 +216,16 @@ class _RecorderAppState extends ConsumerState<RecorderApp>
     ref.listen(allSlotsProvider, (previous, next) {
       if (previous?.value == null || next.value == null) return;
       unawaited(ref.read(lessonReminderServiceProvider).reschedule());
+    });
+
+    // A lesson recorded from a timetable slot: say so when the slot is over
+    // and the recording is still running. Armed when a recording with a
+    // subject starts, disarmed when it stops.
+    ref.listen(recordingControllerProvider.select((s) => s.meetingId), (
+      previous,
+      meetingId,
+    ) {
+      unawaited(_armLessonEnd(meetingId));
     });
 
     // The accent the student picked; gold until the preferences row loads.

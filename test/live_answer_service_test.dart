@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/answer_source.dart';
 import 'package:recorder/ai/context_builder.dart';
@@ -441,6 +442,102 @@ void main() {
       );
       expect(outcome, AnswerNowOutcome.answered);
       expect(world.cards.inserted.single.segmentId.value, 102);
+    });
+  });
+
+  group('answer now and the automatic path', () {
+    TranscriptSegment pending(int sequence) => TranscriptSegment(
+      id: 199,
+      meetingId: 7,
+      sequence: sequence,
+      startMs: sequence * 20000,
+      endMs: sequence * 20000 + 4000,
+      status: SegmentStatus.uploading,
+      localAudioPath: 'x.wav',
+      createdAt: DateTime(2026, 9, 14),
+    );
+
+    test('the chunk cut by the button is not answered a second time', () async {
+      final world = _World(reply: _verdict());
+      final cut = world.segments.last.copyWith(
+        cutReason: const Value('manual'),
+      );
+      final onDemand = world.service.answerNow(7);
+      // The cut chunk comes back from Whisper while the button is working.
+      await world.service.handleSegment(cut, cut.content!);
+      expect(await onDemand, AnswerNowOutcome.answered);
+      expect(world.llm.calls, hasLength(1));
+      expect(world.cards.inserted, hasLength(1));
+    });
+
+    test('a segment answered on demand is skipped afterwards too', () async {
+      final world = _World(reply: _verdict());
+      expect(await world.service.answerNow(7), AnswerNowOutcome.answered);
+      await world.handle(2);
+      expect(world.llm.calls, hasLength(1));
+      expect(world.cards.inserted, hasLength(1));
+    });
+
+    test('a newer segment is still answered automatically', () async {
+      final world = _World(
+        reply: _verdict(),
+        segments: [
+          _seg(0, _budget),
+          _seg(1, _spent),
+          _seg(2, _question),
+          _seg(3, _question),
+        ],
+      );
+      expect(await world.service.answerNow(7), AnswerNowOutcome.answered);
+      // answerNow answered the last segment (3); a later one is not covered.
+      final later = _seg(4, _question);
+      await world.service.handleSegment(later, later.content!);
+      expect(world.llm.calls, hasLength(2));
+    });
+
+    test('a chunk that is still on its way is not "no question"', () async {
+      final world = _World(
+        reply: _verdict(set: {'is_question': false}),
+        segments: [_seg(0, _budget), pending(1)],
+      );
+      final outcome = await world.service.answerNow(
+        7,
+        maxWait: const Duration(milliseconds: 10),
+      );
+      expect(outcome, AnswerNowOutcome.stillTranscribing);
+    });
+
+    test('nothing heard while the first chunk is on its way', () async {
+      final world = _World(
+        reply: _verdict(),
+        segments: [_seg(0, null), pending(1)],
+      );
+      final outcome = await world.service.answerNow(
+        7,
+        maxWait: const Duration(milliseconds: 10),
+      );
+      expect(outcome, AnswerNowOutcome.stillTranscribing);
+      expect(world.llm.calls, isEmpty);
+    });
+
+    test('the deferred chunk is answered when it finally arrives', () async {
+      final world = _World(
+        reply: _verdict(set: {'is_question': false}),
+        segments: [_seg(0, _budget), pending(1)],
+      );
+      await world.service.answerNow(
+        7,
+        maxWait: const Duration(milliseconds: 10),
+      );
+      // Not covered by the failed button press: the automatic path takes it.
+      final arrived = _seg(
+        1,
+        _question,
+      ).copyWith(cutReason: const Value('manual'));
+      final inserted = world.cards.inserted.length;
+      await world.service.handleSegment(arrived, arrived.content!);
+      expect(world.llm.calls, hasLength(2));
+      expect(world.cards.inserted.length, inserted);
     });
   });
 

@@ -47,13 +47,29 @@ void main() {
   test('the first engine with a key answers', () async {
     final a = _Engine('a', () => ok('a'));
     final b = _Engine('b', () => ok('b'));
-    final result = await chain([
-      engine(a),
-      engine(b),
-    ]).transcribe(audioFile: file);
+    final result = await chain([engine(a), engine(b)])
+        .transcribe(audioFile: file);
     expect(result.engine, 'a');
     expect(b.calls, 0);
   });
+
+  test(
+    'arrange picks the order for each call, cooldowns stay per engine',
+    () async {
+      final a = _Engine('a', () => ok('a'));
+      final b = _Engine('b', () => ok('b'));
+      var reversed = true;
+      final stt = FallbackSttProvider(
+        [engine(a), engine(b)],
+        now: () => clock,
+        arrange: (engines) async =>
+            reversed ? engines.reversed.toList() : engines,
+      );
+      expect((await stt.transcribe(audioFile: file)).engine, 'b');
+      reversed = false;
+      expect((await stt.transcribe(audioFile: file)).engine, 'a');
+    },
+  );
 
   test('a rate limit moves the same chunk to the next engine', () async {
     final a = _Engine('a', () => limited(const Duration(minutes: 2)));
@@ -123,10 +139,8 @@ void main() {
   test('an engine without a key is skipped and never called', () async {
     final a = _Engine('a', () => ok('a'));
     final b = _Engine('b', () => ok('b'));
-    final result = await chain([
-      engine(a, key: false),
-      engine(b),
-    ]).transcribe(audioFile: file);
+    final result = await chain([engine(a, key: false), engine(b)])
+        .transcribe(audioFile: file);
     expect(result.engine, 'b');
     expect(a.calls, 0);
   });
@@ -189,10 +203,8 @@ void main() {
       );
       final b = _Engine('b', () => ok('b'));
       expect(
-        (await chain([
-          engine(a),
-          engine(b),
-        ]).transcribe(audioFile: file)).engine,
+        (await chain([engine(a), engine(b)]).transcribe(audioFile: file))
+            .engine,
         'b',
       );
       await expectLater(

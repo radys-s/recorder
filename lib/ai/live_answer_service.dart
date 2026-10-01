@@ -20,7 +20,15 @@ import 'question_detector.dart';
 import 'web_answer_service.dart';
 
 /// What „Odpověz teď" came to, for the snackbar.
-enum AnswerNowOutcome { answered, noQuestion, nothingHeard, failed }
+/// [stillTranscribing]: the chunk cut at the tap has not come back yet and
+/// nothing older holds a question, so the honest answer is „wait a moment".
+enum AnswerNowOutcome {
+  answered,
+  noQuestion,
+  nothingHeard,
+  stillTranscribing,
+  failed,
+}
 
 /// Watches the transcript as it arrives and answers questions asked out loud.
 ///
@@ -68,6 +76,17 @@ class LiveAnswerService {
   /// How often [answerNow] checks whether the last chunk has come back.
   final Duration pollInterval;
 
+  /// Lessons with an „Odpověz teď" in flight. The chunk it cuts is answered by
+  /// that call, so the automatic path must not answer it a second time.
+  final Set<int> _answerNowRunning = {};
+
+  /// How far into each lesson „Odpověz teď" has already answered.
+  final Map<int, int> _answeredNowThrough = {};
+
+  bool _coveredByAnswerNow(TranscriptSegment s) =>
+      (s.cutReason == 'manual' && _answerNowRunning.contains(s.meetingId)) ||
+      s.endMs <= (_answeredNowThrough[s.meetingId] ?? -1);
+
   /// Considers one freshly transcribed segment. Never throws.
   Future<void> handleSegment(TranscriptSegment segment, String text) async {
     try {
@@ -80,6 +99,17 @@ class LiveAnswerService {
           ListeningStage.candidate,
           ListeningOutcome.rejected,
           'live_answers_disabled',
+        );
+        return;
+      }
+
+      if (_coveredByAnswerNow(segment)) {
+        AppLog.d(_tag, 'segment ${segment.id}: already answered on demand');
+        _trace(
+          segment,
+          ListeningStage.candidate,
+          ListeningOutcome.rejected,
+          'answered_now',
         );
         return;
       }
@@ -260,6 +290,7 @@ class LiveAnswerService {
     int? cutAtMs,
     Duration maxWait = kAnswerNowMaxWait,
   }) async {
+    _answerNowRunning.add(meetingId);
     try {
       final deadline = DateTime.now().add(maxWait);
       var segments = await _segmentsDao.segmentsForMeeting(meetingId);
@@ -268,12 +299,19 @@ class LiveAnswerService {
         await Future<void>.delayed(pollInterval);
         segments = await _segmentsDao.segmentsForMeeting(meetingId);
       }
+      // The deadline passed with the newest chunk still on its way: whatever
+      // is found below may be older than the question the student heard.
+      final stillWaiting = _waitingOn(segments, cutAtMs);
 
       final heard = [
         for (final s in segments)
           if (s.content != null && s.content!.trim().isNotEmpty) s,
       ];
-      if (heard.isEmpty) return AnswerNowOutcome.nothingHeard;
+      if (heard.isEmpty) {
+        return stillWaiting
+            ? AnswerNowOutcome.stillTranscribing
+            : AnswerNowOutcome.nothingHeard;
+      }
 
       final last = heard.last;
       final windowStart = last.endMs - kAnswerNowWindow.inMilliseconds;
@@ -298,15 +336,20 @@ class LiveAnswerService {
           decision.question.isNotEmpty || decision.quote.isNotEmpty;
       if (!decision.isQuestion || decision.shortAnswer.isEmpty || !hasWording) {
         AppLog.d(_tag, 'answer now in meeting $meetingId: no question found');
+        if (stillWaiting) return AnswerNowOutcome.stillTranscribing;
+        _answeredNowThrough[meetingId] = last.endMs;
         return AnswerNowOutcome.noQuestion;
       }
 
       final prefs = await _prefsDao.current();
       await _insert(last, decision, request, prefs.webAnswersEnabled);
+      _answeredNowThrough[meetingId] = last.endMs;
       return AnswerNowOutcome.answered;
     } catch (e, st) {
       AppLog.e(_tag, 'answer now in meeting $meetingId failed', e, st);
       return AnswerNowOutcome.failed;
+    } finally {
+      _answerNowRunning.remove(meetingId);
     }
   }
 
@@ -381,9 +424,7 @@ class LiveAnswerService {
       text,
       previous: previous,
       note: note,
-      budget: await _roomy()
-          ? ContextBudget.routed
-          : ContextBudget.automatic,
+      budget: await _roomy() ? ContextBudget.routed : ContextBudget.automatic,
     );
     return (request: request, decision: await _ask(request));
   }

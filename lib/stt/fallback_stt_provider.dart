@@ -22,13 +22,15 @@ class SttEngine {
 /// Each engine has its own limit, so Groq's large model running dry moves the
 /// chunk to the turbo model and then to Gemini instead of stopping the
 /// transcript. A cooldown is per engine and doubles while it keeps failing;
-/// a success clears it. The order is fixed — nothing here is configurable.
+/// a success clears it. The order is fixed unless the caller arranges it per
+/// call — nothing here is configurable by the student.
 class FallbackSttProvider implements SttProvider {
   FallbackSttProvider(
     this.engines, {
     DateTime Function()? now,
     this.baseCooldown = const Duration(seconds: 60),
     this.maxCooldown = const Duration(minutes: 10),
+    this.arrange,
   }) : _now = now ?? DateTime.now;
 
   static const _tag = 'stt.fallback';
@@ -37,6 +39,10 @@ class FallbackSttProvider implements SttProvider {
   final DateTime Function() _now;
   final Duration baseCooldown;
   final Duration maxCooldown;
+
+  /// Picks the order for one call, for the rare case where it depends on
+  /// something only known then (which keys exist). Cooldowns stay per engine id.
+  final Future<List<SttEngine>> Function(List<SttEngine> engines)? arrange;
 
   final Map<String, DateTime> _until = {};
   final Map<String, Duration> _last = {};
@@ -83,7 +89,8 @@ class FallbackSttProvider implements SttProvider {
       if (soonest == null || left < soonest!) soonest = left;
     }
 
-    for (final engine in engines) {
+    final ordered = arrange == null ? engines : await arrange!(engines);
+    for (final engine in ordered) {
       if (coolingDown(engine.id)) {
         rest(engine.id);
         continue;

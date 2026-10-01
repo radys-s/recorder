@@ -40,11 +40,13 @@ class _ChatBarState extends ConsumerState<ChatBar> {
   }
 
   /// Where the message sorts into the transcript: the moment it was typed
-  /// while recording, otherwise after everything already transcribed.
+  /// while recording, otherwise after everything already transcribed. The
+  /// moment is audio time — paused stretches hold no audio, so counting them
+  /// would push the message past the chunks it was typed between.
   int _atMs() {
-    final startedAt = ref.read(recordingControllerProvider).startedAt;
-    if (widget.recording && startedAt != null) {
-      return DateTime.now().difference(startedAt).inMilliseconds;
+    final state = ref.read(recordingControllerProvider);
+    if (widget.recording && state.startedAt != null) {
+      return state.elapsed.inMilliseconds;
     }
     final segments = ref
         .read(meetingSegmentsProvider(widget.meetingId))
@@ -179,10 +181,10 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     if (_answering) return;
     setState(() => _answering = true);
 
-    final startedAt = ref.read(recordingControllerProvider).startedAt;
-    final cutAtMs = startedAt == null
+    final state = ref.read(recordingControllerProvider);
+    final cutAtMs = state.startedAt == null
         ? null
-        : DateTime.now().difference(startedAt).inMilliseconds;
+        : state.elapsed.inMilliseconds;
     ref.read(recordingControllerProvider.notifier).cutNow();
     final outcome = await ref
         .read(liveAnswerServiceProvider)
@@ -195,6 +197,8 @@ class _ChatBarState extends ConsumerState<ChatBar> {
       AnswerNowOutcome.noQuestion =>
         'V poslední půlminutě jsem otázku nenašel.',
       AnswerNowOutcome.nothingHeard => 'Zatím nic nezaznělo.',
+      AnswerNowOutcome.stillTranscribing =>
+        'Ještě se přepisuje — zkus to za chvíli znovu.',
       AnswerNowOutcome.failed =>
         'Odpověď se nepodařilo získat. Zkus to za chvíli znovu.',
     };

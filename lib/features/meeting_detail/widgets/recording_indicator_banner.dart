@@ -8,6 +8,7 @@ import '../../../audio/recording_controller.dart';
 import '../../../core/formatting.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
+import '../../../queue/transcription_wait.dart';
 import '../../../core/spacing.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/level_waveform.dart';
@@ -229,13 +230,24 @@ class _BannerState extends ConsumerState<_Banner> {
     final meetingId = recording.meetingId;
     final paused = recording.isPaused;
     final elapsed = recording.elapsed;
+    final wait = ref.watch(transcriptionWaitProvider).valueOrNull;
     // One notice at a time, the most serious first.
     final (noticeKind, noticeText) = recording.micSilent
-        ? ('silent', 'Mikrofon nic neslyší — zkontroluj, jestli není zakrytý nebo ztlumený')
+        ? (
+            'silent',
+            'Mikrofon nic neslyší — zkontroluj, jestli není zakrytý nebo ztlumený',
+          )
         : recording.lowDisk
-        ? ('disk', 'V telefonu dochází místo — uvolni ho, ať se hodina uloží celá')
+        ? (
+            'disk',
+            'V telefonu dochází místo — uvolni ho, ať se hodina uloží celá',
+          )
+        : ref.watch(lessonOverProvider)
+        ? ('over', 'Hodina skončila — ukončit nahrávání?')
         : recording.weakSignal
         ? ('weak', 'Slabý signál — polož telefon blíž k vyučujícímu')
+        : wait != null
+        ? ('wait', transcriptionWaitText(wait))
         : ('', '');
     final noticeKey = '$meetingId:$noticeKind';
     final scheme = Theme.of(context).colorScheme;
@@ -350,7 +362,11 @@ class _BannerState extends ConsumerState<_Banner> {
                 if (warn)
                   _RecordingNotice(
                     message: noticeText,
-                    onDismiss: () => setState(() => _noticeDismissed = noticeKey),
+                    icon: noticeKind == 'wait'
+                        ? Icons.hourglass_empty
+                        : Icons.mic_off_outlined,
+                    onDismiss: () =>
+                        setState(() => _noticeDismissed = noticeKey),
                   ),
               ],
             ),
@@ -366,9 +382,14 @@ class _BannerState extends ConsumerState<_Banner> {
 /// processing afterwards can put back what never reached it. Moving the phone
 /// can. A silent microphone and a filling disk use the same strip.
 class _RecordingNotice extends StatelessWidget {
-  const _RecordingNotice({required this.message, required this.onDismiss});
+  const _RecordingNotice({
+    required this.message,
+    required this.icon,
+    required this.onDismiss,
+  });
 
   final String message;
+  final IconData icon;
   final VoidCallback onDismiss;
 
   @override
@@ -378,11 +399,7 @@ class _RecordingNotice extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: Gap.xs),
       child: Row(
         children: [
-          Icon(
-            Icons.mic_off_outlined,
-            size: 18,
-            color: scheme.onErrorContainer,
-          ),
+          Icon(icon, size: 18, color: scheme.onErrorContainer),
           const SizedBox(width: Gap.sm),
           Expanded(
             child: Text(

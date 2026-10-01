@@ -44,7 +44,9 @@ class StudyCardGenerator {
         subjectId,
         notes,
         meetingId: meetingId,
-        wholeNoteFallback: false,
+        // Heslovitě and Jen to hlavní have no „Co si zapamatovat" section;
+        // they are short, so the whole of them is what there is to learn.
+        wholeNoteFallback: true,
       );
     } catch (e, st) {
       AppLog.e(_tag, 'meeting $meetingId: study cards failed', e, st);

@@ -109,9 +109,13 @@ class PcmChunker {
   /// Every completed frame's normalised RMS, for level calibration.
   final void Function(double rms)? onFrameLevel;
 
-  final Duration minDuration;
-  final Duration targetDuration;
-  final Duration hardCapDuration;
+  /// The chunk lengths may change while a recording runs (the live-answers
+  /// switch picks shorter ones). A length is only compared with the chunk in
+  /// progress, once per frame, so a new value puts no seam in the audio: it
+  /// simply decides where the next cut falls.
+  Duration minDuration;
+  Duration targetDuration;
+  Duration hardCapDuration;
   final Duration frameDuration;
 
   /// The two level thresholds are the only settings that may change while a

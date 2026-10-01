@@ -32,6 +32,7 @@ import 'widgets/latest_answer_panel.dart';
 import 'widgets/meeting_notes_tab.dart';
 import 'widgets/refined_window_tile.dart';
 import 'widgets/transcript_segment_tile.dart';
+import 'widgets/transcription_wait_notice.dart';
 import 'widgets/word_fix_sheet.dart';
 
 enum _MeetingAction { lesson, rename, share, delete }
@@ -180,25 +181,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     await shareText(context, title: meeting.title, content: text);
   }
 
-  Future<void> _toggleLiveAnswers(bool enabled, bool recordingNow) async {
-    await ref.read(preferencesDaoProvider).setLiveAnswersEnabled(enabled);
-    if (!mounted || !enabled || !recordingNow) return;
-
-    // Turning it on mid-recording is a half-measure and saying so beats
-    // letting the user wonder why answers are slow: the chunk length was
-    // fixed when the recording started, so answers will arrive at the normal
-    // 15-30 s cadence rather than the fast one.
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Odpovědi se zapnuly. Kratší úseky zvuku se nastavují na začátku '
-            'nahrávání, takže teď přijdou pomaleji.',
-          ),
-        ),
-      );
-  }
+  /// The recording controller watches the preference, so a lesson already
+  /// running switches to the shorter chunks at its next cut.
+  Future<void> _toggleLiveAnswers(bool enabled) =>
+      ref.read(preferencesDaoProvider).setLiveAnswersEnabled(enabled);
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +256,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   ? 'Živé odpovědi jsou zapnuté'
                   : 'Živé odpovědi jsou vypnuté',
               onPressed: prefs.hasValue
-                  ? () => _toggleLiveAnswers(!liveAnswers, isThisOneRecording)
+                  ? () => _toggleLiveAnswers(!liveAnswers)
                   : null,
             ),
             PopupMenuButton<_MeetingAction>(
@@ -406,7 +392,8 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   onDismiss: () => _dismissCard(latest.id),
                 ),
         ),
-        if (!isThisOneRecording) _refinedHeader(),
+        const TranscriptionWaitNotice(),
+        _refinedHeader(recording: isThisOneRecording),
         Expanded(child: _transcriptList(isThisOneRecording, cards, messages)),
         // Stopping lives in the recording banner, so the bar has the bottom.
         ChatBar(meetingId: widget.meetingId, recording: isThisOneRecording),
@@ -420,10 +407,11 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     List<ChatMessage> messages,
   ) {
     final segments = ref.watch(meetingSegmentsProvider(widget.meetingId));
-    final refined = isThisOneRecording
-        ? const <RefinedSegment>[]
-        : ref.watch(refinedSegmentsProvider(widget.meetingId)).valueOrNull ??
-              const <RefinedSegment>[];
+    // While recording, windows that are already done replace the live chunks
+    // they cover; the chunks after the last window stay live.
+    final refined =
+        ref.watch(refinedSegmentsProvider(widget.meetingId)).valueOrNull ??
+        const <RefinedSegment>[];
     final useRefined =
         !_showLive &&
         refined.any(
@@ -554,9 +542,11 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   static bool _isText(Object item) =>
       item is TranscriptSegment || item is RefinedSegment;
 
-  /// Refined-transcript controls on a finished meeting: which transcript to
-  /// read, how far the second pass is, and a way to run it again.
-  Widget _refinedHeader() {
+  /// Refined-transcript controls: which transcript to read, how far the second
+  /// pass is, and a way to run it again. While [recording] there is nothing to
+  /// start or redo — the second pass follows the lesson on its own — so the
+  /// header only appears once a window exists.
+  Widget _refinedHeader({required bool recording}) {
     final refined = ref
         .watch(refinedSegmentsProvider(widget.meetingId))
         .valueOrNull;
@@ -577,6 +567,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         null;
 
     if (refined.isEmpty) {
+      if (recording) return const SizedBox.shrink();
       return Padding(
         padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, 0),
         child: Align(
@@ -647,7 +638,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
           ),
           IconButton(
             tooltip: cleared ? 'Zvuk už byl smazán' : 'Přepsat znovu',
-            onPressed: working > 0 || cleared
+            onPressed: working > 0 || cleared || recording
                 ? null
                 : () => service.refine(widget.meetingId, force: true),
             icon: const Icon(Icons.refresh),

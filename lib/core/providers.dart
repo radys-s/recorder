@@ -27,6 +27,7 @@ import '../ai/gemini_models.dart';
 import '../ai/gemini_provider.dart';
 import '../ai/groq_chat_provider.dart';
 import '../ai/lesson_context_source.dart';
+import '../ai/lesson_notes_scheduler.dart';
 import '../ai/live_answer_service.dart';
 import '../ai/llm_provider.dart';
 import '../ai/notes_generator.dart';
@@ -34,6 +35,7 @@ import '../ai/openai_compatible_provider.dart';
 import '../ai/vision_fallback.dart';
 import '../ai/web_answer_service.dart';
 import '../audio/audio_capture_service.dart';
+import '../audio/lesson_end_watcher.dart';
 import '../audio/pcm_audio_source.dart';
 import '../audio/wav_replay_audio_source.dart';
 import 'storage_info.dart';
@@ -42,7 +44,6 @@ import '../data/db/daos/answer_cards_dao.dart';
 import '../data/db/daos/chat_messages_dao.dart';
 import '../data/db/daos/meeting_notes_dao.dart';
 import '../data/db/daos/preferences_dao.dart';
-import '../data/db/tables/meeting_notes_table.dart';
 import '../data/db/tables/subject_terms_table.dart';
 import '../audio/recording_controller.dart';
 import '../data/audio_cleaner.dart';
@@ -53,6 +54,7 @@ import 'logging.dart';
 import 'listening_diagnostics.dart';
 import '../queue/refined_transcript_service.dart';
 import '../queue/transcription_queue_worker.dart';
+import '../queue/transcription_wait.dart';
 import '../data/db/daos/refined_segments_dao.dart';
 import '../stt/fallback_stt_provider.dart';
 import '../stt/gemini_stt_provider.dart';
@@ -181,10 +183,9 @@ List<AiRoute> _aiRoutes(Ref ref, {String? reasoningEffort}) {
         vendor: 'Vlastní',
         // Re-checked on every request, so an address saved before the https
         // rule (or edited in the Keychain) can never receive the key.
-        baseUrl: () async =>
-            checkCustomEndpoint(
-              await ref.watch(customAiBaseUrlStoreProvider).read(),
-            ).url,
+        baseUrl: () async => checkCustomEndpoint(
+          await ref.watch(customAiBaseUrlStoreProvider).read(),
+        ).url,
       ),
       models: (tier, _) async {
         final id = (await customModel.read())?.trim() ?? '';
@@ -262,11 +263,17 @@ final notesGeneratorProvider = Provider<NotesGenerator>((ref) {
         )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
         final subjectId = meeting?.subjectId;
         if (subjectId != null) {
+          final before = (await db.subjectsDao.terms(subjectId)).length;
           await db.subjectsDao.addTerms(
             subjectId,
             keyTermsFromNotes(notes),
             TermSource.notes,
           );
+          // A new foreign word is one Whisper will mishear next lesson; the
+          // heard forms are made once, now, and cost nothing afterwards.
+          if ((await db.subjectsDao.terms(subjectId)).length > before) {
+            unawaited(ref.read(termAliasServiceProvider).generate(subjectId));
+          }
         }
       } catch (e, st) {
         AppLog.e(
@@ -534,20 +541,31 @@ final transcriptCorrectorProvider = Provider<TranscriptCorrector>((ref) {
 
 /// Groq's two Whisper models — each has its own limit — used for the long
 /// windows of the second pass, which already has Gemini as its own engine.
+///
+/// Without a Gemini key Whisper is the whole second pass, and the live pass has
+/// just spent the large model's audio-seconds on the same recording; the turbo
+/// model has a limit of its own, so it goes first and large is the fallback.
+/// With a key Whisper only catches Gemini's failures, so quality comes first.
 final whisperSttProvider = Provider<SttProvider>((ref) {
   final keys = ref.watch(apiKeyStoreProvider);
-  return FallbackSttProvider([
-    SttEngine('groq-large', GroqWhisperSttProvider(keys), keys.hasKey),
-    SttEngine(
-      'groq-turbo',
-      GroqWhisperSttProvider(
-        keys,
-        model: kGroqWhisperTurboModel,
-        engine: 'groq-turbo',
+  final gemini = ref.watch(geminiKeyStoreProvider);
+  return FallbackSttProvider(
+    arrange: (engines) async {
+      return await gemini.hasKey() ? engines : engines.reversed.toList();
+    },
+    [
+      SttEngine('groq-large', GroqWhisperSttProvider(keys), keys.hasKey),
+      SttEngine(
+        'groq-turbo',
+        GroqWhisperSttProvider(
+          keys,
+          model: kGroqWhisperTurboModel,
+          engine: 'groq-turbo',
+        ),
+        keys.hasKey,
       ),
-      keys.hasKey,
-    ),
-  ]);
+    ],
+  );
 });
 
 /// Live transcription: Groq large, then Groq turbo, then Gemini listening to
@@ -604,6 +622,19 @@ final queueWorkerProvider = Provider<TranscriptionQueueWorker>((ref) {
   return worker;
 });
 
+/// Why transcription is standing still (a limit or a missing key), or null.
+final transcriptionWaitProvider = StreamProvider<TranscriptionWait?>((ref) {
+  final worker = ref.watch(queueWorkerProvider);
+  final controller = StreamController<TranscriptionWait?>();
+  controller.add(worker.currentWait);
+  final sub = worker.waitChanges.listen(controller.add);
+  ref.onDispose(() {
+    sub.cancel();
+    controller.close();
+  });
+  return controller.stream;
+});
+
 /// Frees the chunk WAVs of lessons that are finished with them.
 final audioCleanerProvider = Provider<AudioCleaner>((ref) {
   final db = ref.watch(appDatabaseProvider);
@@ -625,11 +656,47 @@ final audioCleanerProvider = Provider<AudioCleaner>((ref) {
 /// from the launch details — so it is parked here rather than delivered.
 final pendingReminderSubjectProvider = StateProvider<int?>((ref) => null);
 
+/// A lesson whose „výpisky jsou hotové" notification was tapped, until a
+/// screen opens it.
+final pendingLessonProvider = StateProvider<int?>((ref) => null);
+
 final reminderSchedulerProvider = Provider<LocalReminderScheduler>((ref) {
   return LocalReminderScheduler(
     onTap: (subjectId) =>
         ref.read(pendingReminderSubjectProvider.notifier).state = subjectId,
+    onOpenLesson: (meetingId) =>
+        ref.read(pendingLessonProvider.notifier).state = meetingId,
   );
+});
+
+/// True while the lesson being recorded is past the end of its timetable
+/// slot. Only a hint for the screen; nothing stops by itself.
+final lessonOverProvider = StateProvider<bool>((ref) => false);
+
+/// The subject's name for the end-of-lesson notification, kept next to the
+/// watcher so the notification can name it.
+final lessonEndWatcherProvider = Provider<LessonEndWatcher>((ref) {
+  final watcher = LessonEndWatcher(
+    scheduleNotification: (end, meetingId) async {
+      final db = ref.read(appDatabaseProvider);
+      final meeting = await db.meetingsDao.watchMeetingByIdOnce(meetingId);
+      final subjectId = meeting?.subjectId;
+      if (subjectId == null) return;
+      final subject = await db.subjectsDao.subject(subjectId);
+      await ref
+          .read(reminderSchedulerProvider)
+          .scheduleLessonEnd(
+            at: end,
+            meetingId: meetingId,
+            subjectName: subject?.name ?? 'z rozvrhu',
+          );
+    },
+    cancelNotification: () =>
+        ref.read(reminderSchedulerProvider).cancelLessonEnd(),
+    onOver: (over) => ref.read(lessonOverProvider.notifier).state = over,
+  );
+  ref.onDispose(watcher.stop);
+  return watcher;
 });
 
 /// Keeps the pending notifications in step with the timetable.
@@ -649,6 +716,27 @@ final refinedSegmentsProvider =
     StreamProvider.family<List<RefinedSegment>, int>((ref, meetingId) {
       return ref.watch(refinedSegmentsDaoProvider).watchForMeeting(meetingId);
     });
+
+/// Makes a lesson's výpisky once the lesson is over and everything is heard.
+final lessonNotesSchedulerProvider = Provider<LessonNotesScheduler>((ref) {
+  return LessonNotesScheduler(
+    ref.watch(appDatabaseProvider),
+    generate: (meetingId, depth) => ref
+        .read(notesGeneratorProvider)
+        .generate(meetingId: meetingId, depth: depth),
+    announce: (meetingId, subjectName) => ref
+        .read(reminderSchedulerProvider)
+        .showNow(
+          id: _notesNotificationId,
+          title: 'Výpisky z $subjectName jsou hotové',
+          body: 'Otevři je v aplikaci.',
+          payload: LocalReminderScheduler.lessonPayload(meetingId),
+        ),
+  );
+});
+
+/// Distinct from the recording-alert id, so one never replaces the other.
+const int _notesNotificationId = 4301;
 
 /// The second transcription pass after a recording. Resumed at app launch.
 final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
@@ -680,21 +768,12 @@ final refinedTranscriptServiceProvider = Provider<RefinedTranscriptService>((
       );
     },
     waitForTurn: _waitUntilOnline,
+    // Fire and forget by design: refinement is the bottleneck that holds audio
+    // retention and should never wait minutes for an AI summary — or for the
+    // upload queue the scheduler is waiting on.
     onMeetingReady: (meetingId) async {
-      final existing = await db.meetingNotesDao.forMeeting(meetingId);
-      // A finished set of notes is the user's deliberate result. Do not
-      // overwrite it merely because a transcript was refined again.
-      if (existing?.status == NotesStatus.ready ||
-          existing?.status == NotesStatus.generating) {
-        return;
-      }
-      final preferences = await db.preferencesDao.current();
-      // Fire and forget by design: refinement is the bottleneck that holds
-      // audio retention and should never wait minutes for an AI summary.
       unawaited(
-        ref
-            .read(notesGeneratorProvider)
-            .generate(meetingId: meetingId, depth: preferences.notesDepth),
+        ref.read(lessonNotesSchedulerProvider).onMeetingReady(meetingId),
       );
     },
     // The pass is the last thing that needs the chunk files, so this is the

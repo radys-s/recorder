@@ -35,7 +35,8 @@ class PendingAudio {
   final Uint8List pcm;
 
   int get durationMs =>
-      (pcm.length * 1000) ~/ (kSampleRateHz * kChannels * (kBitsPerSample ~/ 8));
+      (pcm.length * 1000) ~/
+      (kSampleRateHz * kChannels * (kBitsPerSample ~/ 8));
 }
 
 String pendingAudioPath(String sessionDir) =>
@@ -98,7 +99,10 @@ Future<void> deletePendingAudio(String sessionDir) async {
       final file = File(path);
       if (await file.exists()) await file.delete();
     } on FileSystemException catch (e) {
-      AppLog.d('audio.pending', 'could not delete $path (${e.osError?.errorCode})');
+      AppLog.d(
+        'audio.pending',
+        'could not delete $path (${e.osError?.errorCode})',
+      );
     }
   }
 }
@@ -204,11 +208,16 @@ Future<List<int>> recoverPendingAudio({
       AppLog.d(
         'audio.pending',
         'recovered ${pending.durationMs} ms of meeting $meetingId as chunk '
-        '${pending.sequence}',
+            '${pending.sequence}',
       );
     } catch (e, st) {
       // One unreadable folder must not stop the others from being recovered.
-      AppLog.e('audio.pending', 'recovery of ${p.basename(entry.path)} failed', e, st);
+      AppLog.e(
+        'audio.pending',
+        'recovery of ${p.basename(entry.path)} failed',
+        e,
+        st,
+      );
     }
   }
   return recovered;

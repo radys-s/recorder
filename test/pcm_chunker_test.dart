@@ -41,6 +41,24 @@ void main() {
     chunker = PcmChunker(onChunk: chunks.add);
   });
 
+  test('shorter lengths set mid-chunk apply from the next frame, gaplessly', () {
+    _feed(chunker, _loud(25000));
+    expect(chunks, isEmpty);
+
+    chunker.hardCapDuration = const Duration(seconds: 20);
+    _feed(chunker, _loud(2000));
+    expect(chunks, hasLength(1));
+    expect(chunks.single.cutReason, ChunkCutReason.hardCap);
+
+    _feed(chunker, _loud(30000));
+    chunker.flush();
+    final total = chunks.fold<int>(0, (sum, c) => sum + c.byteLength);
+    expect(total, 57000 * _bytesPerMs);
+    for (var i = 1; i < chunks.length; i++) {
+      expect(chunks[i].startMs, chunks[i - 1].endMs);
+    }
+  });
+
   test('emits nothing before the minimum duration', () {
     _feed(chunker, _loud(5000));
     _feed(chunker, _silent(5000));

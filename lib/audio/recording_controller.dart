@@ -367,34 +367,23 @@ class RecordingController extends Notifier<RecordingState> {
       }
       final lowDisk = free != null && free < kLowDiskBytes;
 
-      // The chunk profile is decided once, here, and holds for the whole
-      // recording: the chunker is built with the stream and cutting the
-      // remaining audio differently halfway through would put a seam in the
-      // timeline. Toggling live answers mid-meeting therefore changes only
-      // whether answers are generated, not how the audio is cut.
+      // The chunk lengths follow the live-answers switch, also mid-lesson:
+      // the new lengths only decide where the *next* cut falls, so the audio
+      // already cut and the timeline are untouched.
       final prefs = await _db.preferencesDao.current();
       final fast = prefs.liveAnswersEnabled;
       // A new recording measures its room from scratch.
       _calibrator = null;
       _quality = SignalQualityTracker();
       _sensitivity = null;
-      _chunker = PcmChunker(
-        onChunk: _onChunk,
-        onFrameLevel: _onFrameLevel,
-        minDuration: fast ? kFastChunkMinDuration : kChunkMinDuration,
-        targetDuration: fast ? kFastChunkTargetDuration : kChunkTargetDuration,
-        hardCapDuration: fast
-            ? kFastChunkHardCapDuration
-            : kChunkHardCapDuration,
-      );
-      AppLog.d(
-        _tag,
-        'chunk profile: ${fast ? 'fast (live answers)' : 'normal'}',
-      );
+      _chunker = PcmChunker(onChunk: _onChunk, onFrameLevel: _onFrameLevel);
+      _applyChunkProfile(fast);
       _applySensitivity(prefs.micSensitivity);
       _prefsSubscription = ref.listen(preferencesProvider, (_, next) {
-        final sensitivity = next.valueOrNull?.micSensitivity;
-        if (sensitivity != null) _applySensitivity(sensitivity);
+        final value = next.valueOrNull;
+        if (value == null) return;
+        _applySensitivity(value.micSensitivity);
+        _applyChunkProfile(value.liveAnswersEnabled);
       });
       _pauseStarted = null;
       _pausedDuration = Duration.zero;
@@ -591,6 +580,23 @@ class RecordingController extends Notifier<RecordingState> {
     return chunker.cut();
   }
 
+  bool? _fastChunks;
+
+  /// Short chunks while live answers are on, normal ones otherwise.
+  /// Idempotent for the same reason as [_applySensitivity].
+  void _applyChunkProfile(bool fast) {
+    final chunker = _chunker;
+    if (chunker == null || fast == _fastChunks) return;
+    _fastChunks = fast;
+    chunker
+      ..minDuration = fast ? kFastChunkMinDuration : kChunkMinDuration
+      ..targetDuration = fast ? kFastChunkTargetDuration : kChunkTargetDuration
+      ..hardCapDuration = fast
+          ? kFastChunkHardCapDuration
+          : kChunkHardCapDuration;
+    AppLog.d(_tag, 'chunk profile: ${fast ? 'fast (live answers)' : 'normal'}');
+  }
+
   /// Idempotent: the preferences stream re-emits on every unrelated setting,
   /// and a freshly built chunker needs the thresholds even when the setting
   /// itself did not change.
@@ -627,7 +633,10 @@ class RecordingController extends Notifier<RecordingState> {
     }
     if (_silentMic?.add(rms) ?? false) {
       final silent = _silentMic!.silent;
-      AppLog.w(_tag, silent ? 'microphone hears nothing' : 'microphone hears again');
+      AppLog.w(
+        _tag,
+        silent ? 'microphone hears nothing' : 'microphone hears again',
+      );
       state = state.copyWith(micSilent: silent);
     }
     final next = _calibrator?.add(rms);
@@ -812,7 +821,10 @@ class RecordingController extends Notifier<RecordingState> {
       );
     } catch (e) {
       // Best effort: the real chunk write reports a full disk properly.
-      AppLog.d(_tag, 'could not write the recovery snapshot (${e.runtimeType})');
+      AppLog.d(
+        _tag,
+        'could not write the recovery snapshot (${e.runtimeType})',
+      );
     } finally {
       _writingPending = false;
     }

@@ -66,9 +66,10 @@ class RefinedTranscriptService {
   /// Awaited before every request, e.g. to wait out a missing connection.
   final Future<void> Function()? waitForTurn;
 
-  /// Called after all refinement windows for one finished meeting settle.
-  /// This deliberately runs after the second pass: notes should use the best
-  /// text available, not race the live chunk transcription.
+  /// Called after all refinement windows for one *finished* meeting settle —
+  /// never while the recording still runs. This deliberately runs after the
+  /// second pass: notes should use the best text available, not race the live
+  /// chunk transcription.
   final Future<void> Function(int meetingId)? onMeetingReady;
 
   /// Called once the queue runs dry. The audio cleanup hangs off this: a
@@ -146,7 +147,10 @@ class RefinedTranscriptService {
           _tag,
           'meeting $meetingId: ${plans.length} window(s) via ${engine.name}',
         );
-        if (plans.isEmpty) return;
+        if (plans.isEmpty) {
+          await _settle(meetingId, live);
+          return;
+        }
       } else {
         final existing = await dao.windows(meetingId);
         // Chunks only ever get appended, so the boundaries of the windows
@@ -166,7 +170,10 @@ class RefinedTranscriptService {
                 engine: engine,
               ),
         ];
-        if (fresh.isEmpty) return;
+        if (fresh.isEmpty) {
+          await _settle(meetingId, live);
+          return;
+        }
         await dao.addWindows(meetingId, fresh);
         AppLog.d(
           _tag,
@@ -179,6 +186,15 @@ class RefinedTranscriptService {
     } catch (e, st) {
       AppLog.e(_tag, 'meeting $meetingId: could not plan', e, st);
     }
+  }
+
+  /// Nothing new to hear. A lesson that just ended still has to be reported
+  /// as ready — a short one has no window at all, and one whose windows were
+  /// all done during the lesson has nothing left but the notes.
+  Future<void> _settle(int meetingId, bool live) {
+    if (live) return Future<void>.value();
+    _enqueue(meetingId);
+    return _kick();
   }
 
   /// Tries one failed window again.
@@ -228,7 +244,12 @@ class RefinedTranscriptService {
           .firstOrNull;
       if (next == null) {
         try {
-          await onMeetingReady?.call(meetingId);
+          // Notes are made from a finished lesson. A window that closes while
+          // the recording still runs is not the lesson's end.
+          final meeting = await (_db.select(
+            _db.meetings,
+          )..where((t) => t.id.equals(meetingId))).getSingleOrNull();
+          if (meeting?.endedAt != null) await onMeetingReady?.call(meetingId);
         } catch (e, st) {
           AppLog.e(
             _tag,

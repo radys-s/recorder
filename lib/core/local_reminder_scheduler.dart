@@ -21,8 +21,11 @@ import 'logging.dart';
 /// which is a permission dialog and a Play policy for something that says „za
 /// chvíli začíná" — a minute either way changes nothing.
 class LocalReminderScheduler implements ReminderScheduler {
-  LocalReminderScheduler({FlutterLocalNotificationsPlugin? plugin, this.onTap})
-    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  LocalReminderScheduler({
+    FlutterLocalNotificationsPlugin? plugin,
+    this.onTap,
+    this.onOpenLesson,
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   static const _tag = 'reminders';
   static const _channelId = 'lesson_reminders';
@@ -42,6 +45,18 @@ class LocalReminderScheduler implements ReminderScheduler {
 
   /// Called with the subject of the reminder the user tapped.
   final void Function(int subjectId)? onTap;
+
+  /// Called with the lesson of a „výpisky jsou hotové" notification the user
+  /// tapped.
+  final void Function(int meetingId)? onOpenLesson;
+
+  /// The „hodina skončila" notification of the lesson being recorded. Not in
+  /// the range the timetable reminders use, and kept out of [cancelAll] so that
+  /// re-planning the week mid-lesson does not drop it.
+  static const int lessonEndId = 4302;
+
+  /// Payload of a notification that opens a lesson.
+  static String lessonPayload(int meetingId) => 'lesson:$meetingId';
 
   bool _ready = false;
 
@@ -68,7 +83,13 @@ class LocalReminderScheduler implements ReminderScheduler {
       _ready = true;
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp ?? false) {
-        return _subjectOf(launch?.notificationResponse?.payload);
+        final payload = launch?.notificationResponse?.payload;
+        final lessonId = lessonOf(payload);
+        if (lessonId != null) {
+          onOpenLesson?.call(lessonId);
+          return null;
+        }
+        return _subjectOf(payload);
       }
     } catch (e, st) {
       AppLog.e(_tag, 'notifications could not be initialised', e, st);
@@ -110,9 +131,48 @@ class LocalReminderScheduler implements ReminderScheduler {
     await init();
     if (!_ready) return;
     try {
-      await _plugin.cancelAll();
+      final pending = await _plugin.pendingNotificationRequests();
+      for (final request in pending) {
+        if (request.id == lessonEndId) continue;
+        await _plugin.cancel(id: request.id);
+      }
     } catch (e, st) {
       AppLog.e(_tag, 'cancelling reminders failed', e, st);
+    }
+  }
+
+  /// One notification at [at] that opens [meetingId] when tapped.
+  Future<void> scheduleLessonEnd({
+    required DateTime at,
+    required int meetingId,
+    required String subjectName,
+  }) async {
+    if (kIsWeb) return;
+    await init();
+    if (!_ready) return;
+    try {
+      await _plugin.zonedSchedule(
+        id: lessonEndId,
+        title: 'Hodina $subjectName skončila',
+        body: 'Nahrávání pořád běží — ukončit?',
+        scheduledDate: tz.TZDateTime.from(at, tz.UTC),
+        notificationDetails: _details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: lessonPayload(meetingId),
+      );
+    } catch (e, st) {
+      AppLog.e(_tag, 'scheduling the lesson-end notice failed', e, st);
+    }
+  }
+
+  Future<void> cancelLessonEnd() async {
+    if (kIsWeb) return;
+    await init();
+    if (!_ready) return;
+    try {
+      await _plugin.cancel(id: lessonEndId);
+    } catch (e, st) {
+      AppLog.e(_tag, 'cancelling the lesson-end notice failed', e, st);
     }
   }
 
@@ -145,6 +205,7 @@ class LocalReminderScheduler implements ReminderScheduler {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     if (kIsWeb) return;
     await init();
@@ -155,6 +216,7 @@ class LocalReminderScheduler implements ReminderScheduler {
         title: title,
         body: body,
         notificationDetails: _details,
+        payload: payload,
       );
     } catch (e, st) {
       AppLog.e(_tag, 'showing a notification failed', e, st);
@@ -162,9 +224,20 @@ class LocalReminderScheduler implements ReminderScheduler {
   }
 
   void _handlePayload(String? payload) {
+    final lessonId = lessonOf(payload);
+    if (lessonId != null) {
+      onOpenLesson?.call(lessonId);
+      return;
+    }
     final subjectId = _subjectOf(payload);
     if (subjectId != null) onTap?.call(subjectId);
   }
+
+  /// The lesson a payload names, if it is a lesson payload.
+  static int? lessonOf(String? payload) =>
+      payload != null && payload.startsWith('lesson:')
+      ? int.tryParse(payload.substring('lesson:'.length))
+      : null;
 
   static int? _subjectOf(String? payload) =>
       payload == null ? null : int.tryParse(payload);

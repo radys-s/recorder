@@ -83,7 +83,8 @@ class ForegroundRecordingService {
   Future<bool> ensureNotificationPermission() async {
     if (!_supported) return true;
 
-    final permission = await FlutterForegroundTask.checkNotificationPermission();
+    final permission =
+        await FlutterForegroundTask.checkNotificationPermission();
     if (permission == NotificationPermission.granted) return true;
 
     final result = await FlutterForegroundTask.requestNotificationPermission();
@@ -125,7 +126,10 @@ class ForegroundRecordingService {
   }
 
   /// Updates the persistent notification's text without restarting anything.
-  Future<void> updateNotification({required String title, required String text}) async {
+  Future<void> updateNotification({
+    required String title,
+    required String text,
+  }) async {
     if (!await isRunning) return;
     await FlutterForegroundTask.updateService(
       notificationTitle: title,

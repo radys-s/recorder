@@ -11,6 +11,7 @@ import '../../../core/formatting.dart';
 import '../../../core/logging.dart';
 import '../../../core/motion.dart';
 import '../../../core/providers.dart';
+import '../../../queue/transcription_wait.dart';
 import '../../../core/spacing.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/level_waveform.dart';
@@ -125,10 +126,13 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
     if (meetingId == null || startedAt == null) return;
     unawaited(HapticFeedback.mediumImpact());
     try {
-      await ref.read(chatMessagesDaoProvider).addImportant(
-        meetingId: meetingId,
-        atMs: DateTime.now().difference(startedAt).inMilliseconds,
-      );
+      await ref
+          .read(chatMessagesDaoProvider)
+          .addImportant(
+            meetingId: meetingId,
+            // Audio time: a pause holds no audio, see `RecordingState.elapsed`.
+            atMs: state.elapsed.inMilliseconds,
+          );
     } catch (e, st) {
       AppLog.e('dashboard.stage', 'could not mark important', e, st);
       if (mounted) {
@@ -620,6 +624,8 @@ class _LiveStage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(recordingControllerProvider);
+    final lessonOver = ref.watch(lessonOverProvider);
+    final wait = ref.watch(transcriptionWaitProvider).valueOrNull;
     final meetingId = state.meetingId;
     final elapsed = state.elapsed;
     final width = MediaQuery.sizeOf(context).width;
@@ -685,14 +691,22 @@ class _LiveStage extends ConsumerWidget {
               ),
             ),
           ),
-          if (state.micSilent || state.lowDisk || state.weakSignal) ...[
+          if (state.micSilent ||
+              state.lowDisk ||
+              lessonOver ||
+              state.weakSignal ||
+              wait != null) ...[
             const SizedBox(height: Gap.xs),
             Text(
               state.micSilent
                   ? 'Mikrofon nic neslyší — zkontroluj, jestli není zakrytý'
                   : state.lowDisk
                   ? 'V telefonu dochází místo'
-                  : 'Slabý signál — polož telefon blíž k vyučujícímu',
+                  : lessonOver
+                  ? 'Hodina skončila — ukončit nahrávání?'
+                  : state.weakSignal
+                  ? 'Slabý signál — polož telefon blíž k vyučujícímu'
+                  : transcriptionWaitText(wait!),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: context.accent.palette.darkText.withValues(alpha: 0.9),

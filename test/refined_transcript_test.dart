@@ -333,12 +333,15 @@ void main() {
       dir.deleteSync(recursive: true);
     });
 
-    RefinedTranscriptService service() => RefinedTranscriptService(
+    RefinedTranscriptService service({
+      Future<void> Function(int meetingId)? onMeetingReady,
+    }) => RefinedTranscriptService(
           db,
           transcriber,
           hasGeminiKey: () async => geminiKey,
           resolvePath: (stored) async => p.join(dir.path, stored),
           tempDir: () async => dir,
+          onMeetingReady: onMeetingReady,
           retryDelays: const [Duration.zero],
         );
 
@@ -470,6 +473,35 @@ void main() {
       final w = (await db.refinedSegmentsDao.windows(meetingId)).single;
       expect(w.status, RefinedStatus.failed);
       expect(transcriber.geminiCalls, isEmpty);
+    });
+
+    test('reports a finished lesson once its windows are done', () async {
+      final meetingId = await seed(16);
+      final ready = <int>[];
+      await service(onMeetingReady: (id) async => ready.add(id)).refine(meetingId);
+      expect(ready, [meetingId]);
+    });
+
+    test('a lesson too short for any window is still reported', () async {
+      final meetingId = await seed(1, voicedMs: 20000); // 30 s
+      final ready = <int>[];
+      final s = service(onMeetingReady: (id) async => ready.add(id));
+      await s.refine(meetingId);
+      expect(ready, [meetingId]);
+    });
+
+    test('a window closing during the lesson is not a lesson that is done',
+        () async {
+      final meetingId = await seed(10, ended: false);
+      final ready = <int>[];
+      await service(onMeetingReady: (id) async => ready.add(id))
+          .refineWhileRecording(meetingId);
+      expect(
+        (await db.refinedSegmentsDao.windows(meetingId)),
+        isNotEmpty,
+        reason: 'the window was refined',
+      );
+      expect(ready, isEmpty);
     });
 
     test('a meeting still recording is not refined', () async {

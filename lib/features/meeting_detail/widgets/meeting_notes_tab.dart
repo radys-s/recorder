@@ -24,10 +24,11 @@ import '../../subjects/subjects_providers.dart';
 import '../meeting_detail_providers.dart';
 import '../transcript_fix.dart';
 
-/// The "Poznámky" tab: pick a depth, press the button, read the result.
+/// The "Poznámky" tab: pick a depth, read the result.
 ///
-/// Nothing here is generated automatically — an unopened meeting costs no Groq
-/// calls, and re-generating at another depth is one tap away.
+/// A lesson with a subject gets its výpisky on its own once it has ended (see
+/// `LessonNotesScheduler`); a meeting without one waits for the button. Either
+/// way, re-generating at another depth is one tap away.
 class MeetingNotesTab extends ConsumerStatefulWidget {
   const MeetingNotesTab({super.key, required this.meetingId});
 

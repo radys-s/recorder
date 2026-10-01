@@ -13,6 +13,7 @@ import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 import 'package:recorder/data/db/tables/upload_queue_table.dart';
 import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/queue/transcription_queue_worker.dart';
+import 'package:recorder/queue/transcription_wait.dart';
 import 'package:recorder/stt/lesson_vocabulary.dart';
 import 'package:recorder/stt/stt_provider.dart';
 import 'package:recorder/stt/transcript_corrector.dart';
@@ -271,6 +272,7 @@ class _Llm extends LlmProvider {
   _Llm(this.text, {this.throwing = false});
   final String? text;
   final bool throwing;
+  int calls = 0;
 
   @override
   Future<LlmCompletion> completeDetailed({
@@ -281,6 +283,7 @@ class _Llm extends LlmProvider {
     bool jsonMode = false,
     Duration? timeout,
   }) async {
+    calls++;
     if (throwing) throw const AiTransientException('rate limited');
     return LlmCompletion(content: text == null ? '{}' : '{"texts": ["$text"]}');
   }
@@ -299,6 +302,7 @@ class _World {
     Future<LessonListening?> Function(int meetingId)? listeningFor,
     TranscriptCorrector? corrector,
     Future<void> Function(Set<int> termIds)? onTermsUsed,
+    Duration correctionFlushAfter = kCorrectionFlushAfter,
   }) : stt = _Stt(respond) {
     worker = TranscriptionQueueWorker(
       queue,
@@ -310,6 +314,7 @@ class _World {
       listeningFor: listeningFor,
       corrector: corrector,
       onTermsUsed: onTermsUsed,
+      correctionFlushAfter: correctionFlushAfter,
       // Only the events under test wake the worker, never the clock.
       tick: const Duration(hours: 1),
     );
@@ -549,6 +554,60 @@ void main() {
     );
   });
 
+  group('proofreading batches', () {
+    const lesson = LessonListening(
+      subjectName: 'Čeština',
+      leadIn: 'Hodina: Čeština.',
+    );
+
+    _World world(_Llm llm, {Duration flushAfter = kCorrectionFlushAfter}) =>
+        _World(
+          (_) => _text('A viktorko zpívala u vody.'),
+          listeningFor: (_) async => lesson,
+          corrector: TranscriptCorrector(llm),
+          correctionFlushAfter: flushAfter,
+        );
+
+    test('an empty queue does not send a half-full batch', () async {
+      final llm = _Llm('A Viktorka zpívala u vody.');
+      final w = world(llm);
+      w.enqueue(1);
+      await w.worker.start();
+      await _until(() => w.row(1).status == QueueStatus.succeeded);
+      await _settle();
+      expect(llm.calls, 0, reason: 'the batch waits for more chunks');
+      await w.worker.stop();
+      await w.worker.settle();
+      expect(llm.calls, 1, reason: 'stopping sends what is waiting');
+    });
+
+    test('a batch that never fills goes out on its own clock', () async {
+      final llm = _Llm('A Viktorka zpívala u vody.');
+      final w = world(llm, flushAfter: const Duration(milliseconds: 40));
+      w.enqueue(1);
+      await w.worker.start();
+      await _until(() => w.row(1).status == QueueStatus.succeeded);
+      await _settle();
+      expect(llm.calls, 0);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await _settle();
+      expect(llm.calls, 1);
+      await w.worker.stop();
+    });
+
+    test('chunks arriving inside the window share one request', () async {
+      final llm = _Llm('A Viktorka zpívala u vody.');
+      final w = world(llm);
+      w.enqueue(1);
+      w.enqueue(2);
+      await w.worker.start();
+      await _until(() => w.row(2).status == QueueStatus.succeeded);
+      await w.worker.settle();
+      await w.worker.stop();
+      expect(llm.calls, 1);
+    });
+  });
+
   group('text that nobody said', () {
     Future<(_World, List<String>)> run(
       String sttText, {
@@ -755,26 +814,28 @@ void main() {
       expect(world.stt.calls, hasLength(1));
     });
 
-    test('a missing key leaves the rows waiting, with no attempts spent',
-        () async {
-      final world = _World(
-        (_) => throw const SttKeyMissing('Chybí klíč pro přepis.'),
-      );
-      world.enqueue(1);
-      world.enqueue(2);
+    test(
+      'a missing key leaves the rows waiting, with no attempts spent',
+      () async {
+        final world = _World(
+          (_) => throw const SttKeyMissing('Chybí klíč pro přepis.'),
+        );
+        world.enqueue(1);
+        world.enqueue(2);
 
-      await world.worker.start();
-      await _until(() => world.worker.waitingForKey);
-      await _settle();
-      await world.worker.stop();
+        await world.worker.start();
+        await _until(() => world.worker.waitingForKey);
+        await _settle();
+        await world.worker.stop();
 
-      for (final n in [1, 2]) {
-        expect(world.row(n).status, QueueStatus.pending);
-        expect(world.row(n).attemptCount, 0);
-        expect(world.segment(n).status, SegmentStatus.pending);
-      }
-      expect(world.stt.calls, hasLength(1));
-    });
+        for (final n in [1, 2]) {
+          expect(world.row(n).status, QueueStatus.pending);
+          expect(world.row(n).attemptCount, 0);
+          expect(world.segment(n).status, SegmentStatus.pending);
+        }
+        expect(world.stt.calls, hasLength(1));
+      },
+    );
 
     test('saving a key wakes the waiting rows', () async {
       var hasKey = false;
@@ -794,6 +855,60 @@ void main() {
 
       expect(world.worker.waitingForKey, isFalse);
       expect(world.segment(1).content, 'Teď už to jde.');
+    });
+
+    test(
+      'a limit is announced with its end, and the notice goes with it',
+      () async {
+        var limited = true;
+        final world = _World(
+          (_) => limited
+              ? throw const SttRateLimited(
+                  'slow down',
+                  retryAfter: Duration(seconds: 1),
+                )
+              : _text('Už to jde.'),
+        );
+        world.enqueue(1);
+        final seen = <TranscriptionWait?>[];
+        final sub = world.worker.waitChanges.listen(seen.add);
+        expect(world.worker.currentWait, isNull);
+
+        await world.worker.start();
+        await _until(() => world.worker.currentWait != null);
+        final wait = world.worker.currentWait!;
+        expect(wait.kind, TranscriptionWaitKind.rateLimit);
+        expect(wait.until, world.worker.pausedUntil);
+
+        limited = false;
+        await Future<void>.delayed(const Duration(milliseconds: 1300));
+        await _until(() => world.row(1).status == QueueStatus.succeeded);
+        await world.worker.stop();
+        await sub.cancel();
+
+        expect(world.worker.currentWait, isNull);
+        expect(seen.first?.kind, TranscriptionWaitKind.rateLimit);
+        expect(seen.last, isNull, reason: 'the notice must outlive neither');
+      },
+    );
+
+    test('a missing key is announced until one is saved', () async {
+      var hasKey = false;
+      final world = _World(
+        (_) => hasKey
+            ? _text('Teď už to jde.')
+            : throw const SttKeyMissing('Chybí klíč pro přepis.'),
+      );
+      world.enqueue(1);
+      await world.worker.start();
+      await _until(() => world.worker.currentWait != null);
+      expect(world.worker.currentWait!.kind, TranscriptionWaitKind.missingKey);
+
+      hasKey = true;
+      await world.worker.keysChanged();
+      await _until(() => world.row(1).status == QueueStatus.succeeded);
+      await world.worker.stop();
+      expect(world.worker.currentWait, isNull);
     });
 
     test('a refused key parks the row as a key failure, and a new key '
@@ -817,8 +932,7 @@ void main() {
       expect(world.segment(1).content, 'Už to projde.');
     });
 
-    test('other permanent failures are not requeued by a key change',
-        () async {
+    test('other permanent failures are not requeued by a key change', () async {
       final world = _World(
         (_) => throw const SttPermanentException('bad audio', statusCode: 400),
       );
@@ -833,8 +947,7 @@ void main() {
       expect(world.stt.calls, hasLength(1));
     });
 
-    test('the filter limits of the recording room go with the chunk',
-        () async {
+    test('the filter limits of the recording room go with the chunk', () async {
       final world = _World((_) => _text('Nějaká věta.'));
       world.enqueue(1);
       world.segments.byId[world.segmentId(1)] = world

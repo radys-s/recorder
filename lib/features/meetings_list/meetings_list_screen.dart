@@ -195,6 +195,13 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
       unawaited(_startRecording(subjectId: subjectId));
     });
 
+    // A tapped „výpisky jsou hotové" notification opens that lesson.
+    ref.listen(pendingLessonProvider, (_, meetingId) {
+      if (meetingId == null) return;
+      ref.read(pendingLessonProvider.notifier).state = null;
+      Navigator.of(context).push(MeetingDetailScreen.route(meetingId));
+    });
+
     final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
     final summaries = ref
         .watch(meetingSummariesProvider)

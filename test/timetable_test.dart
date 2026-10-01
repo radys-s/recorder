@@ -3,7 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/features/subjects/timetable.dart';
 
-TimetableSlot _slot(int id, int subjectId, int weekday, String from, String to) {
+TimetableSlot _slot(
+  int id,
+  int subjectId,
+  int weekday,
+  String from,
+  String to,
+) {
   int minute(String hm) {
     final [h, m] = hm.split(':').map(int.parse).toList();
     return h * 60 + m;
@@ -22,6 +28,52 @@ TimetableSlot _slot(int id, int subjectId, int weekday, String from, String to) 
 DateTime _mon(int h, int m) => DateTime(2026, 9, 14, h, m);
 
 void main() {
+  group('lessonEndFor', () {
+    test('a running slot ends when its slot ends', () {
+      final slots = [_slot(1, 10, 1, '8:00', '8:45')];
+      expect(lessonEndFor(slots, 10, _mon(8, 5)), _mon(8, 45));
+    });
+
+    test('starting a little early still belongs to the coming slot', () {
+      final slots = [_slot(1, 10, 1, '8:00', '8:45')];
+      expect(lessonEndFor(slots, 10, _mon(7, 52)), _mon(8, 45));
+      expect(lessonEndFor(slots, 10, _mon(7, 49)), isNull);
+    });
+
+    test('a double lesson across the long break ends with the second slot', () {
+      final slots = [
+        _slot(1, 10, 1, '8:00', '8:45'),
+        _slot(2, 10, 1, '8:55', '9:40'),
+      ];
+      expect(lessonEndFor(slots, 10, _mon(8, 10)), _mon(9, 40));
+    });
+
+    test('a gap longer than the long break splits the lessons', () {
+      final slots = [
+        _slot(1, 10, 1, '8:00', '8:45'),
+        _slot(2, 10, 1, '9:30', '10:15'),
+      ];
+      expect(lessonEndFor(slots, 10, _mon(8, 10)), _mon(8, 45));
+    });
+
+    test(
+      'other subjects, other days and recordings after the slot give null',
+      () {
+        final slots = [
+          _slot(1, 10, 1, '8:00', '8:45'),
+          _slot(2, 11, 1, '8:00', '8:45'),
+          _slot(3, 10, 2, '8:00', '8:45'),
+        ];
+        expect(lessonEndFor(slots, 12, _mon(8, 10)), isNull);
+        expect(lessonEndFor(slots, 10, _mon(9, 0)), isNull);
+        expect(
+          lessonEndFor(slots, 10, DateTime(2026, 9, 15, 8, 10)),
+          _mon(8, 45).add(const Duration(days: 1)),
+        );
+      },
+    );
+  });
+
   group('pickSubjectForNow', () {
     test('a running slot wins', () {
       final slots = [_slot(1, 10, 1, '8:00', '8:45')];
@@ -63,7 +115,10 @@ void main() {
     });
 
     test('invalid slots are ignored', () {
-      final slots = [_slot(1, 10, 9, '8:00', '8:45'), _slot(2, 20, 1, '9:00', '8:00')];
+      final slots = [
+        _slot(1, 10, 9, '8:00', '8:45'),
+        _slot(2, 20, 1, '9:00', '8:00'),
+      ];
       expect(pickSubjectForNow(slots, _mon(8, 30)), isNull);
     });
   });
@@ -75,7 +130,9 @@ void main() {
 
   group('todaySlotHint', () {
     test('a running slot is reported as running', () {
-      final hint = todaySlotHint([_slot(1, 10, 1, '8:00', '8:45')], _mon(8, 10));
+      final hint = todaySlotHint([
+        _slot(1, 10, 1, '8:00', '8:45'),
+      ], _mon(8, 10));
       expect(hint?.slot.id, 1);
       expect(hint?.running, isTrue);
     });
@@ -118,8 +175,17 @@ void main() {
       final dao = db.subjectsDao;
       final cz = await db.savedNotesDao.createFolder('Čeština');
       final id = await dao.addSlot(
-          subjectId: cz, weekday: 2, startMinute: 600, endMinute: 645);
-      await dao.addSlot(subjectId: cz, weekday: 1, startMinute: 480, endMinute: 525);
+        subjectId: cz,
+        weekday: 2,
+        startMinute: 600,
+        endMinute: 645,
+      );
+      await dao.addSlot(
+        subjectId: cz,
+        weekday: 1,
+        startMinute: 480,
+        endMinute: 525,
+      );
 
       expect((await dao.allSlots()), hasLength(2));
       expect((await dao.watchSlots(cz).first).map((s) => s.weekday), [1, 2]);
@@ -127,12 +193,33 @@ void main() {
       await dao.deleteSlot(id);
       expect(await dao.allSlots(), hasLength(1));
 
-      expect(() => dao.addSlot(subjectId: cz, weekday: 0, startMinute: 1, endMinute: 2),
-          throwsArgumentError);
-      expect(() => dao.addSlot(subjectId: cz, weekday: 1, startMinute: 60, endMinute: 60),
-          throwsArgumentError);
-      expect(() => dao.addSlot(subjectId: cz, weekday: 1, startMinute: 60, endMinute: 1441),
-          throwsArgumentError);
+      expect(
+        () => dao.addSlot(
+          subjectId: cz,
+          weekday: 0,
+          startMinute: 1,
+          endMinute: 2,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => dao.addSlot(
+          subjectId: cz,
+          weekday: 1,
+          startMinute: 60,
+          endMinute: 60,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => dao.addSlot(
+          subjectId: cz,
+          weekday: 1,
+          startMinute: 60,
+          endMinute: 1441,
+        ),
+        throwsArgumentError,
+      );
     });
   });
 }

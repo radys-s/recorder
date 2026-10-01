@@ -62,6 +62,58 @@ int? pickSubjectForNow(List<TimetableSlot> slots, DateTime now) {
   return best?.subjectId;
 }
 
+/// Longest gap between two slots of one subject that still counts as one
+/// lesson — the long break of a double lesson, as in the timetable import.
+const Duration kLessonChainGap = Duration(minutes: 20);
+
+/// When the lesson of [subjectId] that [startedAt] belongs to ends, by the
+/// timetable: a slot of that subject running at [startedAt] or starting within
+/// [kTimetableLookahead] of it, extended through following slots of the same
+/// subject that start within [kLessonChainGap] of the previous end (a double
+/// lesson is two slots). Null when the timetable has no such lesson that day.
+DateTime? lessonEndFor(
+  List<TimetableSlot> slots,
+  int subjectId,
+  DateTime startedAt,
+) {
+  final minute = startedAt.hour * 60 + startedAt.minute;
+  final today = [
+    for (final s in slots)
+      if (s.subjectId == subjectId &&
+          s.weekday == startedAt.weekday &&
+          s.endMinute > s.startMinute)
+        s,
+  ]..sort((a, b) => a.startMinute.compareTo(b.startMinute));
+
+  TimetableSlot? first;
+  for (final s in today) {
+    final running = s.startMinute <= minute && minute < s.endMinute;
+    final soon =
+        s.startMinute > minute &&
+        s.startMinute - minute <= kTimetableLookahead.inMinutes;
+    if (running || soon) {
+      first = s;
+      break;
+    }
+  }
+  if (first == null) return null;
+
+  var end = first.endMinute;
+  for (final s in today) {
+    if (s.startMinute < first.startMinute || identical(s, first)) continue;
+    if (s.startMinute <= end + kLessonChainGap.inMinutes && s.endMinute > end) {
+      end = s.endMinute;
+    }
+  }
+  return DateTime(
+    startedAt.year,
+    startedAt.month,
+    startedAt.day,
+    end ~/ 60,
+    end % 60,
+  );
+}
+
 /// What the home screen says about today: the lesson running now, else the
 /// next one still to come today. Ties go to the earlier start, then the lower
 /// id. Unlike [pickSubjectForNow] this never looks past midnight — "next" on a

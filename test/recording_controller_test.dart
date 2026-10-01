@@ -186,6 +186,31 @@ void main() {
     expect(meeting!.endedAt, isNotNull);
   });
 
+  test('switching live answers on mid-lesson shortens the next chunks', () async {
+    final source = _FakeSource();
+    final c = container(source);
+    final controller = c.read(recordingControllerProvider.notifier);
+
+    await controller.start();
+    // Normal profile: a 25 s stretch of steady speech is still one open chunk.
+    source.emit(_loud(25000));
+    await settle();
+    Future<int> segments() async =>
+        (await db.select(db.transcriptSegments).get()).length;
+    expect(await segments(), 0);
+
+    await db.preferencesDao.setLiveAnswersEnabled(true);
+    await settle();
+    source.emit(_loud(1000));
+    // The fast profile caps a chunk at 20 s, so the open 25 s chunk is cut at
+    // once; the write behind it is asynchronous.
+    for (var i = 0; i < 40 && await segments() == 0; i++) {
+      await settle();
+    }
+    expect(await segments(), 1);
+    await stopAndDrain(controller);
+  });
+
   test('a nearly full phone refuses to start and says why', () async {
     final source = _FakeSource();
     final c = container(source, freeBytes: 5 * 1024 * 1024);

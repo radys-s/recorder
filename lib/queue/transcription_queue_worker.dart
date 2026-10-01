@@ -19,6 +19,7 @@ import '../stt/transcript_corrector.dart';
 import '../stt/transcript_sanitizer.dart';
 import '../stt/whisper_segment_filter.dart';
 import 'backoff.dart';
+import 'transcription_wait.dart';
 
 /// Drains the upload queue, completely decoupled from recording.
 ///
@@ -49,6 +50,7 @@ class TranscriptionQueueWorker {
     this.onTermsUsed,
     this.diagnostics,
     this.tick = const Duration(seconds: 5),
+    this.correctionFlushAfter = kCorrectionFlushAfter,
   }) : _connectivity = connectivity ?? Connectivity();
 
   static const _tag = 'queue.worker';
@@ -61,6 +63,10 @@ class TranscriptionQueueWorker {
 
   /// How often to re-check for rows whose backoff has elapsed.
   final Duration tick;
+
+  /// How long a half-full proofreading batch waits for another chunk.
+  final Duration correctionFlushAfter;
+  Timer? _flushTimer;
 
   /// Called after a segment's text is written, with the sanitized text.
   ///
@@ -124,6 +130,42 @@ class TranscriptionQueueWorker {
   /// Whether rows are waiting for a key rather than for time.
   bool get waitingForKey => _keyBlocked;
 
+  final _waitChanges = StreamController<TranscriptionWait?>.broadcast();
+  TranscriptionWait? _lastWait;
+  Timer? _waitTimer;
+
+  /// Why the queue is standing still, or null while it is working. The UI
+  /// shows it so a student is not left looking at „Přepisuje se…" with no clue
+  /// that a limit — not a fault — is what the chunks are waiting for.
+  TranscriptionWait? get currentWait => _lastWait;
+
+  /// Fires whenever [currentWait] changes, including when a pause runs out.
+  Stream<TranscriptionWait?> get waitChanges => _waitChanges.stream;
+
+  void _syncWait() {
+    _waitTimer?.cancel();
+    _waitTimer = null;
+    final until = _pausedUntil;
+    final TranscriptionWait? now;
+    if (_keyBlocked) {
+      now = const TranscriptionWait.missingKey();
+    } else if (until != null && until.isAfter(DateTime.now())) {
+      now = TranscriptionWait.rateLimit(until);
+      // The pause has no event of its own when it ends; without this the
+      // notice would outlive the limit until the next chunk was refused.
+      _waitTimer = Timer(until.difference(DateTime.now()), () {
+        _waitTimer = null;
+        _syncWait();
+        unawaited(_drain());
+      });
+    } else {
+      now = null;
+    }
+    if (now == _lastWait) return;
+    _lastWait = now;
+    _waitChanges.add(now);
+  }
+
   /// Starts true so the first event — which reports the current state, not a
   /// change — is not mistaken for a recovery.
   bool _wasOnline = true;
@@ -169,6 +211,8 @@ class TranscriptionQueueWorker {
 
     _timer?.cancel();
     _timer = null;
+    _waitTimer?.cancel();
+    _waitTimer = null;
     await _queueSub?.cancel();
     _queueSub = null;
     await _connectivitySub?.cancel();
@@ -188,12 +232,16 @@ class TranscriptionQueueWorker {
   Future<void> keysChanged() async {
     _keyBlocked = false;
     _pausedUntil = null;
+    _syncWait();
     final segmentIds = await _queueDao.requeueKeyFailures();
     for (final id in segmentIds) {
       await _segmentsDao.updateSegmentStatus(id, SegmentStatus.pending);
     }
     if (segmentIds.isNotEmpty) {
-      AppLog.d(_tag, 'requeued ${segmentIds.length} chunk(s) after a key change');
+      AppLog.d(
+        _tag,
+        'requeued ${segmentIds.length} chunk(s) after a key change',
+      );
     }
     await _drain();
   }
@@ -222,13 +270,10 @@ class TranscriptionQueueWorker {
     try {
       while (_running && !_resting) {
         final rows = await _queueDao.dueRows(DateTime.now());
-        if (rows.isEmpty) {
-          // Nothing more is coming right now, so a half-full batch would
-          // otherwise sit there until the next chunk — which in a pause
-          // between lessons could be never.
-          unawaited(_flushCorrections());
-          break;
-        }
+        // An empty queue does not flush the batch: chunks arrive every ~10 s,
+        // the queue is empty between each pair, and flushing there would make
+        // every batch a single chunk. The batch has its own clock instead.
+        if (rows.isEmpty) break;
 
         for (final row in rows) {
           if (!_running) return;
@@ -419,6 +464,7 @@ class TranscriptionQueueWorker {
       // service asked.
       final wait = _pauseFor(e.retryAfter);
       _pausedUntil = DateTime.now().add(wait);
+      _syncWait();
       await _queueDao.release(row.id);
       await _segmentsDao.updateSegmentStatus(
         row.segmentId,
@@ -436,6 +482,7 @@ class TranscriptionQueueWorker {
       AppLog.w(_tag, 'rate limited — queue rests for ${wait.inSeconds}s');
     } on SttKeyMissing {
       _keyBlocked = true;
+      _syncWait();
       await _queueDao.release(row.id);
       await _segmentsDao.updateSegmentStatus(
         row.segmentId,
@@ -598,11 +645,20 @@ class TranscriptionQueueWorker {
     _pending.add(_PendingCorrection(segment, text, previous, confidence));
     if (_pending.length >= kCorrectionBatchSize) {
       unawaited(_flushCorrections());
+    } else {
+      // A batch that never fills — the end of a lesson, a pause between two —
+      // still has to go out, but only after chunks had a fair chance to join.
+      _flushTimer ??= Timer(correctionFlushAfter, () {
+        _flushTimer = null;
+        unawaited(_flushCorrections());
+      });
     }
   }
 
   /// Sends whatever is waiting as one request. Resolves when it is done.
   Future<void> _flushCorrections() {
+    _flushTimer?.cancel();
+    _flushTimer = null;
     if (_pending.isEmpty) return Future.value();
     final batch = List.of(_pending);
     final lesson = _pendingLesson!;
@@ -716,6 +772,9 @@ class TranscriptionQueueWorker {
 /// tell a misheard term from a word the teacher really said, and a third of
 /// the requests a chunk-at-a-time pass would spend on the same rate limit.
 const int kCorrectionBatchSize = 3;
+
+/// How long a batch that is not full waits before it is sent anyway.
+const Duration kCorrectionFlushAfter = Duration(seconds: 45);
 
 /// A written chunk waiting for the next proofreading request.
 class _PendingCorrection {

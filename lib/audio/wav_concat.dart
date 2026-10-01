@@ -88,8 +88,11 @@ WavPcm parseWav(Uint8List bytes) {
   final frames = <Uint8List>[];
   final voiced = <bool>[];
   for (var at = 0; at < pcm.length; at += frameBytes) {
-    final frame =
-        Uint8List.sublistView(pcm, at, math.min(pcm.length, at + frameBytes));
+    final frame = Uint8List.sublistView(
+      pcm,
+      at,
+      math.min(pcm.length, at + frameBytes),
+    );
     frames.add(frame);
     voiced.add(frameRms(frame) >= voicedRms);
   }

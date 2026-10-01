@@ -48,6 +48,22 @@ class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDao
     return query.map((row) => row.read(count) ?? 0).watchSingle();
   }
 
+  /// Chunks of one meeting still waiting for a transcript (queued, in flight
+  /// or waiting out a retry). Parked rows do not count: they will not move on
+  /// their own.
+  Future<int> unsettledForMeeting(int meetingId) async {
+    final count = uploadQueue.id.count();
+    final query = selectOnly(uploadQueue)
+      ..addColumns([count])
+      ..where(
+        uploadQueue.meetingId.equals(meetingId) &
+            (uploadQueue.status.equalsValue(QueueStatus.pending) |
+                uploadQueue.status.equalsValue(QueueStatus.uploading) |
+                uploadQueue.status.equalsValue(QueueStatus.failedRetryable)),
+      );
+    return (await query.getSingle()).read(count) ?? 0;
+  }
+
   /// Brings every waiting retry forward to now.
   ///
   /// Called when connectivity is restored: the reason those rows are waiting
