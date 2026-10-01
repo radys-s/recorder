@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../accent.dart';
 import '../spacing.dart';
+import 'pressable.dart';
 
 /// An iOS-style inset group: a small caps label, then rows on one rounded
 /// surface with hairlines indented under the text.
@@ -166,7 +167,7 @@ class ListRow extends StatelessWidget {
 
     // One node per row, announced as a button, instead of a loose run of
     // texts a screen reader cannot activate.
-    return MergeSemantics(
+    final row = MergeSemantics(
       child: Semantics(
         button: onTap != null,
         child: InkWell(
@@ -284,6 +285,11 @@ class ListRow extends StatelessWidget {
         ),
       ),
     );
+    // A row that does something sinks a little under the finger; a plain
+    // read-only row stays still.
+    return onTap == null && onLongPress == null
+        ? row
+        : Pressable(scale: 0.985, child: row);
   }
 }
 

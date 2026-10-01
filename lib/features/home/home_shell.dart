@@ -8,6 +8,7 @@ import '../../core/accent.dart';
 import '../../core/motion.dart';
 import '../../core/providers.dart';
 import '../../core/spacing.dart';
+import '../../core/widgets/pressable.dart';
 import '../meetings_list/meetings_list_screen.dart';
 import '../notes_library/notes_library_screen.dart';
 import '../subjects/subjects_screen.dart';
@@ -88,8 +89,20 @@ class _HomeShellState extends ConsumerState<HomeShell> with RouteAware {
         children: [
           // Hidden tabs keep their state but not their tickers, so an
           // animation on one tab never runs while another is on screen.
+          // The page that comes forward fades in; one that leaves is already
+          // off stage, so only the arrival is visible.
           for (var i = 0; i < pages.length; i++)
-            TickerMode(enabled: i == _index, child: pages[i]),
+            TickerMode(
+              enabled: i == _index,
+              child: AnimatedOpacity(
+                opacity: i == _index ? 1 : 0,
+                duration: reducedMotion(context)
+                    ? Duration.zero
+                    : AppDuration.quick,
+                curve: AppCurve.standard,
+                child: pages[i],
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: _HomeNavigationBar(
@@ -245,10 +258,30 @@ class _DockItem extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final reduced = reducedMotion(context);
     final icon = Icon(
       selected ? tab.selectedIcon : tab.icon,
+      key: ValueKey(selected),
       size: 22,
       color: selected ? Colors.white : color,
+    );
+    // The outlined glyph fades into the filled one while it grows a touch past
+    // its size and settles; reduced motion swaps them at once.
+    final mark = AnimatedScale(
+      scale: selected ? 1.08 : 1,
+      duration: reduced ? Duration.zero : AppDuration.quick,
+      curve: reduced ? Curves.linear : Curves.easeOutBack,
+      child: AnimatedSwitcher(
+        duration: reduced ? Duration.zero : AppDuration.quick,
+        switchInCurve: AppCurve.standard,
+        child: selected
+            ? GradientMask(
+                key: const ValueKey('selected'),
+                gradient: context.accent.textGradient,
+                child: icon,
+              )
+            : icon,
+      ),
     );
     return Semantics(
       selected: selected,
@@ -256,30 +289,28 @@ class _DockItem extends StatelessWidget {
       label: tab.label,
       onTap: onTap,
       excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(radius),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            selected
-                ? GradientMask(
-                    gradient: context.accent.textGradient,
-                    child: icon,
-                  )
-                : icon,
-            const SizedBox(height: 2),
-            Text(
-              tab.label,
-              maxLines: 1,
-              overflow: TextOverflow.fade,
-              softWrap: false,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: color,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      child: Pressable(
+        scale: 0.94,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(radius),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              mark,
+              const SizedBox(height: 2),
+              Text(
+                tab.label,
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

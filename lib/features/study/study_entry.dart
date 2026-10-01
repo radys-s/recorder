@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
 import '../../core/spacing.dart';
+import '../../core/widgets/count_up.dart';
+import '../../core/widgets/entrance.dart';
 import '../../core/widgets/inset_group.dart';
 import '../subjects/subjects_providers.dart';
 import 'exam_prep_screen.dart';
@@ -45,17 +47,32 @@ class _StudyDueGroupState extends ConsumerState<StudyDueGroup> {
   Widget build(BuildContext context) {
     final due = ref.watch(dueStudyCountProvider(null)).valueOrNull ?? 0;
     if (due == 0) return const SizedBox.shrink();
-    return InsetGroup(
-      label: 'Opakování',
-      children: [
-        ListRow(
-          leadingSlot: 52,
-          leading: const GradientIconTile(icon: Icons.style_outlined),
-          title: 'Dnes zopakovat',
-          subtitle: czechCount(due, 'kartička', 'kartičky', 'kartiček'),
-          onTap: () => Navigator.of(context).push(ReviewScreen.route()),
-        ),
-      ],
+    final accent = context.accent;
+    // Appears the first time something is due, and the number counts up to it.
+    return Entrance(
+      child: InsetGroup(
+        label: 'Opakování',
+        children: [
+          ListRow(
+            leadingSlot: 52,
+            leading: const GradientIconTile(icon: Icons.style_outlined),
+            title: 'Dnes zopakovat',
+            subtitle: czechCount(due, 'kartička', 'kartičky', 'kartiček'),
+            trailing: GradientMask(
+              gradient: accent.textGradient,
+              child: CountUp(
+                value: due,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            onTap: () => Navigator.of(context).push(ReviewScreen.route()),
+          ),
+        ],
+      ),
     );
   }
 }

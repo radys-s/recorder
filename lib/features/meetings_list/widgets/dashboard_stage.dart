@@ -15,6 +15,7 @@ import '../../../queue/transcription_wait.dart';
 import '../../../core/spacing.dart';
 import '../../../core/theme.dart';
 import '../../../core/widgets/level_waveform.dart';
+import '../../../core/widgets/pressable.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/db/daos/subjects_dao.dart';
 import '../../meeting_detail/meeting_detail_providers.dart';
@@ -60,12 +61,22 @@ class DashboardStage extends ConsumerStatefulWidget {
 }
 
 class _DashboardStageState extends ConsumerState<DashboardStage>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   /// One ring that leaves the record disc when a lesson starts or resumes.
   late final AnimationController _burst = AnimationController(
     vsync: this,
     duration: AppDuration.slow,
   );
+
+  /// The idle stage's slow breathing: one 12 s lap drives the glow (three
+  /// breaths per lap, ±[_breathDepth] alpha) and the hue drift of the ring.
+  /// Runs only while the idle stage is actually on screen.
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 12),
+  );
+
+  static const _breathDepth = 0.05;
 
   /// Moves the clock while recording. RecordingState only changes when a
   /// chunk closes, so the second hand needs its own tick.
@@ -82,7 +93,22 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
     WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
     _burst.dispose();
+    _breath.dispose();
     super.dispose();
+  }
+
+  /// Starting a controller notifies its listeners at once, which must not
+  /// happen in the middle of a build — so the change lands after the frame.
+  void _syncBreath(bool active) {
+    if (active == _breath.isAnimating) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (active && !_breath.isAnimating) {
+        _breath.repeat();
+      } else if (!active && _breath.isAnimating) {
+        _breath.stop();
+      }
+    });
   }
 
   /// The timetable hint depends on the clock; coming back to the app is when
@@ -179,13 +205,16 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
     );
     // IndexedStack keeps this widget mounted on hidden tabs; a Dart Timer is
     // not suspended by TickerMode, so only tick while the stage is foreground.
-    _syncTicker(
-      recording &&
-          ref.watch(dashboardStageVisibleProvider) &&
-          ref.watch(dashboardStageInViewProvider),
-    );
+    final onScreen =
+        ref.watch(dashboardStageVisibleProvider) &&
+        ref.watch(dashboardStageInViewProvider);
+    _syncTicker(recording && onScreen);
     final live = recording && !paused;
     final reduced = reducedMotion(context);
+    // Breathing is ambient: idle only, never under reduced motion, never while
+    // the stage is hidden behind a tab, a route or the scrolled-away list.
+    final breathing = !recording && onScreen && !reduced;
+    _syncBreath(breathing);
 
     final glow = live
         ? AftermindPalette.recordDark.withValues(alpha: 0.16)
@@ -208,6 +237,7 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
         : _IdleStage(
             key: const ValueKey('idle'),
             burst: _burst,
+            drift: _breath,
             hint: _hint(
               ref.watch(allSlotsProvider).valueOrNull ?? const [],
               ref.watch(subjectsProvider).valueOrNull ?? const [],
@@ -233,6 +263,34 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
                 ),
               ),
             ),
+            if (breathing)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: AnimatedBuilder(
+                      animation: _breath,
+                      builder: (context, _) {
+                        // Three breaths per lap: 0 → 2·depth → 0.
+                        final k =
+                            (1 - math.cos(_breath.value * 6 * math.pi)) / 2;
+                        final alpha = 2 * _breathDepth * k;
+                        return DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: const Alignment(0, 0.05),
+                              radius: 0.85,
+                              colors: [
+                                context.accent.fill.withValues(alpha: alpha),
+                                context.accent.fill.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
             SafeArea(
               bottom: false,
               child: Column(
@@ -387,17 +445,20 @@ class _GlassIconButton extends StatelessWidget {
         label: tooltip,
         onTap: onTap,
         excludeSemantics: true,
-        child: Material(
-          color: Colors.white.withValues(alpha: 0.10),
-          shape: CircleBorder(
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox.square(
-              dimension: size,
-              child: Icon(icon, size: iconSize, color: color),
+        child: Pressable(
+          scale: 0.92,
+          child: Material(
+            color: Colors.white.withValues(alpha: 0.10),
+            shape: CircleBorder(
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox.square(
+                dimension: size,
+                child: Icon(icon, size: iconSize, color: color),
+              ),
             ),
           ),
         ),
@@ -412,11 +473,15 @@ class _IdleStage extends StatelessWidget {
   const _IdleStage({
     super.key,
     required this.burst,
+    required this.drift,
     required this.hint,
     required this.onStart,
   });
 
   final Animation<double> burst;
+
+  /// 0..1 lap of the idle breathing; moves the ring's hues round.
+  final Animation<double> drift;
   final String? hint;
   final VoidCallback onStart;
 
@@ -433,45 +498,49 @@ class _IdleStage extends StatelessWidget {
           hint: 'Otevře nastavení nové nahrávky.',
           onTap: onStart,
           excludeSemantics: true,
-          child: GestureDetector(
-            onTap: onStart,
-            behavior: HitTestBehavior.opaque,
-            child: SizedBox.square(
-              dimension: _ring,
-              child: AnimatedBuilder(
-                animation: burst,
-                builder: (context, child) {
-                  final t = burst.value;
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          size: Size.square(_ring),
-                          painter: RingBarsPainter(
-                            accent: context.accent.palette,
-                          ),
-                        ),
-                      ),
-                      if (t > 0 && t < 1)
-                        Container(
-                          width: 100 + 110 * Curves.easeOut.transform(t),
-                          height: 100 + 110 * Curves.easeOut.transform(t),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: context.accent.highlight.withValues(
-                                alpha: 0.7 * (1 - t),
-                              ),
-                              width: 2,
+          child: Pressable(
+            scale: 0.95,
+            child: GestureDetector(
+              onTap: onStart,
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox.square(
+                dimension: _ring,
+                child: AnimatedBuilder(
+                  animation: burst,
+                  builder: (context, child) {
+                    final t = burst.value;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            size: Size.square(_ring),
+                            painter: RingBarsPainter(
+                              accent: context.accent.palette,
+                              drift: drift,
                             ),
                           ),
                         ),
-                      child!,
-                    ],
-                  );
-                },
-                child: const _RecordDisc(),
+                        if (t > 0 && t < 1)
+                          Container(
+                            width: 100 + 110 * Curves.easeOut.transform(t),
+                            height: 100 + 110 * Curves.easeOut.transform(t),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: context.accent.highlight.withValues(
+                                  alpha: 0.7 * (1 - t),
+                                ),
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        child!,
+                      ],
+                    );
+                  },
+                  child: const _RecordDisc(),
+                ),
               ),
             ),
           ),
@@ -547,14 +616,18 @@ class _RecordDisc extends StatelessWidget {
   }
 }
 
-/// 72 short radial bars around the record disc — a still waveform, the
-/// stage's quiet ornament. Painted once; nothing here animates.
+/// 72 short radial bars around the record disc — a waveform, the stage's quiet
+/// ornament. Still unless [drift] runs, in which case the hues travel slowly
+/// round the ring.
 class RingBarsPainter extends CustomPainter {
-  const RingBarsPainter({this.accent});
+  RingBarsPainter({this.accent, this.drift}) : super(repaint: drift);
 
   /// When set, the bars pick up the accent's hues around the ring instead of
   /// plain white.
   final AccentPalette? accent;
+
+  /// 0..1 lap; one full lap shifts the hue pattern once round the ring.
+  final Animation<double>? drift;
 
   static const bars = 72;
 
@@ -577,7 +650,8 @@ class RingBarsPainter extends CustomPainter {
       } else {
         // Around the ring: highlight → partner → highlight, faded into white
         // so it stays an ornament rather than a second colour block.
-        final t = (math.sin(i / bars * 2 * math.pi) + 1) / 2;
+        final t =
+            (math.sin((i / bars + (drift?.value ?? 0)) * 2 * math.pi) + 1) / 2;
         final hue = Color.lerp(tint.highlight, tint.partner, t)!;
         paint.color = Color.lerp(
           Colors.white,
@@ -596,7 +670,7 @@ class RingBarsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(RingBarsPainter oldDelegate) =>
-      oldDelegate.accent != accent;
+      oldDelegate.accent != accent || oldDelegate.drift != drift;
 }
 
 // ── Recording ───────────────────────────────────────────────────────────────
@@ -677,17 +751,29 @@ class _LiveStage extends ConsumerWidget {
           const SizedBox(height: Gap.md),
           SizedBox(
             height: 42,
-            child: Text(
-              line == null
-                  ? (paused ? 'Pozastaveno' : 'Poslouchám…')
-                  : '„$line"',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.72),
-                fontSize: 15,
-                height: 1.35,
+            // A new line fades in over the old one instead of replacing it.
+            child: AnimatedSwitcher(
+              duration: reducedMotion(context)
+                  ? Duration.zero
+                  : AppDuration.base,
+              switchInCurve: AppCurve.standard,
+              layoutBuilder: (current, previous) => Stack(
+                alignment: Alignment.topCenter,
+                children: [...previous, ?current],
+              ),
+              child: Text(
+                line == null
+                    ? (paused ? 'Pozastaveno' : 'Poslouchám…')
+                    : '„$line"',
+                key: ValueKey(line ?? paused),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.72),
+                  fontSize: 15,
+                  height: 1.35,
+                ),
               ),
             ),
           ),
@@ -807,11 +893,10 @@ class _StatePill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            paused ? Icons.pause_rounded : Icons.fiber_manual_record,
-            size: paused ? 14 : 9,
-            color: color,
-          ),
+          if (paused)
+            Icon(Icons.pause_rounded, size: 14, color: color)
+          else
+            _PulseDot(color: color),
           const SizedBox(width: Gap.sm),
           Flexible(
             child: Text(
@@ -826,6 +911,75 @@ class _StatePill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The red dot of the state pill: a slow heartbeat while recording, a plain
+/// dot under reduced motion. Its ticker is disabled by `TickerMode` whenever
+/// the stage is covered, so it never runs unseen.
+class _PulseDot extends StatefulWidget {
+  const _PulseDot({required this.color});
+
+  final Color color;
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // Started after the first frame: `reducedMotion` needs the inherited
+    // MediaQuery, which is not readable from initState.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !reducedMotion(context)) _c.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (reducedMotion(context)) {
+      return Icon(Icons.fiber_manual_record, size: 9, color: widget.color);
+    }
+    return SizedBox.square(
+      dimension: 12,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final k = Curves.easeInOut.transform(_c.value);
+          return Center(
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 1 - 0.55 * k),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: widget.color.withValues(alpha: 0.5 * (1 - k)),
+                    blurRadius: 3 + 5 * (1 - k),
+                    spreadRadius: 1.5 * (1 - k),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -890,17 +1044,20 @@ class _BigControl extends StatelessWidget {
               : 'Pokračovat v nahrávání',
           onTap: onTap,
           excludeSemantics: true,
-          child: GestureDetector(
-            onTap: onTap,
-            child: GradientOutline(
-              gradient: context.accent.ring,
-              circle: true,
-              width: 3,
-              child: Container(
-                width: 76,
-                height: 76,
-                padding: const EdgeInsets.all(7),
-                child: child,
+          child: Pressable(
+            scale: 0.94,
+            child: GestureDetector(
+              onTap: onTap,
+              child: GradientOutline(
+                gradient: context.accent.ring,
+                circle: true,
+                width: 3,
+                child: Container(
+                  width: 76,
+                  height: 76,
+                  padding: const EdgeInsets.all(7),
+                  child: child,
+                ),
               ),
             ),
           ),

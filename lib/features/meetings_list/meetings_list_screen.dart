@@ -249,11 +249,14 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           ),
           if (recordingError != null)
             SliverToBoxAdapter(
-              child: _Notice(
-                icon: Icons.error_outline,
-                title: 'Nahrávání skončilo chybou',
-                message: recordingError,
-                tone: ChipTone.alert,
+              child: Entrance(
+                key: ValueKey('error-$recordingError'),
+                child: _Notice(
+                  icon: Icons.error_outline,
+                  title: 'Nahrávání skončilo chybou',
+                  message: recordingError,
+                  tone: ChipTone.alert,
+                ),
               ),
             ),
           // Recording works without a key — the audio is kept and queued either
@@ -262,28 +265,41 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           // text is.
           if (onboarding != null)
             SliverToBoxAdapter(
-              child: OnboardingCard(
-                steps: onboarding,
-                onStep: _onboardingStep,
-                onClose: () => ref
-                    .read(preferencesDaoProvider)
-                    .setOnboardingDismissed(true),
+              child: Entrance(
+                child: OnboardingCard(
+                  steps: onboarding,
+                  onStep: _onboardingStep,
+                  onClose: () => ref
+                      .read(preferencesDaoProvider)
+                      .setOnboardingDismissed(true),
+                ),
               ),
             ),
           // The checklist already says the key is missing.
           if (!hasKey && onboarding == null)
             SliverToBoxAdapter(
-              child: _Notice(
-                icon: Icons.key_off,
-                title: 'Chybí Groq API klíč',
-                message: 'Nahrávat můžeš, ale přepis se nespustí.',
-                onTap: _openSettings,
+              child: Entrance(
+                child: _Notice(
+                  icon: Icons.key_off,
+                  title: 'Chybí Groq API klíč',
+                  message: 'Nahrávat můžeš, ale přepis se nespustí.',
+                  onTap: _openSettings,
+                ),
               ),
             ),
           const SliverToBoxAdapter(child: StudyDueGroup()),
           if (latest != null)
             SliverToBoxAdapter(
-              child: InsetGroup(label: 'Poslední výpisky', children: [latest]),
+              // Keyed by what it shows, so notes that land while the dashboard
+              // is open arrive with an entrance and an unchanged group stays.
+              child: Entrance(
+                key: latest.key,
+                delay: AppMotion.staggerDelay(1),
+                child: InsetGroup(
+                  label: 'Poslední výpisky',
+                  children: [latest],
+                ),
+              ),
             ),
           AsyncSliver(
             value: summaries,
@@ -311,6 +327,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
         final subject = s.subject;
         final named = !isDefaultMeetingTitle(s.meeting.title);
         return ListRow(
+          key: ValueKey('notes-${notes.meetingId}'),
           leading: SubjectDot(
             color: subject == null
                 ? Theme.of(context).colorScheme.outline
@@ -339,6 +356,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     if (visible.isEmpty) return null;
     final note = visible.first;
     return ListRow(
+      key: ValueKey('saved-${note.id}'),
       leading: Icon(
         Icons.bookmark_rounded,
         size: 16,
