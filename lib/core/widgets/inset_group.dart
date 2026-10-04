@@ -203,7 +203,7 @@ class ListRow extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontSize: 17,
@@ -255,7 +255,7 @@ class ListRow extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             status!,
-                            maxLines: 1,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: statusColor ?? muted,

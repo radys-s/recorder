@@ -40,6 +40,7 @@ class DashboardStage extends ConsumerStatefulWidget {
     required this.onResume,
     required this.onSearch,
     required this.onSettings,
+    this.preparing = false,
   });
 
   /// Eyebrow over the title, e.g. `sobota 26. září`.
@@ -52,6 +53,7 @@ class DashboardStage extends ConsumerStatefulWidget {
   final VoidCallback onResume;
   final VoidCallback onSearch;
   final VoidCallback onSettings;
+  final bool preparing;
 
   /// How far the list's sheet reaches up into the stage.
   static const sheetOverlap = 28.0;
@@ -237,6 +239,7 @@ class _DashboardStageState extends ConsumerState<DashboardStage>
         : _IdleStage(
             key: const ValueKey('idle'),
             burst: _burst,
+            preparing: widget.preparing,
             drift: _breath,
             hint: _hint(
               ref.watch(allSlotsProvider).valueOrNull ?? const [],
@@ -440,6 +443,7 @@ class _GlassIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
+      excludeFromSemantics: true,
       child: Semantics(
         button: true,
         label: tooltip,
@@ -473,19 +477,21 @@ class _IdleStage extends StatelessWidget {
   const _IdleStage({
     super.key,
     required this.burst,
+    required this.preparing,
     required this.drift,
     required this.hint,
     required this.onStart,
   });
 
   final Animation<double> burst;
+  final bool preparing;
 
   /// 0..1 lap of the idle breathing; moves the ring's hues round.
   final Animation<double> drift;
   final String? hint;
   final VoidCallback onStart;
 
-  static const _ring = 240.0;
+  static const _ring = 112.0;
 
   @override
   Widget build(BuildContext context) {
@@ -495,13 +501,14 @@ class _IdleStage extends StatelessWidget {
         Semantics(
           button: true,
           label: 'Nahrát hodinu',
+          enabled: !preparing,
           hint: 'Otevře nastavení nové nahrávky.',
-          onTap: onStart,
+          onTap: preparing ? null : onStart,
           excludeSemantics: true,
           child: Pressable(
             scale: 0.95,
             child: GestureDetector(
-              onTap: onStart,
+              onTap: preparing ? null : onStart,
               behavior: HitTestBehavior.opaque,
               child: SizedBox.square(
                 dimension: _ring,
@@ -539,16 +546,21 @@ class _IdleStage extends StatelessWidget {
                       ],
                     );
                   },
-                  child: const _RecordDisc(),
+                  child: preparing
+                      ? const SizedBox.square(
+                          dimension: 48,
+                          child: CircularProgressIndicator(),
+                        )
+                      : const _RecordDisc(),
                 ),
               ),
             ),
           ),
         ),
         const SizedBox(height: Gap.md),
-        const Text(
-          'Nahrát hodinu',
-          style: TextStyle(
+        Text(
+          preparing ? 'Spouštím nahrávání…' : 'Nahrát hodinu',
+          style: const TextStyle(
             color: AftermindPalette.stageInk,
             fontSize: 20,
             fontWeight: FontWeight.w600,
@@ -559,9 +571,10 @@ class _IdleStage extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Gap.xl),
           child: Text(
-            hint ?? 'Přepis začne přibývat během pár vteřin',
+            hint ??
+                'Zvuk se ukládá do telefonu. Přepis a výpisky najdeš u hodiny.',
             textAlign: TextAlign.center,
-            maxLines: 2,
+            maxLines: 3,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.6),
               fontSize: 15,
@@ -698,6 +711,27 @@ class _LiveStage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(recordingControllerProvider);
+    if (state.isSaving) {
+      return const Padding(
+        padding: EdgeInsets.all(Gap.xl),
+        child: Column(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: Gap.lg),
+            Text(
+              'Ukládám poslední úsek…',
+              style: TextStyle(color: AftermindPalette.stageInk),
+            ),
+            SizedBox(height: Gap.sm),
+            Text(
+              'Nahrávání je zastavené. Počkej na potvrzení uložení.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AftermindPalette.stageInk),
+            ),
+          ],
+        ),
+      );
+    }
     final lessonOver = ref.watch(lessonOverProvider);
     final wait = ref.watch(transcriptionWaitProvider).valueOrNull;
     final meetingId = state.meetingId;
@@ -717,15 +751,18 @@ class _LiveStage extends ConsumerWidget {
           Semantics(
             label: 'Nahráno ${formatClock(elapsed)}',
             excludeSemantics: true,
-            child: Text(
-              formatClock(elapsed),
-              style: const TextStyle(
-                color: AftermindPalette.stageInk,
-                fontSize: 60,
-                height: 1.1,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -1.5,
-                fontFeatures: kTabularFigures,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                formatClock(elapsed),
+                style: const TextStyle(
+                  color: AftermindPalette.stageInk,
+                  fontSize: 60,
+                  height: 1.1,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -1.5,
+                  fontFeatures: kTabularFigures,
+                ),
               ),
             ),
           ),
@@ -832,7 +869,7 @@ class _LiveStage extends ConsumerWidget {
                 ),
               _RoundAction(
                 icon: Icons.notes_rounded,
-                label: 'Přepis',
+                label: 'Otevřít',
                 onTap: onOpen,
               ),
             ],
@@ -1035,36 +1072,41 @@ class _BigControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Semantics(
-          button: true,
-          label: label == 'Ukončit'
-              ? 'Ukončit nahrávání'
-              : 'Pokračovat v nahrávání',
-          onTap: onTap,
-          excludeSemantics: true,
-          child: Pressable(
-            scale: 0.94,
-            child: GestureDetector(
-              onTap: onTap,
-              child: GradientOutline(
-                gradient: context.accent.ring,
-                circle: true,
-                width: 3,
-                child: Container(
-                  width: 76,
-                  height: 76,
-                  padding: const EdgeInsets.all(7),
-                  child: child,
+    // Keep the caption within the same width as the adjacent actions. An
+    // unconstrained caption made the whole control row overflow at large text.
+    return SizedBox(
+      width: 84,
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            label: label == 'Ukončit'
+                ? 'Ukončit nahrávání'
+                : 'Pokračovat v nahrávání',
+            onTap: onTap,
+            excludeSemantics: true,
+            child: Pressable(
+              scale: 0.94,
+              child: GestureDetector(
+                onTap: onTap,
+                child: GradientOutline(
+                  gradient: context.accent.ring,
+                  circle: true,
+                  width: 3,
+                  child: Container(
+                    width: 76,
+                    height: 76,
+                    padding: const EdgeInsets.all(7),
+                    child: child,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-        const SizedBox(height: Gap.sm),
-        _ActionLabel(label),
-      ],
+          const SizedBox(height: Gap.sm),
+          _ActionLabel(label),
+        ],
+      ),
     );
   }
 }
@@ -1125,6 +1167,7 @@ class _ActionLabel extends StatelessWidget {
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Text(
       text,
+      textAlign: TextAlign.center,
       style: TextStyle(
         color: Colors.white.withValues(alpha: 0.7),
         fontSize: 12.5,

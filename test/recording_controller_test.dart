@@ -119,41 +119,124 @@ void main() {
     return c;
   }
 
-  Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 20));
+  Future<void> settle() =>
+      Future<void>.delayed(const Duration(milliseconds: 20));
 
-  /// stop() returns while the tail chunk is still being written and the second
-  /// pass is being planned; the container must outlive both.
+  /// Local writes finish inside stop; the background refined pass still needs
+  /// the container to outlive its asynchronous work.
   Future<void> stopAndDrain(RecordingController controller) async {
     await controller.stop();
     await Future<void>.delayed(const Duration(milliseconds: 600));
   }
 
-  test('a paused lesson takes in no audio, even if the mic keeps sending', () async {
+  test('stop returns only after the tail has a file and a queue row', () async {
     final source = _FakeSource();
     final c = container(source);
     final controller = c.read(recordingControllerProvider.notifier);
-
     await controller.start();
-    expect(c.read(recordingControllerProvider).isRecording, isTrue);
-
-    source.emit(_loud(2000));
-    await settle();
-    await controller.pause();
-    expect(c.read(recordingControllerProvider).isPaused, isTrue);
-    final pausesBefore = source.pauses;
-
-    // Native code resumed the engine by itself; the controller must not care.
+    final id = c.read(recordingControllerProvider).meetingId!;
     source.emit(_loud(3000));
     await settle();
-    expect(source.pauses, greaterThan(pausesBefore));
-
-    await controller.resume();
-    source.emit(_loud(1000));
-    await settle();
-    await stopAndDrain(controller);
-
-    expect(c.read(recordingControllerProvider).totalBytes, 3000 * _bytesPerMs);
+    await controller.stop();
+    final segments = await db.select(db.transcriptSegments).get();
+    expect(segments, hasLength(1));
+    expect(segments.single.endMs, 3000);
+    expect(await db.select(db.uploadQueue).get(), hasLength(1));
+    expect(
+      File('${docs.path}/${segments.single.localAudioPath}').existsSync(),
+      isTrue,
+    );
+    expect((await db.meetingsDao.watchMeetingByIdOnce(id))!.endedAt, isNotNull);
+    expect(c.read(recordingControllerProvider).isSaving, isFalse);
+    await Future<void>.delayed(const Duration(milliseconds: 600));
   });
+
+  test('saved lesson and WAV survive reopening the local database', () async {
+    // This checks disk persistence, not microphone or mobile lifecycle behaviour.
+    await db.close();
+    final databaseFile = File('${docs.path}/synthetic.sqlite');
+    db = AppDatabase.forTesting(NativeDatabase(databaseFile));
+    final source = _FakeSource();
+    final c = container(source);
+    final controller = c.read(recordingControllerProvider.notifier);
+    await controller.start();
+    final id = c.read(recordingControllerProvider).meetingId!;
+    source.emit(_loud(3000));
+    await settle();
+    await controller.stop();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    c.dispose();
+    await db.close();
+    db = AppDatabase.forTesting(NativeDatabase(databaseFile));
+    expect((await db.meetingsDao.watchMeetingByIdOnce(id))!.endedAt, isNotNull);
+    final segments = await db.select(db.transcriptSegments).get();
+    expect(segments, hasLength(1));
+    expect(
+      await File('${docs.path}/${segments.single.localAudioPath}').length(),
+      96044,
+    );
+    expect(await db.select(db.uploadQueue).get(), hasLength(1));
+  });
+
+  test(
+    'failed tail write keeps the recovery snapshot and reports failure',
+    () async {
+      final source = _FakeSource();
+      final c = container(source);
+      final controller = c.read(recordingControllerProvider.notifier);
+      await controller.start();
+      final id = c.read(recordingControllerProvider).meetingId!;
+      final dir = Directory('${docs.path}/recordings/meeting_$id');
+      await dir.create(recursive: true);
+      await Directory('${dir.path}/chunk_0000.wav').create();
+      final checkpoint = File('${dir.path}/pending.pcm');
+      await checkpoint.writeAsBytes([1, 2, 3, 4]);
+      source.emit(_loud(3000));
+      await settle();
+      await controller.stop();
+      expect(c.read(recordingControllerProvider).error, isNotNull);
+      expect(
+        (await db.meetingsDao.watchMeetingByIdOnce(id))!.interrupted,
+        isTrue,
+      );
+      expect(c.read(recordingControllerProvider).isSaving, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(await checkpoint.readAsBytes(), [1, 2, 3, 4]);
+    },
+  );
+
+  test(
+    'a paused lesson takes in no audio, even if the mic keeps sending',
+    () async {
+      final source = _FakeSource();
+      final c = container(source);
+      final controller = c.read(recordingControllerProvider.notifier);
+
+      await controller.start();
+      expect(c.read(recordingControllerProvider).isRecording, isTrue);
+
+      source.emit(_loud(2000));
+      await settle();
+      await controller.pause();
+      expect(c.read(recordingControllerProvider).isPaused, isTrue);
+      final pausesBefore = source.pauses;
+
+      // Native code resumed the engine by itself; the controller must not care.
+      source.emit(_loud(3000));
+      await settle();
+      expect(source.pauses, greaterThan(pausesBefore));
+
+      await controller.resume();
+      source.emit(_loud(1000));
+      await settle();
+      await stopAndDrain(controller);
+
+      expect(
+        c.read(recordingControllerProvider).totalBytes,
+        3000 * _bytesPerMs,
+      );
+    },
+  );
 
   test('audio that arrives while the lesson is being set up is kept', () async {
     final source = _FakeSource(earlyBytes: _loud(1500));
@@ -181,7 +264,7 @@ void main() {
 
     final state = c.read(recordingControllerProvider);
     expect(state.isRecording, isFalse);
-    expect(state.error, isNull);
+    expect(state.error, contains('Vypnutí mikrofonu selhalo'));
     final meeting = await db.meetingsDao.watchMeetingByIdOnce(id);
     expect(meeting!.endedAt, isNotNull);
   });
@@ -222,9 +305,9 @@ void main() {
     expect(state.isRecording, isFalse);
     expect(state.error, contains('místa'));
     // The lesson row that was opened for it is closed again, not left dangling.
-    final open = await (db.select(db.meetings)
-          ..where((t) => t.endedAt.isNull()))
-        .get();
+    final open = await (db.select(
+      db.meetings,
+    )..where((t) => t.endedAt.isNull())).get();
     expect(open, isEmpty);
   });
 

@@ -34,6 +34,7 @@ import 'widgets/refined_window_tile.dart';
 import 'widgets/transcript_segment_tile.dart';
 import 'widgets/transcription_wait_notice.dart';
 import 'widgets/word_fix_sheet.dart';
+import 'widgets/meeting_audio_player.dart';
 
 enum _MeetingAction { lesson, rename, share, delete }
 
@@ -43,9 +44,11 @@ class MeetingDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.meetingId,
     this.focusSegmentId,
+    this.initialTab = 0,
   });
 
   final int meetingId;
+  final int initialTab;
 
   /// A transcript row to scroll to and mark, set when the screen is opened
   /// from a search hit rather than from the list.
@@ -56,14 +59,18 @@ class MeetingDetailScreen extends ConsumerStatefulWidget {
   /// is already open, go back to it" from "it isn't, push it".
   static String routeNameFor(int meetingId) => 'meeting/$meetingId';
 
-  static Route<void> route(int meetingId, {int? focusSegmentId}) =>
-      MaterialPageRoute<void>(
-        settings: RouteSettings(name: routeNameFor(meetingId)),
-        builder: (_) => MeetingDetailScreen(
-          meetingId: meetingId,
-          focusSegmentId: focusSegmentId,
-        ),
-      );
+  static Route<void> route(
+    int meetingId, {
+    int? focusSegmentId,
+    int initialTab = 0,
+  }) => MaterialPageRoute<void>(
+    settings: RouteSettings(name: routeNameFor(meetingId)),
+    builder: (_) => MeetingDetailScreen(
+      meetingId: meetingId,
+      focusSegmentId: focusSegmentId,
+      initialTab: initialTab,
+    ),
+  );
 
   @override
   ConsumerState<MeetingDetailScreen> createState() =>
@@ -105,7 +112,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         Scrollable.ensureVisible(
           ctx,
           alignment: 0.3,
-          duration: const Duration(milliseconds: 250),
+          duration: reducedMotion(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 250),
           curve: Curves.easeOut,
         );
       });
@@ -137,7 +146,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
+        duration: reducedMotion(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     });
@@ -229,6 +240,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
     return DefaultTabController(
       length: 2,
+      initialIndex: widget.initialTab.clamp(0, 1),
       child: Scaffold(
         appBar: AppBar(
           title: _MeetingTitle(meeting: meeting.valueOrNull),
@@ -317,15 +329,39 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               ],
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'Přepis'),
-              Tab(text: 'Poznámky'),
+              const Tab(text: 'Přepis'),
+              Tab(
+                text: meeting.valueOrNull?.subjectId != null
+                    ? 'Výpisky'
+                    : 'Poznámky',
+              ),
             ],
           ),
         ),
         body: Column(
           children: [
+            MeetingAudioPlayer(
+              segments:
+                  ref
+                      .watch(meetingSegmentsProvider(widget.meetingId))
+                      .valueOrNull ??
+                  const [],
+              audioCleared: meeting.valueOrNull?.audioClearedAt != null,
+            ),
+            if (meeting.valueOrNull?.interrupted == true)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Gap.lg,
+                  vertical: Gap.xs,
+                ),
+                child: Text(
+                  'Nahrávání bylo přerušené. Část zvuku může chybět; zkontroluj přepis.',
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
             if (meeting.valueOrNull case final m?)
               LessonContextStrip(meeting: m),
             Expanded(
@@ -392,7 +428,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   onDismiss: () => _dismissCard(latest.id),
                 ),
         ),
-        const TranscriptionWaitNotice(),
+        TranscriptionWaitNotice(meetingId: widget.meetingId),
         _refinedHeader(recording: isThisOneRecording),
         Expanded(child: _transcriptList(isThisOneRecording, cards, messages)),
         // Stopping lives in the recording banner, so the bar has the bottom.

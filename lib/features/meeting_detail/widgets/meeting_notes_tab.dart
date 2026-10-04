@@ -183,13 +183,23 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
       if (saved.content == content) savedId = saved.id;
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        Gap.lg,
-        Gap.lg,
-        Gap.lg,
-        Gap.fabClearance,
-      ),
+    if (notes.hasError && !notes.hasValue) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Výpisky se nepodařilo načíst.'),
+            TextButton(
+              onPressed: () =>
+                  ref.invalidate(meetingNotesProvider(widget.meetingId)),
+              child: const Text('Zkusit znovu'),
+            ),
+          ],
+        ),
+      );
+    }
+    final generationControls = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           lesson ? 'Hloubka výpisků' : 'Hloubka poznámek',
@@ -227,6 +237,25 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
           ),
         ),
         const SizedBox(height: Gap.xl),
+      ],
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        Gap.lg,
+        Gap.lg,
+        Gap.lg,
+        Gap.fabClearance,
+      ),
+      children: [
+        if (content != null && content.isNotEmpty)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text(lesson ? 'Upravit výpisky' : 'Upravit poznámky'),
+            subtitle: Text(depth.label),
+            children: [generationControls],
+          )
+        else
+          generationControls,
         if (outdated) ...[
           Card(
             color: Theme.of(context).colorScheme.secondaryContainer,

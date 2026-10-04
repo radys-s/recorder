@@ -28,6 +28,7 @@ import 'pcm_chunker.dart';
 import 'pcm_gain.dart';
 import 'pcm_stats.dart';
 import 'wav_writer.dart';
+import 'local_playback.dart';
 
 /// What the UI needs to know about the current recording. Deliberately does
 /// *not* carry the audio level — that changes several times a second and would
@@ -36,6 +37,7 @@ import 'wav_writer.dart';
 class RecordingState {
   const RecordingState({
     this.isRecording = false,
+    this.isSaving = false,
     this.meetingId,
     this.startedAt,
     this.isPaused = false,
@@ -51,6 +53,9 @@ class RecordingState {
   });
 
   final bool isRecording;
+
+  /// Capture has ended, but the final local write has not settled yet.
+  final bool isSaving;
   final int? meetingId;
   final DateTime? startedAt;
 
@@ -99,6 +104,7 @@ class RecordingState {
 
   RecordingState copyWith({
     bool? isRecording,
+    bool? isSaving,
     int? meetingId,
     DateTime? startedAt,
     bool? isPaused,
@@ -117,6 +123,7 @@ class RecordingState {
   }) {
     return RecordingState(
       isRecording: isRecording ?? this.isRecording,
+      isSaving: isSaving ?? this.isSaving,
       meetingId: clearMeeting ? null : (meetingId ?? this.meetingId),
       startedAt: clearMeeting ? null : (startedAt ?? this.startedAt),
       isPaused: clearMeeting ? false : (isPaused ?? this.isPaused),
@@ -211,6 +218,7 @@ class RecordingController extends Notifier<RecordingState> {
   @override
   RecordingState build() {
     ref.onDispose(() {
+      _disposed = true;
       _levelTimer?.cancel();
       _watchdogTimer?.cancel();
       _pendingTimer?.cancel();
@@ -306,11 +314,13 @@ class RecordingController extends Notifier<RecordingState> {
   }) async {
     if (state.isRecording || _starting || _stopping) return;
     _starting = true;
+    _persistenceFailed = false;
     state = state.copyWith(clearError: true);
 
     try {
       // Order matters: RECORD_AUDIO must already be granted before Android
       // will let a microphone-type foreground service start.
+      await ref.read(localPlaybackProvider).suspendForCapture();
       final source = ref.read(audioSourceProvider);
       _source = source;
       _early.clear();
@@ -402,7 +412,7 @@ class RecordingController extends Notifier<RecordingState> {
       );
       _pendingTimer = Timer.periodic(
         const Duration(seconds: 5),
-        (_) => unawaited(_writePending()),
+        (_) => unawaited(_pendingWrite = _writePending()),
       );
 
       state = RecordingState(
@@ -435,6 +445,7 @@ class RecordingController extends Notifier<RecordingState> {
       state = state.copyWith(error: 'Nahrávání se nepodařilo spustit.');
     } finally {
       _starting = false;
+      if (!state.isRecording) ref.read(localPlaybackProvider).releaseCapture();
     }
   }
 
@@ -473,6 +484,7 @@ class RecordingController extends Notifier<RecordingState> {
   Future<void> stop() async {
     if (!state.isRecording || _stopping) return;
     _stopping = true;
+    state = state.copyWith(isSaving: true);
     final meetingId = _meetingId;
     final dir = _sessionDir;
 
@@ -497,6 +509,10 @@ class RecordingController extends Notifier<RecordingState> {
         await _source?.stop();
       } catch (e, st) {
         AppLog.e(_tag, 'the microphone did not stop cleanly', e, st);
+        state = state.copyWith(
+          error:
+              'Vypnutí mikrofonu selhalo. Po uložení zvuku aplikaci restartuj.',
+        );
       }
       _source = null;
       try {
@@ -510,12 +526,30 @@ class RecordingController extends Notifier<RecordingState> {
       AppLog.e(_tag, 'error while stopping', e, st);
       state = state.copyWith(error: 'Nahrávání se nepodařilo řádně ukončit.');
     } finally {
+      // A lesson must not become eligible for notes, cleanup or a new capture
+      // until every local write, including the flushed tail, has settled.
+      await _pendingWrite;
+      await _persistTail;
+      if (_persistenceFailed) {
+        state = state.copyWith(
+          error:
+              'Část zvuku se nepodařilo uložit. Zkontroluj místo v telefonu.',
+        );
+      }
       if (meetingId != null) {
         try {
+          if (_persistenceFailed) {
+            await (_db.update(_db.meetings)
+                  ..where((m) => m.id.equals(meetingId)))
+                .write(const MeetingsCompanion(interrupted: Value(true)));
+          }
           await _db.meetingsDao.markEnded(meetingId, DateTime.now());
-          unawaited(_refineWhenPersisted(meetingId, dir));
+          unawaited(_refineWhenPersisted(meetingId, dir, _persistenceFailed));
         } catch (e, st) {
           AppLog.e(_tag, 'could not close meeting $meetingId', e, st);
+          state = state.copyWith(
+            error: 'Hodinu se nepodařilo řádně uzavřít. Při dalším spuštění zkontroluj záznam.',
+          );
         }
       }
       _meetingId = null;
@@ -525,18 +559,18 @@ class RecordingController extends Notifier<RecordingState> {
       _silentMic = null;
       state = state.copyWith(
         isRecording: false,
+        isSaving: false,
         totalBytes: _totalBytes,
         weakSignal: false,
         clearMeeting: true,
       );
       _stopping = false;
+      ref.read(localPlaybackProvider).releaseCapture();
     }
-    // The flushed tail chunk is still being written at this point, so the
-    // counts here are "everything but the tail" by definition.
     AppLog.i(
       _tag,
       'stopped after ${state.totalBytes} bytes; ${state.chunkCount} chunks '
-      'persisted so far, tail still landing',
+      'local writes settled',
     );
   }
 
@@ -550,14 +584,21 @@ class RecordingController extends Notifier<RecordingState> {
   }
 
   /// Starts the second transcription pass once the tail chunk is on disk.
-  Future<void> _refineWhenPersisted(int meetingId, String? dir) async {
+  Future<void> _refineWhenPersisted(
+    int meetingId,
+    String? dir,
+    bool persistenceFailed,
+  ) async {
+    if (persistenceFailed || _disposed) return;
     try {
       await Future.wait([..._persisting]);
     } catch (_) {
       // A failed write is logged where it happened; refine what did land.
     }
     // Only now is the snapshot of the unfinished chunk redundant.
-    if (dir != null) await deletePendingAudio(dir);
+    // Retain the recovery checkpoint when a write failed; it is not redundant.
+    if (dir != null && !persistenceFailed) await deletePendingAudio(dir);
+    if (_disposed) return;
     await ref.read(refinedTranscriptServiceProvider).refine(meetingId);
   }
 
@@ -1028,6 +1069,10 @@ class RecordingController extends Notifier<RecordingState> {
       // into "now" for the common case.
       unawaited(ref.read(queueWorkerProvider).poke());
     } catch (e, st) {
+      _persistenceFailed = true;
+      state = state.copyWith(
+        error: 'Část zvuku se nepodařilo uložit. Zkontroluj místo v telefonu.',
+      );
       AppLog.e(_tag, 'failed to persist chunk ${chunk.sequence}', e, st);
       ref
           .read(listeningDiagnosticsProvider)
@@ -1050,6 +1095,10 @@ class RecordingController extends Notifier<RecordingState> {
       }
     }
   }
+
+  bool _persistenceFailed = false;
+  bool _disposed = false;
+  Future<void> _pendingWrite = Future.value();
 
   static String _defaultTitle(DateTime at, {required bool lesson}) {
     String two(int v) => v.toString().padLeft(2, '0');

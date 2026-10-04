@@ -9,7 +9,7 @@ enum OnboardingStep { groqKey, geminiKey, subject, study, timetable }
 typedef OnboardingItem = ({OnboardingStep step, bool done, bool optional});
 
 /// The first-run checklist, ticked off from what the app already knows.
-/// Only the Groq key and a first subject are required: without the key
+/// A transcription key and a first subject are required: without a key
 /// nothing is transcribed, without a subject the class assistant is idle.
 List<OnboardingItem> onboardingSteps({
   required bool hasGroqKey,
@@ -18,7 +18,11 @@ List<OnboardingItem> onboardingSteps({
   required bool hasStudyProfile,
   required bool hasTimetable,
 }) => [
-  (step: OnboardingStep.groqKey, done: hasGroqKey, optional: false),
+  (
+    step: OnboardingStep.groqKey,
+    done: hasGroqKey || hasGeminiKey,
+    optional: false,
+  ),
   (step: OnboardingStep.geminiKey, done: hasGeminiKey, optional: true),
   (step: OnboardingStep.subject, done: hasSubject, optional: false),
   (step: OnboardingStep.study, done: hasStudyProfile, optional: true),
@@ -34,8 +38,8 @@ bool onboardingRequiredDone(List<OnboardingItem> steps) =>
 ({String title, String subtitle, IconData icon}) _copy(OnboardingStep step) =>
     switch (step) {
       OnboardingStep.groqKey => (
-        title: 'Vlož Groq klíč',
-        subtitle: 'Bez něj se nahrávka nepřepíše.',
+        title: 'Připoj přepis',
+        subtitle: 'Vlož vlastní klíč Groq nebo Gemini v Nastavení.',
         icon: Icons.key,
       ),
       OnboardingStep.geminiKey => (

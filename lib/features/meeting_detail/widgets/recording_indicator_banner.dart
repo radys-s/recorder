@@ -43,7 +43,17 @@ Future<void> confirmAndStopRecording(
   );
   if (stop != true || !context.mounted) return;
   HapticFeedback.mediumImpact();
+  final messenger = ScaffoldMessenger.of(context);
   await ref.read(recordingControllerProvider.notifier).stop();
+  if (!context.mounted) return;
+  final error = ref.read(recordingControllerProvider).error;
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(
+        error ?? 'Nahrávka je uložená v telefonu. Přepis může ještě dobíhat.',
+      ),
+    ),
+  );
 }
 
 /// The "recording in progress" strip, mounted from `MaterialApp.builder` so it
@@ -269,7 +279,11 @@ class _BannerState extends ConsumerState<_Banner> {
         // The clock never gives way; the word before it may.
         Flexible(
           child: Text(
-            paused ? 'Pozastaveno' : 'Nahrává se',
+            recording.isSaving
+                ? 'Ukládám…'
+                : paused
+                ? 'Pozastaveno'
+                : 'Nahrává se',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: foreground, fontWeight: FontWeight.w500),
@@ -294,37 +308,47 @@ class _BannerState extends ConsumerState<_Banner> {
       ],
     );
 
-    Widget actions() => Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          button: true,
-          label: paused ? 'Pokračovat v nahrávání' : 'Pozastavit nahrávání',
-          onTap: _togglePause,
-          excludeSemantics: true,
-          child: IconButton(
-            onPressed: _togglePause,
-            icon: Icon(
-              paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-              color: foreground,
+    Widget actions() => recording.isSaving
+        ? const Padding(
+            padding: EdgeInsets.all(Gap.md),
+            child: SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-          ),
-        ),
-        // This banner is built above Navigator, so an IconButton tooltip has
-        // no Overlay ancestor and throws as soon as the strip opens.
-        Semantics(
-          button: true,
-          label: 'Ukončit nahrávání',
-          onTap: () => _confirmStop(context),
-          excludeSemantics: true,
-          child: IconButton(
-            onPressed: () => _confirmStop(context),
-            icon: Icon(Icons.stop, size: 20, color: foreground),
-            style: IconButton.styleFrom(foregroundColor: foreground),
-          ),
-        ),
-      ],
-    );
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                button: true,
+                label: paused
+                    ? 'Pokračovat v nahrávání'
+                    : 'Pozastavit nahrávání',
+                onTap: _togglePause,
+                excludeSemantics: true,
+                child: IconButton(
+                  onPressed: _togglePause,
+                  icon: Icon(
+                    paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                    color: foreground,
+                  ),
+                ),
+              ),
+              // This banner is built above Navigator, so an IconButton tooltip has
+              // no Overlay ancestor and throws as soon as the strip opens.
+              Semantics(
+                button: true,
+                label: 'Ukončit nahrávání',
+                onTap: () => _confirmStop(context),
+                excludeSemantics: true,
+                child: IconButton(
+                  onPressed: () => _confirmStop(context),
+                  icon: Icon(Icons.stop, size: 20, color: foreground),
+                  style: IconButton.styleFrom(foregroundColor: foreground),
+                ),
+              ),
+            ],
+          );
 
     return Material(
       color: background,

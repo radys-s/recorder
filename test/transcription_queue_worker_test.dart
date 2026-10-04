@@ -18,6 +18,27 @@ import 'package:recorder/stt/lesson_vocabulary.dart';
 import 'package:recorder/stt/stt_provider.dart';
 import 'package:recorder/stt/transcript_corrector.dart';
 
+/// A single-shot clock controlled by the test, not the host's scheduling load.
+class _ManualTimer implements Timer {
+  _ManualTimer(this.callback);
+  final void Function() callback;
+  bool _active = true;
+  int _tick = 0;
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    _tick = 1;
+    callback();
+  }
+
+  @override
+  bool get isActive => _active;
+  @override
+  int get tick => _tick;
+  @override
+  void cancel() => _active = false;
+}
+
 /// An in-memory queue table with the same due-row rule as the real DAO.
 class _Queue implements UploadQueueDao {
   final rows = <UploadQueueData>[];
@@ -582,17 +603,31 @@ void main() {
     });
 
     test('a batch that never fills goes out on its own clock', () async {
-      final llm = _Llm('A Viktorka zpívala u vody.');
-      final w = world(llm, flushAfter: const Duration(milliseconds: 40));
-      w.enqueue(1);
-      await w.worker.start();
-      await _until(() => w.row(1).status == QueueStatus.succeeded);
-      await _settle();
-      expect(llm.calls, 0);
-      await Future<void>.delayed(const Duration(milliseconds: 120));
-      await _settle();
-      expect(llm.calls, 1);
-      await w.worker.stop();
+      const window = Duration(milliseconds: 40);
+      _ManualTimer? clock;
+      await runZoned(
+        () async {
+          final llm = _Llm('A Viktorka zpívala u vody.');
+          final w = world(llm, flushAfter: window);
+          w.enqueue(1);
+          await w.worker.start();
+          await _until(() => w.row(1).status == QueueStatus.succeeded);
+          await _settle();
+          expect(clock, isNotNull, reason: 'the worker arms the batch timer');
+          expect(llm.calls, 0, reason: 'the window has not elapsed');
+          clock!.fire();
+          await _until(() => llm.calls == 1);
+          await w.worker.settle();
+          expect(llm.calls, 1);
+          await w.worker.stop();
+        },
+        zoneSpecification: ZoneSpecification(
+          createTimer: (self, parent, zone, duration, callback) {
+            if (duration == window) return clock = _ManualTimer(callback);
+            return parent.createTimer(zone, duration, callback);
+          },
+        ),
+      );
     });
 
     test('chunks arriving inside the window share one request', () async {

@@ -77,6 +77,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   /// A second tap on the record disc while the first is still opening the
   /// microphone would otherwise push the meeting screen twice.
   bool _starting = false;
+  bool _preparing = false;
 
   /// Set once the checklist has been seen unfinished, so finishing it during
   /// this visit leaves a „Hotovo" card to close instead of it vanishing, while
@@ -102,6 +103,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
         preselectSubjectId: subjectId,
       );
       if (setup == null || !mounted) return;
+      setState(() => _preparing = true);
       HapticFeedback.mediumImpact();
       await ref
           .read(recordingControllerProvider.notifier)
@@ -116,6 +118,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
       await Navigator.of(context).push(MeetingDetailScreen.route(meetingId));
     } finally {
       _starting = false;
+      if (mounted) setState(() => _preparing = false);
     }
   }
 
@@ -220,7 +223,9 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
       recordingControllerProvider.select((s) => s.error),
     );
     final keyKnown = ref.watch(hasApiKeyProvider).valueOrNull;
-    final hasKey = keyKnown ?? true;
+    final hasKey =
+        (keyKnown ?? true) ||
+        (ref.watch(hasGeminiKeyProvider).valueOrNull ?? false);
     final onboarding = _onboarding(keyKnown);
     // The shell's floating tab bar arrives as bottom padding, so this clears
     // both the bar and the home indicator.
@@ -238,6 +243,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
         slivers: [
           SliverToBoxAdapter(
             child: DashboardStage(
+              preparing: _preparing,
               date: formatDashboardDate(DateTime.now()),
               liveSubjectName: liveSubject,
               onStart: _startRecording,
@@ -281,13 +287,12 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
               child: Entrance(
                 child: _Notice(
                   icon: Icons.key_off,
-                  title: 'Chybí Groq API klíč',
+                  title: 'Připoj přepis nahrávek',
                   message: 'Nahrávat můžeš, ale přepis se nespustí.',
                   onTap: _openSettings,
                 ),
               ),
             ),
-          const SliverToBoxAdapter(child: StudyDueGroup()),
           if (latest != null)
             SliverToBoxAdapter(
               // Keyed by what it shows, so notes that land while the dashboard
@@ -307,6 +312,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
             onRetry: () => ref.invalidate(meetingSummariesProvider),
             builder: _buildList,
           ),
+          const SliverToBoxAdapter(child: StudyDueGroup()),
           SliverPadding(padding: EdgeInsets.only(bottom: Gap.xl + bottomInset)),
         ],
       ),
@@ -341,7 +347,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           ].join(' · '),
           onTap: () =>
               Navigator.of(context)
-                  .push(MeetingDetailScreen.route(s.meeting.id)),
+                  .push(MeetingDetailScreen.route(s.meeting.id, initialTab: 1)),
         );
       }
     }
@@ -378,8 +384,8 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
           icon: Icons.mic_none_outlined,
           title: 'Zatím žádné nahrávky',
           message:
-              'Klepni na tlačítko nahrávání nahoře. Přepis začne přibývat '
-              'během pár vteřin.',
+              'Klepni na tlačítko nahrávání nahoře. Zvuk se ukládá do telefonu; '
+              'přepis a výpisky se zpracují po připojení služby.',
         ),
       );
     }

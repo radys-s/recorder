@@ -3,6 +3,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/features/meetings_list/widgets/onboarding_card.dart';
 
 void main() {
+  test('Gemini alone satisfies the transcription prerequisite', () {
+    expect(
+      onboardingRequiredDone(
+        onboardingSteps(
+          hasGroqKey: false,
+          hasGeminiKey: true,
+          hasSubject: true,
+          hasStudyProfile: false,
+          hasTimetable: false,
+        ),
+      ),
+      isTrue,
+    );
+  });
   test('only the Groq key and a subject are required', () {
     final none = onboardingSteps(
       hasGroqKey: false,
@@ -68,7 +82,7 @@ void main() {
     expect(find.text('Začínáme'), findsOneWidget);
     expect(find.text('1 z 5 kroků'), findsOneWidget);
 
-    await tester.tap(find.text('Vlož Groq klíč'));
+    await tester.tap(find.text('Připoj přepis'));
     await tester.tap(find.text('Založ první předmět'));
     expect(tapped, [OnboardingStep.subject]);
 

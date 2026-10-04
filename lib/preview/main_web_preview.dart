@@ -49,6 +49,11 @@ Future<void> main() async {
     }
     await db.preferencesDao.setRecordingNoticeDismissed(true);
   }
+  // Isolated first-run UI checks can skip legal acceptance without touching
+  // any real installation. The default fresh scenario still shows the gate.
+  if (fresh && Uri.base.queryParameters['consent'] == 'skip') {
+    await db.preferencesDao.acceptTerms(kTermsVersion, DateTime.now());
+  }
   // `?accent=sapphire` previews another accent preset.
   final accent = Uri.base.queryParameters['accent'];
   for (final preset in AccentPreset.values) {
@@ -91,9 +96,33 @@ Future<void> main() async {
           () => _PreviewRecordingController(recordingId),
         ),
       ],
-      child: const RecorderApp(),
+      child: const _PreviewDisplay(child: RecorderApp()),
     ),
   );
+}
+
+/// Reproducible display checks without changing the user's OS preferences.
+class _PreviewDisplay extends StatelessWidget {
+  const _PreviewDisplay({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    final query = Uri.base.queryParameters;
+    final theme = query['theme'];
+    final scale = double.tryParse(query['scale'] ?? '') ?? 1;
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        platformBrightness: theme == 'light'
+            ? Brightness.light
+            : theme == 'dark'
+            ? Brightness.dark
+            : null,
+        textScaler: TextScaler.linear(scale.clamp(1, 2)),
+        disableAnimations: query['motion'] == 'off',
+      ),
+      child: child,
+    );
+  }
 }
 
 /// Hands back one tiny picture instead of opening the camera or gallery.
@@ -268,6 +297,8 @@ class _PreviewRecordingController extends RecordingController {
   @override
   Future<void> stop() async {
     _timer?.cancel();
+    state = state.copyWith(isSaving: true);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     final id = state.meetingId;
     if (id != null) {
       final db = ref.read(appDatabaseProvider);
@@ -276,6 +307,26 @@ class _PreviewRecordingController extends RecordingController {
       );
     }
     state = const RecordingState();
+  }
+
+  @override
+  Future<void> pause() async {
+    if (!state.isRecording || state.isSaving || state.isPaused) return;
+    _timer?.cancel();
+    level.value = (rms: 0, peak: 0);
+    state = state.copyWith(isPaused: true, pausedAt: DateTime.now());
+  }
+
+  @override
+  Future<void> resume() async {
+    if (!state.isPaused || state.isSaving) return;
+    final paused = DateTime.now().difference(state.pausedAt!);
+    state = state.copyWith(
+      isPaused: false,
+      pausedDuration: state.pausedDuration + paused,
+      clearPause: true,
+    );
+    _tick();
   }
 
   @override

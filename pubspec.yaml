@@ -41,6 +41,8 @@ dependencies:
 
   # Audio recording
   record: ^6.0.0
+  # Local WAV playback; no audio is uploaded by the player.
+  just_audio: ^0.10.6
 
   # Android foreground service + persistent notification while recording
   flutter_foreground_task: ^9.1.0
