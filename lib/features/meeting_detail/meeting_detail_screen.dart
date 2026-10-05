@@ -154,6 +154,30 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     });
   }
 
+  /// After the student sends a message: the bubble and the reply that follows
+  /// belong on screen even when the reader had scrolled far up. Two frames, as
+  /// the list first grows by the message and then by the pending reply.
+  void _scrollToEnd() {
+    void go() {
+      if (!mounted || !_scrollController.hasClients) return;
+      final end = _scrollController.position.maxScrollExtent;
+      if (reducedMotion(context)) {
+        _scrollController.jumpTo(end);
+      } else {
+        _scrollController.animateTo(
+          end,
+          duration: AppDuration.quick,
+          curve: AppCurve.standard,
+        );
+      }
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      go();
+      WidgetsBinding.instance.addPostFrameCallback((_) => go());
+    });
+  }
+
   Future<void> _retry(TranscriptSegment segment) async {
     final db = ref.read(appDatabaseProvider);
     await db.uploadQueueDao.requeueForSegment(segment.id);
@@ -199,6 +223,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     // Presentation is the final observable hop. The listener has no UI side
     // effects; it only tells diagnostics whether a persisted card reached an
     // open detail screen. A card can still be read later in the timeline.
@@ -342,28 +367,39 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         ),
         body: Column(
           children: [
-            MeetingAudioPlayer(
-              segments:
-                  ref
-                      .watch(meetingSegmentsProvider(widget.meetingId))
-                      .valueOrNull ??
-                  const [],
-              audioCleared: meeting.valueOrNull?.audioClearedAt != null,
-            ),
-            if (meeting.valueOrNull?.interrupted == true)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Gap.lg,
-                  vertical: Gap.xs,
-                ),
-                child: Text(
-                  'Nahrávání bylo přerušené. Část zvuku může chybět; zkontroluj přepis.',
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Theme.of(context).colorScheme.error),
-                ),
+            // While the keyboard is up the header extras step aside — they are
+            // kept mounted (a playing recording must not stop) but take no
+            // height, so the transcript and the field keep the screen.
+            _KeyboardCollapse(
+              collapsed: keyboardOpen,
+              child: Column(
+                children: [
+                  MeetingAudioPlayer(
+                    segments:
+                        ref
+                            .watch(meetingSegmentsProvider(widget.meetingId))
+                            .valueOrNull ??
+                        const [],
+                    audioCleared: meeting.valueOrNull?.audioClearedAt != null,
+                  ),
+                  if (meeting.valueOrNull?.interrupted == true)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Gap.lg,
+                        vertical: Gap.xs,
+                      ),
+                      child: Text(
+                        'Nahrávání bylo přerušené. Část zvuku může chybět; zkontroluj přepis.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  if (meeting.valueOrNull case final m?)
+                    LessonContextStrip(meeting: m),
+                ],
               ),
-            if (meeting.valueOrNull case final m?)
-              LessonContextStrip(meeting: m),
+            ),
             Expanded(
               child: TabBarView(
                 children: [
@@ -432,7 +468,11 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         _refinedHeader(recording: isThisOneRecording),
         Expanded(child: _transcriptList(isThisOneRecording, cards, messages)),
         // Stopping lives in the recording banner, so the bar has the bottom.
-        ChatBar(meetingId: widget.meetingId, recording: isThisOneRecording),
+        ChatBar(
+          meetingId: widget.meetingId,
+          recording: isThisOneRecording,
+          onSent: _scrollToEnd,
+        ),
       ],
     );
   }
@@ -513,6 +553,9 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
         return ListView.separated(
           controller: _scrollController,
+          // Dragging the transcript is the natural way to put the keyboard
+          // away; without it the field stayed open until the app was left.
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.sm, Gap.lg, Gap.lg),
           itemCount: items.length,
           // A rule butting up against a card reads as a mistake; between two
@@ -696,6 +739,31 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 /// A lesson nobody renamed is titled „Hodina 28.9. 8:00", which says when but
 /// not what. The subject is what the student looks for, so it leads and the
 /// date moves to a quiet second line.
+/// Lets [child] shrink to nothing while the keyboard is open without
+/// unmounting it, so audio that is playing keeps playing.
+class _KeyboardCollapse extends StatelessWidget {
+  const _KeyboardCollapse({required this.collapsed, required this.child});
+
+  final bool collapsed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedSize(
+        duration: reducedMotion(context) ? Duration.zero : AppDuration.quick,
+        curve: AppCurve.standard,
+        alignment: Alignment.topCenter,
+        child: Visibility(
+          visible: !collapsed,
+          maintainState: true,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 class _MeetingTitle extends ConsumerWidget {
   const _MeetingTitle({required this.meeting});
 

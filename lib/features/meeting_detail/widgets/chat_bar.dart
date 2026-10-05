@@ -10,6 +10,7 @@ import '../../../ai/live_answer_service.dart';
 import '../../../audio/recording_controller.dart';
 import '../../../core/paths.dart';
 import '../../../core/photo_files.dart';
+import '../../../core/motion.dart';
 import '../../../core/photo_picker.dart';
 import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
@@ -20,10 +21,19 @@ import '../meeting_detail_providers.dart';
 /// The input pinned under the transcript: context, rules and questions typed
 /// during a lesson, plus „Odpověz teď" while it is being recorded.
 class ChatBar extends ConsumerStatefulWidget {
-  const ChatBar({super.key, required this.meetingId, required this.recording});
+  const ChatBar({
+    super.key,
+    required this.meetingId,
+    required this.recording,
+    this.onSent,
+  });
 
   final int meetingId;
   final bool recording;
+
+  /// Called after a message was stored, so the transcript can bring it (and
+  /// the answer that follows) into view even when the reader is far above.
+  final VoidCallback? onSent;
 
   @override
   ConsumerState<ChatBar> createState() => _ChatBarState();
@@ -31,12 +41,31 @@ class ChatBar extends ConsumerStatefulWidget {
 
 class _ChatBarState extends ConsumerState<ChatBar> {
   final _controller = TextEditingController();
+  final _focus = FocusNode();
+  final _capsuleKey = GlobalKey();
   bool _answering = false;
 
   @override
   void dispose() {
     _controller.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  /// A tap anywhere outside the capsule closes the keyboard; a tap on one of
+  /// its own buttons does not, so „Důležité" and the send button keep working
+  /// with the field focused.
+  void _onTapOutside(PointerDownEvent event) {
+    final box = _capsuleKey.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      final local = box.globalToLocal(event.position);
+      if (box.size.contains(local)) return;
+    }
+    _dismissKeyboard();
+  }
+
+  void _dismissKeyboard() {
+    if (_focus.hasFocus) _focus.unfocus();
   }
 
   /// Where the message sorts into the transcript: the moment it was typed
@@ -60,6 +89,9 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     _controller.clear();
 
     final intent = detectChatIntent(text);
+    // After a lesson there is nothing more to type in a row; while it runs the
+    // field keeps focus so several notes can follow one another.
+    if (!widget.recording) _dismissKeyboard();
     final id = await ref
         .read(chatMessagesDaoProvider)
         .addUserMessage(
@@ -68,6 +100,7 @@ class _ChatBarState extends ConsumerState<ChatBar> {
           intent: intent,
           atMs: _atMs(),
         );
+    widget.onSent?.call();
     // Context and rules cost no request: the next answer call reads them.
     if (intent == ChatIntent.question) {
       unawaited(ref.read(chatAnswerServiceProvider).ask(id));
@@ -224,6 +257,7 @@ class _ChatBarState extends ConsumerState<ChatBar> {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(Gap.md, Gap.xs, Gap.md, 0),
         child: Material(
+          key: _capsuleKey,
           color: scheme.surfaceContainerHigh,
           elevation: 3,
           shadowColor: scheme.shadow.withValues(alpha: 0.3),
@@ -280,6 +314,35 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                       ],
                     ),
                   ),
+                ListenableBuilder(
+                  listenable: _focus,
+                  builder: (context, _) => AnimatedSize(
+                    duration: reducedMotion(context)
+                        ? Duration.zero
+                        : AppDuration.quick,
+                    curve: AppCurve.standard,
+                    alignment: Alignment.topCenter,
+                    child: _focus.hasFocus
+                        ? Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                _dismissKeyboard();
+                              },
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              icon: const Icon(
+                                Icons.keyboard_hide_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Skrýt klávesnici'),
+                            ),
+                          )
+                        : const SizedBox(width: double.infinity),
+                  ),
+                ),
                 Row(
                   children: [
                     IconButton(
@@ -288,27 +351,35 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                       icon: const Icon(Icons.add_photo_alternate_outlined),
                     ),
                     Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        minLines: 1,
-                        maxLines: 4,
-                        textCapitalization: TextCapitalization.sentences,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                        decoration: InputDecoration(
-                          hintText: widget.recording
-                              ? 'Kontext, otázka nebo pravidlo…'
-                              : 'Zeptej se na přepis…',
-                          isDense: true,
-                          filled: true,
-                          fillColor: scheme.surfaceContainerHighest,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: Gap.lg,
-                            vertical: Gap.md,
+                      child: CallbackShortcuts(
+                        bindings: {
+                          const SingleActivator(LogicalKeyboardKey.escape):
+                              _dismissKeyboard,
+                        },
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _focus,
+                          onTapOutside: _onTapOutside,
+                          minLines: 1,
+                          maxLines: 4,
+                          textCapitalization: TextCapitalization.sentences,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
+                          decoration: InputDecoration(
+                            hintText: widget.recording
+                                ? 'Kontext, otázka nebo pravidlo…'
+                                : 'Zeptej se na přepis…',
+                            isDense: true,
+                            filled: true,
+                            fillColor: scheme.surfaceContainerHighest,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: Gap.lg,
+                              vertical: Gap.md,
+                            ),
+                            border: pill,
+                            enabledBorder: pill,
+                            focusedBorder: pill,
                           ),
-                          border: pill,
-                          enabledBorder: pill,
-                          focusedBorder: pill,
                         ),
                       ),
                     ),
