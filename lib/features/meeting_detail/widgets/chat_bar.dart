@@ -16,6 +16,7 @@ import '../../../core/providers.dart';
 import '../../../core/spacing.dart';
 import '../../../data/db/tables/chat_messages_table.dart';
 import '../lesson_photos.dart';
+import 'chat_message_tile.dart' show chatIntentChip;
 import '../meeting_detail_providers.dart';
 
 /// The input pinned under the transcript: context, rules and questions typed
@@ -45,12 +46,19 @@ class _ChatBarState extends ConsumerState<ChatBar> {
   final _capsuleKey = GlobalKey();
   bool _answering = false;
 
+  /// The intent the student picked by tapping the label; wins over the guess
+  /// until the field is emptied.
+  ChatIntent? _override;
+
   @override
   void dispose() {
     _controller.dispose();
     _focus.dispose();
     super.dispose();
   }
+
+  ChatIntent _intentFor(String text) =>
+      _override ?? detectChatIntent(text, recording: widget.recording);
 
   /// A tap anywhere outside the capsule closes the keyboard; a tap on one of
   /// its own buttons does not, so „Důležité" and the send button keep working
@@ -88,7 +96,8 @@ class _ChatBarState extends ConsumerState<ChatBar> {
     if (text.isEmpty) return;
     _controller.clear();
 
-    final intent = detectChatIntent(text);
+    final intent = _intentFor(text);
+    _override = null;
     // After a lesson there is nothing more to type in a row; while it runs the
     // field keeps focus so several notes can follow one another.
     if (!widget.recording) _dismissKeyboard();
@@ -315,33 +324,54 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                     ),
                   ),
                 ListenableBuilder(
-                  listenable: _focus,
-                  builder: (context, _) => AnimatedSize(
-                    duration: reducedMotion(context)
-                        ? Duration.zero
-                        : AppDuration.quick,
-                    curve: AppCurve.standard,
-                    alignment: Alignment.topCenter,
-                    child: _focus.hasFocus
-                        ? Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () {
-                                HapticFeedback.selectionClick();
-                                _dismissKeyboard();
-                              },
-                              style: TextButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
+                  listenable: Listenable.merge([_focus, _controller]),
+                  builder: (context, _) {
+                    final typed = _controller.text.trim().isNotEmpty;
+                    if (!typed) _override = null;
+                    final intent = typed ? _intentFor(_controller.text) : null;
+                    return AnimatedSize(
+                      duration: reducedMotion(context)
+                          ? Duration.zero
+                          : AppDuration.quick,
+                      curve: AppCurve.standard,
+                      alignment: Alignment.topCenter,
+                      child: intent == null && !_focus.hasFocus
+                          ? const SizedBox(width: double.infinity)
+                          : Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: Gap.xs,
                               ),
-                              icon: const Icon(
-                                Icons.keyboard_hide_outlined,
-                                size: 18,
+                              child: Row(
+                                children: [
+                                  if (intent != null)
+                                    _IntentLabel(
+                                      intent: intent,
+                                      onTap: () => setState(
+                                        () =>
+                                            _override = cycleChatIntent(intent),
+                                      ),
+                                    ),
+                                  const Spacer(),
+                                  if (_focus.hasFocus)
+                                    TextButton.icon(
+                                      onPressed: () {
+                                        HapticFeedback.selectionClick();
+                                        _dismissKeyboard();
+                                      },
+                                      style: TextButton.styleFrom(
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.keyboard_hide_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Skrýt klávesnici'),
+                                    ),
+                                ],
                               ),
-                              label: const Text('Skrýt klávesnici'),
                             ),
-                          )
-                        : const SizedBox(width: double.infinity),
-                  ),
+                    );
+                  },
                 ),
                 Row(
                   children: [
@@ -401,3 +431,57 @@ class _ChatBarState extends ConsumerState<ChatBar> {
 }
 
 enum _PhotoSource { camera, gallery }
+
+/// „Odešle se jako: Otázka" — what the message will be, before it is sent. A
+/// tap cycles it, so a wrong guess is fixed where the student is looking
+/// instead of on the bubble afterwards.
+class _IntentLabel extends StatelessWidget {
+  const _IntentLabel({required this.intent, required this.onTap});
+
+  final ChatIntent intent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final chip = chatIntentChip(intent);
+    return Semantics(
+      button: true,
+      label: 'Odešle se jako ${chip.label}. Klepnutím změníš.',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(Gap.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Gap.sm,
+            vertical: Gap.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Odešle se jako: ',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Icon(chip.icon, size: 16, color: theme.colorScheme.primary),
+              const SizedBox(width: Gap.xs),
+              Text(
+                chip.label,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

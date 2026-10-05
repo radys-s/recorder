@@ -104,6 +104,10 @@ const Duration kAnswerNowCutDebounce = Duration(seconds: 5);
 /// allowed a bigger context than an automatic answer.
 const Duration kChatAnswerTimeout = Duration(seconds: 25);
 
+/// Upper bound for one chat answer across every route it may try, so a reply
+/// can never stay „pending" for good.
+const Duration kChatWatchdog = Duration(seconds: 70);
+
 /// Secure storage key for the user's Groq API key.
 /// Shown in O aplikaci; `test/legal_texts_test.dart` keeps it equal to the
 /// version in pubspec.yaml.

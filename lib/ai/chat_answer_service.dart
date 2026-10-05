@@ -32,6 +32,7 @@ class ChatAnswerService {
     this._hasGeminiKey,
     this._hasRoomyRoute,
     this.refinedFor,
+    this.watchdog = kChatWatchdog,
   });
 
   static const _tag = 'ai.chat';
@@ -48,6 +49,9 @@ class ChatAnswerService {
 
   /// The refined windows of a meeting, preferred over live text once ready.
   final Future<List<RefinedSegment>> Function(int meetingId)? refinedFor;
+
+  /// How long one question may take over every route together.
+  final Duration watchdog;
 
   Future<bool> _roomy() async {
     final check = _hasRoomyRoute;
@@ -91,95 +95,9 @@ class ChatAnswerService {
     }
 
     try {
-      final material = await _lessonContext.load(message.meetingId);
-      final segments = await _segments.segmentsForMeeting(message.meetingId);
-      final transcript = refinedFor == null
-          ? [
-              for (final s in segments)
-                if (s.content != null && s.content!.trim().isNotEmpty)
-                  s.content!.trim(),
-            ].join(' ')
-          : refinedOrLiveTranscript(
-              segments, await refinedFor!(message.meetingId));
-
-      final heading = material.isLesson ? 'Lesson so far' : 'Recording so far';
-      List<LlmMessage> prompt(LessonContext built) => [
-            const LlmMessage.system(_systemPrompt),
-            LlmMessage.user(
-              '${built.material.isEmpty ? '' : '${built.material}\n\n'}'
-              '$heading:\n${built.tail.isEmpty ? '(nothing transcribed yet)' : built.tail}'
-              '\n\nThe student asks:\n${message.body}',
-            ),
-          ];
-
-      LessonContext? built;
-      String? raw;
-      if (await _geminiAvailable()) {
-        final wide = buildLessonContext(
-          material: material,
-          transcript: transcript,
-          focus: message.body,
-          budget: ContextBudget.gemini,
-        );
-        try {
-          raw = await _gemini!.complete(
-            model: kGeminiModel,
-            messages: prompt(wide),
-            maxTokens: 4000,
-            jsonMode: true,
-            timeout: kGeminiChatTimeout,
-          );
-          built = wide;
-        } on AiException catch (e) {
-          AppLog.e(_tag, 'message $userMessageId: Gemini failed, using Groq', e);
-        }
-      }
-
-      if (raw == null) {
-        built = buildLessonContext(
-          material: material,
-          transcript: transcript,
-          focus: message.body,
-          budget: await _roomy() ? ContextBudget.routed : ContextBudget.direct,
-        );
-        raw = await _llm.complete(
-          model: kGroqAnswerModel,
-          messages: prompt(built),
-          temperature: 0.2,
-          // Reasoning tokens count against this too; see LiveAnswerService.
-          maxTokens: 1500,
-          jsonMode: true,
-          timeout: kChatAnswerTimeout,
-        );
-      }
-
-      final reply = parseChatReply(raw);
-      if (reply == null) {
-        await _chat.failReply(replyId, 'Odpověď nepřišla celá. Zkus to znovu.');
-        return;
-      }
-
-      var basis = reply.basis;
-      int? cardId;
-      if (basis == 'card') {
-        cardId = built!.cardIdFor(reply.card);
-        if (cardId == null) basis = 'knowledge';
-      }
-
-      await _chat.completeReply(
-        replyId,
-        short: reply.short,
-        detail: reply.detail.isEmpty ? null : reply.detail,
-        // The chat row has no card column; the title travels in the basis so
-        // the badge can still name it.
-        basis: cardId == null ? basis : 'card:${reply.card}',
-      );
-      if (cardId != null) {
-        unawaited(_lessonContext.markUsed(cardId).catchError((Object e) {
-          AppLog.e(_tag, 'could not mark card $cardId used', e);
-        }));
-      }
-      AppLog.d(_tag, 'message $userMessageId answered, basis $basis');
+      // A hung call must end in a visible failure, never in „Přemýšlím…"
+      // forever: the sum of both timeouts below can be a minute and a half.
+      await _answer(message, replyId).timeout(watchdog);
     } on AiPermanentException catch (e) {
       AppLog.e(_tag, 'message $userMessageId rejected', e);
       await _chat.failReply(
@@ -193,10 +111,111 @@ class ChatAnswerService {
         '${e.source ?? 'AI služba'} teď neodpovídá (limit nebo síť). '
         'Zkus to za chvíli znovu.',
       );
+    } on TimeoutException catch (e) {
+      AppLog.e(_tag, 'message $userMessageId: no answer in time', e);
+      await _chat.failReply(replyId, 'Odpověď trvá moc dlouho. Zkus to znovu.');
     } catch (e, st) {
       AppLog.e(_tag, 'message $userMessageId failed', e, st);
       await _chat.failReply(replyId, 'Odpověď se nepodařilo získat.');
     }
+  }
+
+  /// The whole call for one question: context, Gemini then the router, parse,
+  /// store. Throws what the providers throw; [ask] turns it into a failed row.
+  Future<void> _answer(ChatMessage message, int replyId) async {
+    final material = await _lessonContext.load(message.meetingId);
+    final segments = await _segments.segmentsForMeeting(message.meetingId);
+    final transcript = refinedFor == null
+        ? [
+            for (final s in segments)
+              if (s.content != null && s.content!.trim().isNotEmpty)
+                s.content!.trim(),
+          ].join(' ')
+        : refinedOrLiveTranscript(
+            segments,
+            await refinedFor!(message.meetingId),
+          );
+
+    final heading = material.isLesson ? 'Lesson so far' : 'Recording so far';
+    List<LlmMessage> prompt(LessonContext built) => [
+      const LlmMessage.system(_systemPrompt),
+      LlmMessage.user(
+        '${built.material.isEmpty ? '' : '${built.material}\n\n'}'
+        '$heading:\n${built.tail.isEmpty ? '(nothing transcribed yet)' : built.tail}'
+        '\n\nThe student asks:\n${message.body}',
+      ),
+    ];
+
+    LessonContext? built;
+    String? raw;
+    if (await _geminiAvailable()) {
+      final wide = buildLessonContext(
+        material: material,
+        transcript: transcript,
+        focus: message.body,
+        budget: ContextBudget.gemini,
+      );
+      try {
+        raw = await _gemini!.complete(
+          model: kGeminiModel,
+          messages: prompt(wide),
+          maxTokens: 4000,
+          jsonMode: true,
+          timeout: kGeminiChatTimeout,
+        );
+        built = wide;
+      } on AiException catch (e) {
+        AppLog.e(_tag, 'message $message.id: Gemini failed, using Groq', e);
+      }
+    }
+
+    if (raw == null) {
+      built = buildLessonContext(
+        material: material,
+        transcript: transcript,
+        focus: message.body,
+        budget: await _roomy() ? ContextBudget.routed : ContextBudget.direct,
+      );
+      raw = await _llm.complete(
+        model: kGroqAnswerModel,
+        messages: prompt(built),
+        temperature: 0.2,
+        // Reasoning tokens count against this too; see LiveAnswerService.
+        maxTokens: 1500,
+        jsonMode: true,
+        timeout: kChatAnswerTimeout,
+      );
+    }
+
+    final reply = parseChatReply(raw);
+    if (reply == null) {
+      await _chat.failReply(replyId, 'Odpověď nepřišla celá. Zkus to znovu.');
+      return;
+    }
+
+    var basis = reply.basis;
+    int? cardId;
+    if (basis == 'card') {
+      cardId = built!.cardIdFor(reply.card);
+      if (cardId == null) basis = 'knowledge';
+    }
+
+    await _chat.completeReply(
+      replyId,
+      short: reply.short,
+      detail: reply.detail.isEmpty ? null : reply.detail,
+      // The chat row has no card column; the title travels in the basis so
+      // the badge can still name it.
+      basis: cardId == null ? basis : 'card:${reply.card}',
+    );
+    if (cardId != null) {
+      unawaited(
+        _lessonContext.markUsed(cardId).catchError((Object e) {
+          AppLog.e(_tag, 'could not mark card $cardId used', e);
+        }),
+      );
+    }
+    AppLog.d(_tag, 'message $message.id answered, basis $basis');
   }
 
   static const String _systemPrompt = '''
