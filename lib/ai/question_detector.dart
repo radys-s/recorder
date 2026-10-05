@@ -37,6 +37,7 @@ import '../stt/transcript_sanitizer.dart';
 /// the pause: see [endedOnPause].
 bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
   if (text.contains('?')) return true;
+  text = _withoutStutter(text);
 
   final sentences = [
     // `…` too: Whisper writes a trailing-off sentence with the single
@@ -90,6 +91,24 @@ bool looksLikeQuestion(String text, {bool endedOnPause = false}) {
 bool chunkEndedOnPause(Duration chunkDuration, Duration maxPauseCutDuration) =>
     chunkDuration < maxPauseCutDuration;
 
+/// "Na na co se používá" — a recogniser writes a stutter down, and the repeated
+/// preposition hides the interrogative behind it from [_opensWithInterrogative].
+/// Consecutive identical words (any case, diacritics folded) become one.
+String _withoutStutter(String text) => text
+    .split('\n')
+    .map((line) {
+      final out = <String>[];
+      String? previous;
+      for (final word in line.split(RegExp(r'[ \t]+'))) {
+        final folded = normalizeForArtifactMatch(word);
+        if (folded.isNotEmpty && folded == previous) continue;
+        out.add(word);
+        if (folded.isNotEmpty) previous = folded;
+      }
+      return out.join(' ');
+    })
+    .join('\n');
+
 /// The clauses of one sentence, each returned in the folded, lowercase form
 /// [_opensWithInterrogative] expects.
 ///
@@ -120,8 +139,9 @@ List<String> _clauses(String sentence) {
 
   return [
     for (final part in parts)
-      for (final clause in part
-          .split(RegExp(r'\b(?:a|ale|nebo|takze|tak|and|but|or|so)\b')))
+      for (final clause in part.split(
+        RegExp(r'\b(?:a|ale|nebo|takze|tak|and|but|or|so)\b'),
+      ))
         if (clause.trim().isNotEmpty) clause.trim(),
   ];
 }
@@ -159,7 +179,7 @@ bool _opensWithInterrogative(String normalized) {
 /// skipped, and never the last word.
 List<String> _withoutLeadingParticles(List<String> words) {
   var skip = 0;
-  while (skip < 2 &&
+  while (skip < 3 &&
       skip < words.length - 1 &&
       _kLeadingParticles.contains(words[skip])) {
     skip++;
@@ -169,7 +189,10 @@ List<String> _withoutLeadingParticles(List<String> words) {
 
 const Set<String> _kLeadingParticles = {
   'a', 'no', 'tak', 'takze', 'ale', 'jo', 'hele', 'teda', 'tedy',
-  'and', 'so', 'but', 'well',
+  // The hesitations and softeners speech puts in front of a question.
+  'ehm', 'eh', 'em', 'hm', 'hmm', 'jako', 'proste', 'vlastne', 'dobre', 'ok',
+  'okej', 'hej', 'nojo',
+  'and', 'so', 'but', 'well', 'um', 'uh', 'like', 'okay',
 };
 
 /// "Jestli to nestihneme, posuneme termín." opens with `jestli`, but it means
@@ -251,21 +274,61 @@ final RegExp _kNotAQuestion = RegExp(
 
 /// Subjects that make a sentence-initial `do` an English auxiliary.
 const Set<String> _kDoSubjects = {
-  'you', 'we', 'they', 'i', 'anyone', 'anybody', 'people', 'your', 'our',
+  'you',
+  'we',
+  'they',
+  'i',
+  'anyone',
+  'anybody',
+  'people',
+  'your',
+  'our',
 };
 
 /// Folded Czech prepositions that can stand in front of an interrogative.
 const Set<String> _kPrepositions = {
-  'na', 'za', 'o', 's', 'se', 'k', 'ke', 'v', 've', 'z', 'ze', 'do', 'od',
-  'pro', 'po', 'pred', 'pres', 'u', 'bez', 'kvuli', 'mezi', 'nad', 'pod',
-  'proti', 'podle', 'behem',
+  'na',
+  'za',
+  'o',
+  's',
+  'se',
+  'k',
+  'ke',
+  'v',
+  've',
+  'z',
+  'ze',
+  'do',
+  'od',
+  'pro',
+  'po',
+  'pred',
+  'pres',
+  'u',
+  'bez',
+  'kvuli',
+  'mezi',
+  'nad',
+  'pod',
+  'proti',
+  'podle',
+  'behem',
 };
 
 /// Case forms of the interrogatives that only occur after a preposition —
 /// "o kom", "v čem", "na kterém" — and would be noise at a sentence start.
 const Set<String> _kInterrogativeCases = {
-  'kom', 'cem', 'kolika', 'jakem', 'jakych', 'jakemu', 'kterem', 'kterych',
-  'ktereho', 'kteremu', 'kterym',
+  'kom',
+  'cem',
+  'kolika',
+  'jakem',
+  'jakych',
+  'jakemu',
+  'kterem',
+  'kterych',
+  'ktereho',
+  'kteremu',
+  'kterym',
 };
 
 /// Written in the folded, lowercase form [normalizeForArtifactMatch] produces,
@@ -281,10 +344,10 @@ const Set<String> _kInterrogatives = {
   'kdy', 'dokdy', 'odkdy',
   'proc',
   'jak', 'jaky', 'jaka', 'jake', 'jaci', 'jakou', 'jakeho', 'jakym',
-  'kolik',
+  'kolik', 'kolikaty', 'kolikata', 'kolikate', 'kolikateho',
   'ktery', 'ktera', 'ktere', 'kterou', 'kteri',
   'zda', 'jestli',
-  'muzes', 'muzete', 'mohl', 'mohla', 'mohli',
+  'muzes', 'muzete', 'dokazes', 'dokazete', 'mohl', 'mohla', 'mohli',
   'vis', 'vite', 'nevis', 'nevite',
   'umis', 'umite', 'znas', 'znate',
   'chces', 'chcete',
