@@ -114,6 +114,12 @@ class _PhotoBubbleState extends ConsumerState<_PhotoBubble> {
         .valueOrNull
         ?.subjectId;
     final width = MediaQuery.sizeOf(context).width * 0.7;
+    final hasReply =
+        ref
+            .watch(chatMessagesProvider(_m.meetingId))
+            .valueOrNull
+            ?.any((x) => x.replyTo == _m.id) ??
+        false;
 
     final Widget status = switch (_m.status) {
       ChatStatus.pending => Row(
@@ -202,6 +208,16 @@ class _PhotoBubbleState extends ConsumerState<_PhotoBubble> {
                 )
               else
                 status,
+              if (_m.status == ChatStatus.ready &&
+                  _m.body.trim().isNotEmpty &&
+                  !hasReply)
+                TextButton.icon(
+                  onPressed: () => ref
+                      .read(boardPhotoServiceProvider)
+                      .answerQuestions(_m.id),
+                  icon: const Icon(Icons.question_answer_outlined, size: 18),
+                  label: const Text('Odpověz na otázky z fotky'),
+                ),
               if (_m.status == ChatStatus.ready && subjectId != null)
                 TextButton.icon(
                   onPressed: () => _saveToCard(subjectId),

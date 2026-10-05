@@ -497,6 +497,9 @@ final boardPhotoServiceProvider = Provider<BoardPhotoService>((ref) {
   return BoardPhotoService(
     db.chatMessagesDao,
     ref.watch(photoTextServiceProvider),
+    answer: (photoId, questions) => ref
+        .read(chatAnswerServiceProvider)
+        .askAboutPhoto(photoId, questions: questions),
     readBytes: (stored) async =>
         File(await resolveStoredPath(stored)).readAsBytes(),
     subjectName: (meetingId) async {

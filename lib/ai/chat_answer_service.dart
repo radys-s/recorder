@@ -11,6 +11,7 @@ import 'context_builder.dart';
 import 'json_extract.dart';
 import 'lesson_context_source.dart';
 import 'llm_provider.dart';
+import 'photo_questions.dart';
 
 /// Answers a question the student typed into the lesson chat.
 ///
@@ -77,7 +78,69 @@ class ChatAnswerService {
   Future<void> ask(int userMessageId) async {
     final message = await _chat.message(userMessageId);
     if (message == null || message.role != ChatRole.user) return;
+    // A reply under a photo retries as a photo answer, not as a question that
+    // happens to be the text read off it.
+    if (message.intent == ChatIntent.photo) {
+      return askAboutPhoto(
+        userMessageId,
+        questions: extractQuestions(message.body),
+      );
+    }
+    await _run(
+      message,
+      _Task(
+        focus: message.body,
+        asks: '\n\nThe student asks:\n${message.body}',
+        system: _systemPrompt,
+      ),
+    );
+  }
 
+  /// Answers the questions on a photo, as a reply under the photo bubble.
+  ///
+  /// [questions] are the ones the model or `extractQuestions` found; without
+  /// them the whole text read off the photo is handed over and the model finds
+  /// them itself. Does nothing for a photo that is not read yet or has no
+  /// text. Never throws.
+  Future<void> askAboutPhoto(
+    int photoMessageId, {
+    List<String> questions = const [],
+  }) async {
+    final message = await _chat.message(photoMessageId);
+    if (message == null ||
+        message.role != ChatRole.user ||
+        message.intent != ChatIntent.photo ||
+        message.status != ChatStatus.ready) {
+      return;
+    }
+    final text = message.body.trim();
+    final description = (message.short ?? '').trim();
+    if (text.isEmpty && questions.isEmpty) return;
+
+    final numbered = [
+      for (var i = 0; i < questions.length; i++) '${i + 1}) ${questions[i]}',
+    ].join('\n');
+    final buffer = StringBuffer(
+      '\n\nThe student photographed this during the lesson. '
+      'What is written on it:\n${text.isEmpty ? '(nothing readable)' : text}',
+    );
+    if (description.isNotEmpty) buffer.write('\n\nWhat it shows: $description');
+    if (numbered.isNotEmpty) {
+      buffer.write('\n\nThe questions on it:\n$numbered');
+    }
+
+    await _run(
+      message,
+      _Task(
+        focus: questions.isEmpty ? text : questions.join(' '),
+        asks: buffer.toString(),
+        system: _photoSystemPrompt,
+      ),
+    );
+  }
+
+  Future<void> _run(ChatMessage message, _Task task) async {
+    final userMessageId = message.id;
     final existing = await _chat.replyTo(userMessageId);
     // A second tap while the first call is still out must not fire another.
     if (existing?.status == ChatStatus.pending) return;
@@ -97,7 +160,7 @@ class ChatAnswerService {
     try {
       // A hung call must end in a visible failure, never in „Přemýšlím…"
       // forever: the sum of both timeouts below can be a minute and a half.
-      await _answer(message, replyId).timeout(watchdog);
+      await _answer(message, replyId, task).timeout(watchdog);
     } on AiPermanentException catch (e) {
       AppLog.e(_tag, 'message $userMessageId rejected', e);
       await _chat.failReply(
@@ -122,7 +185,7 @@ class ChatAnswerService {
 
   /// The whole call for one question: context, Gemini then the router, parse,
   /// store. Throws what the providers throw; [ask] turns it into a failed row.
-  Future<void> _answer(ChatMessage message, int replyId) async {
+  Future<void> _answer(ChatMessage message, int replyId, _Task task) async {
     final material = await _lessonContext.load(message.meetingId);
     final segments = await _segments.segmentsForMeeting(message.meetingId);
     final transcript = refinedFor == null
@@ -138,11 +201,11 @@ class ChatAnswerService {
 
     final heading = material.isLesson ? 'Lesson so far' : 'Recording so far';
     List<LlmMessage> prompt(LessonContext built) => [
-      const LlmMessage.system(_systemPrompt),
+      LlmMessage.system(task.system),
       LlmMessage.user(
         '${built.material.isEmpty ? '' : '${built.material}\n\n'}'
         '$heading:\n${built.tail.isEmpty ? '(nothing transcribed yet)' : built.tail}'
-        '\n\nThe student asks:\n${message.body}',
+        '${task.asks}',
       ),
     ];
 
@@ -152,7 +215,7 @@ class ChatAnswerService {
       final wide = buildLessonContext(
         material: material,
         transcript: transcript,
-        focus: message.body,
+        focus: task.focus,
         budget: ContextBudget.gemini,
       );
       try {
@@ -165,7 +228,7 @@ class ChatAnswerService {
         );
         built = wide;
       } on AiException catch (e) {
-        AppLog.e(_tag, 'message $message.id: Gemini failed, using Groq', e);
+        AppLog.e(_tag, 'message ${message.id}: Gemini failed, using Groq', e);
       }
     }
 
@@ -173,7 +236,7 @@ class ChatAnswerService {
       built = buildLessonContext(
         material: material,
         transcript: transcript,
-        focus: message.body,
+        focus: task.focus,
         budget: await _roomy() ? ContextBudget.routed : ContextBudget.direct,
       );
       raw = await _llm.complete(
@@ -215,7 +278,7 @@ class ChatAnswerService {
         }),
       );
     }
-    AppLog.d(_tag, 'message $message.id answered, basis $basis');
+    AppLog.d(_tag, 'message ${message.id} answered, basis $basis');
   }
 
   static const String _systemPrompt = '''
@@ -244,6 +307,39 @@ Reply with one JSON object and nothing else:
 "short" is the answer itself in at most twelve words. "detail" explains it in
 two to five sentences, or is empty when "short" says it all. "card" is empty
 unless "basis" is "card".''';
+
+  static const String _photoSystemPrompt = '''
+You are helping a student who is sitting in a lesson and has just photographed
+a worksheet, slide or board. You are given what the student prepared (subject,
+rules, cards), the end of the automatic transcript, the text read off the
+photo, and the questions found on it.
+
+Answer every question on the photo, in order, the way a well-prepared
+classmate would: correct and to the point. Prefer the student's material and
+what was said in the lesson; otherwise answer from your own knowledge. If a
+question cannot be answered from the photo text alone, answer what you can and
+say what is missing. Never answer something that is not a question or task on
+the photo. Follow the student's rules; later rules override earlier ones. Answer
+in the language of the questions. Never describe the photo or yourself.
+
+Reply with one JSON object and nothing else:
+{"short": "...", "detail": "...", "basis": "card"|"meeting"|"knowledge"|"unknown",
+ "card": "..."}
+
+"short" is at most twelve words: with one question the answer itself, with
+several the answer to the first one. "detail" holds every answer on its own
+line as "1) ...", "2) ...", each one to three sentences. "card" is empty unless
+"basis" is "card".''';
+}
+
+/// One call's inputs: what the context is scored against, the user turn that
+/// follows the lesson context, and the system prompt.
+class _Task {
+  const _Task({required this.focus, required this.asks, required this.system});
+
+  final String focus;
+  final String asks;
+  final String system;
 }
 
 /// The parsed reply, or null when it has no answer in it.

@@ -6,13 +6,23 @@ import '../core/logging.dart';
 import 'gemini_provider.dart';
 import 'json_extract.dart';
 import 'llm_provider.dart';
+import 'photo_questions.dart';
 
-/// What a board photo says: the text on it, and one line about any drawing.
+/// What a board photo says: the text on it, one line about any drawing, and
+/// the questions or tasks on it the student is expected to answer.
 class BoardReading {
-  const BoardReading({required this.text, required this.description});
+  const BoardReading({
+    required this.text,
+    required this.description,
+    this.questions = const [],
+  });
 
   final String text;
   final String description;
+
+  /// Verbatim, in order; empty when the photo has none (or the model did not
+  /// say — callers then fall back to `extractQuestions` on [text]).
+  final List<String> questions;
 }
 
 /// Reads photos with Gemini: book pages for a card, a board during a lesson.
@@ -37,9 +47,11 @@ class PhotoTextService {
       model: kGeminiModel,
       messages: [
         const LlmMessage.system(_pagesPrompt),
-        LlmMessage.user(pages.length == 1
-            ? 'Transcribe this page.'
-            : 'Transcribe these ${pages.length} pages, in the order given.'),
+        LlmMessage.user(
+          pages.length == 1
+              ? 'Transcribe this page.'
+              : 'Transcribe these ${pages.length} pages, in the order given.',
+        ),
       ],
       images: pages,
       maxTokens: 16000,
@@ -63,9 +75,11 @@ class PhotoTextService {
       model: kGeminiModel,
       messages: [
         const LlmMessage.system(_boardPrompt),
-        LlmMessage.user(subjectName == null
-            ? 'A photo taken during a lesson.'
-            : 'A photo taken during a lesson of $subjectName.'),
+        LlmMessage.user(
+          subjectName == null
+              ? 'A photo taken during a lesson.'
+              : 'A photo taken during a lesson of $subjectName.',
+        ),
       ],
       images: [photo],
       jsonMode: true,
@@ -94,7 +108,7 @@ A student photographed the board (or a projected slide, or a handout) during a
 lesson. Read it.
 
 Reply with one JSON object and nothing else:
-{"text": "...", "description": "..."}
+{"text": "...", "description": "...", "questions": ["..."]}
 
 "text": everything written on it, faithfully, in its own language, one line per
 line on the board; formulas in plain text. Empty if nothing is written.
@@ -105,7 +119,11 @@ first. Leave out slide numbers, logos, footers and the presenter's name
 repeated on every slide.
 "description": one short sentence in Czech saying what it shows, including any
 diagram, chart, table or picture that text alone would lose — for a chart, what
-it compares and its trend. No commentary about the photo itself.''';
+it compares and its trend. No commentary about the photo itself.
+"questions": every question or task on the photo that a student is expected to
+answer (a worksheet item, an exercise, something the teacher wrote as a
+question), verbatim, in order, without its number. Statements, titles and
+facts are not questions. Empty list when there is none.''';
 }
 
 /// The reading in a reply, or null when it holds neither text nor description.
@@ -116,14 +134,27 @@ BoardReading? parseBoardReading(String raw) {
   final text = cleanModelText(str(decoded['text']));
   final description = str(decoded['description']);
   if (text.isEmpty && description.isEmpty) return null;
-  return BoardReading(text: text, description: description);
+  final rawQuestions = decoded['questions'];
+  final questions = <String>[
+    if (rawQuestions is List)
+      for (final q in rawQuestions)
+        if (q is String && q.trim().isNotEmpty) q.trim(),
+  ];
+  return BoardReading(
+    text: text,
+    description: description,
+    questions: questions.length <= kMaxPhotoQuestions
+        ? questions
+        : questions.sublist(0, kMaxPhotoQuestions),
+  );
 }
 
 /// Strips code fences a model wraps text in, trailing spaces and runs of
 /// blank lines, so the result drops straight into a text field.
 String cleanModelText(String raw) {
   var text = raw.trim();
-  final fenced = RegExp(r'^```[a-zA-Z]*\s*\n([\s\S]*?)\n?```$').firstMatch(text);
+  final fenced = RegExp(r'^```[a-zA-Z]*\s*\n([\s\S]*?)\n?```$')
+      .firstMatch(text);
   if (fenced != null) text = fenced.group(1)!.trim();
   return text
       .split('\n')
