@@ -6,6 +6,10 @@ import '../../core/spacing.dart';
 import '../../core/widgets/count_up.dart';
 import '../../core/widgets/entrance.dart';
 import '../../core/widgets/inset_group.dart';
+import '../../data/db/app_database.dart';
+import '../../data/db/daos/study_cards_dao.dart';
+import '../../learning/study_flow.dart';
+import '../meeting_detail/meeting_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
 import 'exam_prep_screen.dart';
 import 'review_screen.dart';
@@ -77,66 +81,123 @@ class _StudyDueGroupState extends ConsumerState<StudyDueGroup> {
   }
 }
 
-/// A subject's study cards on its Přehled tab: counts, review, manage.
+/// A subject's learning on its Přehled tab: the one thing to do next, then
+/// review, quiz and cards as one flow.
+///
+/// [lessons] are the subject's lessons, newest first, without those waiting
+/// out an undo; [withNotes] holds the ids of those that have výpisky.
 class SubjectStudySection extends ConsumerWidget {
-  const SubjectStudySection({super.key, required this.subjectId});
+  const SubjectStudySection({
+    super.key,
+    required this.subjectId,
+    this.lessons = const [],
+    this.withNotes = const {},
+  });
 
   final int subjectId;
+  final List<Meeting> lessons;
+  final Set<int> withNotes;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final stats = ref.watch(studyStatsProvider(subjectId)).valueOrNull;
+    final perLesson =
+        ref.watch(subjectLessonStudyProvider(subjectId)).valueOrNull ??
+        const <int, StudyStats>{};
     final total = stats?.total ?? 0;
     final due = stats?.due ?? 0;
+    final nav = Navigator.of(context);
+
+    // The newest lesson with výpisky and no cards: where cards get made.
+    final toCard = [
+      for (final m in lessons)
+        if (withNotes.contains(m.id) && (perLesson[m.id]?.total ?? 0) == 0) m,
+    ];
+    final withoutNotes = [
+      for (final m in lessons)
+        if (!withNotes.contains(m.id)) m,
+    ];
+    final next = recommendStudyStep(
+      lessons: lessons.length,
+      lessonsWithNotes: lessons.where((m) => withNotes.contains(m.id)).length,
+      lessonsToCard: toCard.length,
+      cards: total,
+      due: due,
+    );
+
+    VoidCallback action() => switch (next.step) {
+      StudyStep.reviewDue => () => nav.push(
+        ReviewScreen.route(subjectId: subjectId),
+      ),
+      StudyStep.recordLesson => () => nav.popUntil((r) => r.isFirst),
+      StudyStep.makeNotes => () => nav.push(
+        MeetingDetailScreen.route(withoutNotes.first.id, initialTab: 1),
+      ),
+      StudyStep.makeCards => () => nav.push(
+        MeetingDetailScreen.route(toCard.first.id, initialTab: 1),
+      ),
+      StudyStep.examPrep => () => nav.push(ExamPrepScreen.route(subjectId)),
+    };
+
+    final icon = switch (next.step) {
+      StudyStep.reviewDue => Icons.replay_rounded,
+      StudyStep.recordLesson => Icons.mic_none_rounded,
+      StudyStep.makeNotes => Icons.description_outlined,
+      StudyStep.makeCards => Icons.style_outlined,
+      StudyStep.examPrep => Icons.quiz_outlined,
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Opakování', style: theme.textTheme.titleSmall),
-        const SizedBox(height: Gap.xs),
-        Text(
-          total == 0
-              ? 'Kartičky vzniknou z výpisků hodin, nebo je přidej ručně.'
-              : '${czechCount(total, 'kartička', 'kartičky', 'kartiček')}'
-                    ' · dnes ${due == 0 ? 'nic' : due}',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: Gap.sm),
-        Row(
+        InsetGroup(
+          label: 'Co teď',
+          horizontalInset: 0,
+          dividerIndent: ListRow.textIndent + 28,
           children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: due == 0
-                    ? null
-                    : () =>
-                          Navigator.of(context)
-                              .push(ReviewScreen.route(subjectId: subjectId)),
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Opakovat'),
-              ),
-            ),
-            const SizedBox(width: Gap.sm),
-            Expanded(
-              child: FilledButton.tonalIcon(
-                style: tonalButtonStyle(context),
-                onPressed: () =>
-                    Navigator.of(context)
-                        .push(StudyCardsScreen.route(subjectId)),
-                icon: const Icon(Icons.style_outlined),
-                label: const Text('Kartičky'),
-              ),
+            ListRow(
+              leadingSlot: 52,
+              leading: GradientIconTile(icon: icon),
+              title: next.title,
+              subtitle: next.subtitle,
+              onTap: action(),
             ),
           ],
         ),
-        const SizedBox(height: Gap.sm),
-        OutlinedButton.icon(
-          onPressed: () =>
-              Navigator.of(context).push(ExamPrepScreen.route(subjectId)),
-          icon: const Icon(Icons.quiz_outlined),
-          label: const Text('Před testem'),
+        const SizedBox(height: Gap.lg),
+        InsetGroup(
+          label: 'Učení',
+          horizontalInset: 0,
+          dividerIndent: ListRow.textIndent + 28,
+          children: [
+            ListRow(
+              leadingSlot: 52,
+              leading: const GradientIconTile(icon: Icons.replay_rounded),
+              title: 'Opakovat',
+              subtitle: total == 0
+                  ? 'Kartičky vzniknou z výpisků hodin, nebo je přidej ručně.'
+                  : '${czechCount(total, 'kartička', 'kartičky', 'kartiček')}'
+                        ' · dnes ${due == 0 ? 'nic' : due}',
+              chevron: due > 0,
+              onTap: due == 0
+                  ? null
+                  : () => nav.push(ReviewScreen.route(subjectId: subjectId)),
+            ),
+            ListRow(
+              leadingSlot: 52,
+              leading: const GradientIconTile(icon: Icons.quiz_outlined),
+              title: 'Před testem',
+              subtitle: 'Kvíz z výpisků ukáže, co ještě nesedí.',
+              onTap: () => nav.push(ExamPrepScreen.route(subjectId)),
+            ),
+            ListRow(
+              leadingSlot: 52,
+              leading: const GradientIconTile(icon: Icons.list_alt_rounded),
+              title: 'Kartičky',
+              subtitle: 'Upravit, pozastavit nebo přidat.',
+              onTap: () => nav.push(StudyCardsScreen.route(subjectId)),
+            ),
+          ],
         ),
       ],
     );

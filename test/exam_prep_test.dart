@@ -274,6 +274,15 @@ void main() {
       await settle(tester);
       expect(find.textContaining('Přidáno do opakování'), findsOneWidget);
 
+      // The result is not a dead end: it says what to do next.
+      expect(find.text('CO DÁL'), findsOneWidget);
+      expect(find.text('Opakovat teď'), findsOneWidget);
+      expect(find.text('Kartičky předmětu'), findsOneWidget);
+      await tester.tap(find.text('Zkusit nový kvíz'));
+      await settle(tester);
+      expect(find.text('Připravit test'), findsOneWidget);
+      expect(find.text('CO DÁL'), findsNothing);
+
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(seconds: 1));
     });

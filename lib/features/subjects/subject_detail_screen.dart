@@ -6,8 +6,12 @@ import '../../core/formatting.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/inset_group.dart';
 import '../../data/db/app_database.dart';
+import '../../data/db/daos/study_cards_dao.dart';
 import '../../data/db/daos/subjects_dao.dart';
+import '../../learning/study_flow.dart';
+import '../study/study_providers.dart';
 import '../../stt/transcript_sanitizer.dart';
 import '../meeting_detail/meeting_detail_screen.dart';
 import '../meetings_list/meeting_actions.dart';
@@ -18,7 +22,6 @@ import 'subjects_providers.dart';
 import 'timetable.dart';
 import 'timetable_import_screen.dart';
 import 'widgets/timetable_slot_dialog.dart';
-import 'widgets/subject_badge.dart';
 import 'widgets/subject_overview.dart';
 import 'widgets/subject_syllabus.dart';
 import 'widgets/subject_vocabulary.dart';
@@ -322,7 +325,6 @@ class _LessonsTab extends ConsumerWidget {
               if (!hidden.contains(m.id)) m,
           ],
         );
-    final theme = Theme.of(context);
 
     return AsyncView(
       value: lessons,
@@ -338,40 +340,60 @@ class _LessonsTab extends ConsumerWidget {
                 'objeví tady.',
           );
         }
-        return ListView.builder(
+        final withNotes =
+            ref.watch(meetingIdsWithNotesProvider).valueOrNull ?? const <int>{};
+        final perLesson =
+            ref.watch(subjectLessonStudyProvider(subjectId)).valueOrNull ??
+            const <int, StudyStats>{};
+        return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.xl),
-          itemCount: list.length,
-          itemBuilder: (_, i) {
-            final meeting = list[i];
-            final named = !isDefaultMeetingTitle(meeting.title);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: Gap.sm),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.description_outlined),
-                  title: Text(
-                    named
-                        ? meeting.title
-                        : formatMeetingDate(meeting.createdAt),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+          children: [
+            InsetGroup(
+              label: 'Hodiny a látka',
+              horizontalInset: 0,
+              dividerIndent: ListRow.textIndent + 28,
+              children: [
+                for (final meeting in list)
+                  _lessonRow(
+                    context,
+                    meeting,
+                    hasNotes: withNotes.contains(meeting.id),
+                    stats: perLesson[meeting.id],
                   ),
-                  subtitle: named
-                      ? Text(
-                          formatMeetingDate(meeting.createdAt),
-                          style: theme.textTheme.bodySmall,
-                        )
-                      : null,
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () =>
-                      Navigator.of(context)
-                          .push(MeetingDetailScreen.route(meeting.id)),
-                ),
-              ),
-            );
-          },
+              ],
+            ),
+          ],
         );
       },
+    );
+  }
+
+  /// One lesson with what it holds for learning. A lesson with výpisky opens
+  /// on them, because that is where the way on to the cards starts.
+  Widget _lessonRow(
+    BuildContext context,
+    Meeting meeting, {
+    required bool hasNotes,
+    required StudyStats? stats,
+  }) {
+    final named = !isDefaultMeetingTitle(meeting.title);
+    final status = lessonStudyLine(
+      hasNotes: hasNotes,
+      cards: stats?.total ?? 0,
+      due: stats?.due ?? 0,
+    );
+    return ListRow(
+      leadingSlot: 52,
+      leading: GradientIconTile(
+        icon: hasNotes ? Icons.description_outlined : Icons.mic_none_outlined,
+      ),
+      title: named ? meeting.title : formatMeetingDate(meeting.createdAt),
+      subtitle: named
+          ? '${formatMeetingDate(meeting.createdAt)} · $status'
+          : status,
+      onTap: () => Navigator.of(context).push(
+        MeetingDetailScreen.route(meeting.id, initialTab: hasNotes ? 1 : 0),
+      ),
     );
   }
 }

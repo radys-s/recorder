@@ -52,9 +52,15 @@ class StudyCardsDao extends DatabaseAccessor<AppDatabase>
 
   static String keyFor(String front) => normalizeForArtifactMatch(front);
 
-  Expression<bool> _due(StudyCards t, DateTime before, int? subjectId) {
+  Expression<bool> _due(
+    StudyCards t,
+    DateTime before,
+    int? subjectId, [
+    int? meetingId,
+  ]) {
     var e = t.suspended.equals(false) & t.dueAt.isSmallerThanValue(before);
     if (subjectId != null) e = e & t.subjectId.equals(subjectId);
+    if (meetingId != null) e = e & t.meetingId.equals(meetingId);
     return e;
   }
 
@@ -79,10 +85,69 @@ class StudyCardsDao extends DatabaseAccessor<AppDatabase>
         );
       });
 
+  /// Cards a lesson's výpisky produced, and how many of them are due today.
+  Stream<StudyStats> watchLessonStats(int meetingId, DateTime now) =>
+      (select(
+        studyCards,
+      )..where((t) => t.meetingId.equals(meetingId))).watch().map((rows) {
+        final end = endOfStudyDay(now);
+        return StudyStats(
+          total: rows.length,
+          due: rows.where((c) => !c.suspended && c.dueAt.isBefore(end)).length,
+        );
+      });
+
+  /// Per lesson of a subject: how many cards it gave and how many are due.
+  /// Lessons with no cards are absent.
+  Stream<Map<int, StudyStats>> watchLessonCounts(int subjectId, DateTime now) =>
+      (select(studyCards)..where(
+            (t) => t.subjectId.equals(subjectId) & t.meetingId.isNotNull(),
+          ))
+          .watch()
+          .map((rows) {
+            final end = endOfStudyDay(now);
+            final total = <int, int>{};
+            final due = <int, int>{};
+            for (final c in rows) {
+              final id = c.meetingId!;
+              total[id] = (total[id] ?? 0) + 1;
+              if (!c.suspended && c.dueAt.isBefore(end)) {
+                due[id] = (due[id] ?? 0) + 1;
+              }
+            }
+            return {
+              for (final id in total.keys)
+                id: StudyStats(total: total[id]!, due: due[id] ?? 0),
+            };
+          });
+
+  /// When the next card falls due after today, or null when none will.
+  Future<DateTime?> nextDueAfterToday(
+    DateTime now, {
+    int? subjectId,
+    int? meetingId,
+  }) async {
+    final end = endOfStudyDay(now);
+    final query = select(studyCards)
+      ..where((t) {
+        var e = t.suspended.equals(false) & t.dueAt.isBiggerOrEqualValue(end);
+        if (subjectId != null) e = e & t.subjectId.equals(subjectId);
+        if (meetingId != null) e = e & t.meetingId.equals(meetingId);
+        return e;
+      })
+      ..orderBy([(t) => OrderingTerm.asc(t.dueAt)])
+      ..limit(1);
+    return (await query.getSingleOrNull())?.dueAt;
+  }
+
   /// The review queue: due cards, oldest due first.
-  Future<List<StudyCard>> dueCards(DateTime now, {int? subjectId}) =>
+  Future<List<StudyCard>> dueCards(
+    DateTime now, {
+    int? subjectId,
+    int? meetingId,
+  }) =>
       (select(studyCards)
-            ..where((t) => _due(t, endOfStudyDay(now), subjectId))
+            ..where((t) => _due(t, endOfStudyDay(now), subjectId, meetingId))
             ..orderBy([
               (t) => OrderingTerm.asc(t.dueAt),
               (t) => OrderingTerm.asc(t.id),

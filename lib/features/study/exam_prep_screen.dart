@@ -12,6 +12,10 @@ import '../../learning/exam_prep.dart';
 import '../legal/ai_disclaimer.dart';
 import '../notes_library/saved_note_screen.dart';
 import '../subjects/subjects_providers.dart';
+import 'review_screen.dart';
+import 'study_cards_screen.dart';
+import 'study_next_steps.dart';
+import 'study_providers.dart';
 
 enum _Stage { pick, loading, summary, quiz, result }
 
@@ -377,54 +381,109 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
     );
   }
 
+  /// Starts over from the topic picker, with the same subject.
+  void _restart() {
+    setState(() {
+      _stage = _Stage.pick;
+      _prep = null;
+      _error = null;
+      _answers.clear();
+      _picked = null;
+      _revealed = false;
+      _noteId = null;
+      _added = null;
+    });
+  }
+
   Widget _result(BuildContext context) {
+    final theme = Theme.of(context);
+    final nav = Navigator.of(context);
     final right = _answers.where((a) => a.correct).length;
     final wrong = _answers.length - right;
     final noteId = _noteId;
-    return EmptyState(
-      icon: Icons.emoji_events_outlined,
-      title: '$right z ${_answers.length} správně',
-      message: [
-        if (wrong == 0) 'Všechno správně.',
-        if (noteId != null) 'Shrnutí i otázky jsou uložené v poznámkách.',
-        if (_added != null)
-          _added == 0
-              ? 'Tyhle otázky už v opakování jsou.'
-              : 'Přidáno do opakování: '
-                    '${czechCount(_added!, 'kartička', 'kartičky', 'kartiček')}.',
-      ].join('\n'),
-      action: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (wrong > 0 && _added == null)
-            FilledButton.icon(
-              onPressed: _addMistakes,
-              icon: const Icon(Icons.style_outlined),
-              label: Text(
-                'Přidat ${czechCount(wrong, 'chybu', 'chyby', 'chyb')} '
-                'do opakování',
-              ),
-            ),
+    final due =
+        ref.watch(studyStatsProvider(widget.subjectId)).valueOrNull?.due ?? 0;
+    final muted = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    final message = [
+      if (wrong == 0) 'Všechno správně.',
+      if (noteId != null) 'Shrnutí i otázky jsou uložené v poznámkách.',
+      if (_added != null)
+        _added == 0
+            ? 'Tyhle otázky už v opakování jsou.'
+            : 'Přidáno do opakování: '
+                  '${czechCount(_added!, 'kartička', 'kartičky', 'kartiček')}.',
+    ].join('\n');
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xl, Gap.lg, Gap.xl),
+      children: [
+        Icon(
+          Icons.emoji_events_outlined,
+          size: 56,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(height: Gap.md),
+        Text(
+          '$right z ${_answers.length} správně',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineSmall,
+        ),
+        if (message.isNotEmpty) ...[
           const SizedBox(height: Gap.sm),
-          Wrap(
-            spacing: Gap.sm,
-            alignment: WrapAlignment.center,
-            children: [
-              if (noteId != null)
-                TextButton(
-                  onPressed: () =>
-                      Navigator.of(context)
-                          .pushReplacement(SavedNoteScreen.route(noteId)),
-                  child: const Text('Otevřít poznámku'),
-                ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Hotovo'),
-              ),
-            ],
+          Text(message, textAlign: TextAlign.center, style: muted),
+        ],
+        if (wrong > 0 && _added == null) ...[
+          const SizedBox(height: Gap.lg),
+          FilledButton.icon(
+            onPressed: _addMistakes,
+            icon: const Icon(Icons.style_outlined),
+            label: Text(
+              'Přidat ${czechCount(wrong, 'chybu', 'chyby', 'chyb')} '
+              'do opakování',
+            ),
           ),
         ],
-      ),
+        const SizedBox(height: Gap.xl),
+        NextStepsGroup(
+          steps: [
+            if (due > 0)
+              NextStep(
+                icon: Icons.replay_rounded,
+                title: 'Opakovat teď',
+                subtitle: czechDue(due),
+                onTap: () => nav.pushReplacement(
+                  ReviewScreen.route(subjectId: widget.subjectId),
+                ),
+              ),
+            NextStep(
+              icon: Icons.quiz_outlined,
+              title: 'Zkusit nový kvíz',
+              subtitle: 'Otázky se skládají znovu z výpisků.',
+              onTap: _restart,
+            ),
+            NextStep(
+              icon: Icons.style_outlined,
+              title: 'Kartičky předmětu',
+              subtitle: 'Upravit, pozastavit nebo přidat.',
+              onTap: () =>
+                  nav.pushReplacement(StudyCardsScreen.route(widget.subjectId)),
+            ),
+            if (noteId != null)
+              NextStep(
+                icon: Icons.description_outlined,
+                title: 'Otevřít uloženou poznámku',
+                subtitle: 'Shrnutí a otázky z tohoto testu.',
+                onTap: () => nav.pushReplacement(SavedNoteScreen.route(noteId)),
+              ),
+          ],
+        ),
+        const AiDisclaimer(),
+        const SizedBox(height: Gap.md),
+        TextButton(onPressed: () => nav.pop(), child: const Text('Hotovo')),
+      ],
     );
   }
 }

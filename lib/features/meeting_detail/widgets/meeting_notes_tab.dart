@@ -20,6 +20,7 @@ import '../../../data/db/tables/preferences_table.dart';
 import '../../notes_library/notes_library_providers.dart';
 import '../../notes_library/saved_note_screen.dart';
 import '../../notes_library/widgets/save_note_sheet.dart';
+import '../../study/lesson_study_panel.dart';
 import '../../subjects/subjects_providers.dart';
 import '../meeting_detail_providers.dart';
 import '../transcript_fix.dart';
@@ -299,6 +300,11 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
                 : 'Vyber hloubku a nech je vytvořit. Kdykoliv je '
                       'můžeš přegenerovat jinak.',
           ),
+        if (subjectId != null &&
+            !generating &&
+            content != null &&
+            content.isNotEmpty)
+          LessonStudyPanel(meetingId: widget.meetingId, subjectId: subjectId),
         if (suggestions.isNotEmpty && subjectId != null)
           _CardSuggestions(
             suggestions: suggestions,

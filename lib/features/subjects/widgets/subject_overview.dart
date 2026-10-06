@@ -1,4 +1,3 @@
-import '../../study/study_entry.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +11,7 @@ import '../../../core/widgets/status_chip.dart';
 import '../../../data/db/app_database.dart';
 import '../../meeting_detail/meeting_detail_screen.dart';
 import '../../notes_library/saved_note_screen.dart';
+import '../../study/study_entry.dart';
 import '../subjects_providers.dart';
 import '../syllabus_import_screen.dart' show monthRangeLabel;
 
@@ -78,7 +78,11 @@ class SubjectOverview extends ConsumerWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.xl),
           children: [
-            SubjectStudySection(subjectId: subjectId),
+            SubjectStudySection(
+              subjectId: subjectId,
+              lessons: d.lessons,
+              withNotes: d.withNotes,
+            ),
             const SizedBox(height: Gap.xl),
             _Progress(overview: overview, onOpenSettings: onOpenSettings),
             const SizedBox(height: Gap.lg),

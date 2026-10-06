@@ -9,6 +9,8 @@ import '../../core/widgets/inset_group.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/study_cards_dao.dart';
 import '../../data/db/tables/study_cards_table.dart';
+import '../../learning/study_flow.dart';
+import '../meeting_detail/meeting_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
 import 'review_screen.dart';
 import 'study_providers.dart';
@@ -137,6 +139,18 @@ class StudyCardsScreen extends ConsumerWidget {
   }
 
   Future<void> _menu(BuildContext context, WidgetRef ref, StudyCard c) async {
+    // The source lesson, if the card still has one: its date for the
+    // provenance line and the way back to the výpisky.
+    final lessonId = c.meetingId;
+    final lesson = lessonId == null
+        ? null
+        : await ref
+              .read(appDatabaseProvider)
+              .meetingsDao
+              .watchMeetingByIdOnce(lessonId);
+    if (!context.mounted) return;
+    final muted = Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
     final action = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -144,6 +158,22 @@ class StudyCardsScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.sm),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  studyCardProvenance(c, lessonDate: lesson?.createdAt),
+                  style: muted,
+                ),
+              ),
+            ),
+            if (lesson != null)
+              ListTile(
+                leading: const Icon(Icons.north_east_rounded),
+                title: const Text('Otevřít zdrojovou hodinu'),
+                onTap: () => Navigator.pop(context, 'lesson'),
+              ),
             ListTile(
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Upravit'),
@@ -170,6 +200,9 @@ class StudyCardsScreen extends ConsumerWidget {
     switch (action) {
       case 'edit':
         await _edit(context, ref, c);
+      case 'lesson':
+        await Navigator.of(context)
+            .push(MeetingDetailScreen.route(c.meetingId!, initialTab: 1));
       case 'suspend':
         await dao.setSuspended(c.id, !c.suspended);
       case 'delete':

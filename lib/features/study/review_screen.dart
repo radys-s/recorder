@@ -9,7 +9,10 @@ import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../data/db/app_database.dart';
 import '../../learning/scheduler.dart';
+import '../../learning/study_flow.dart';
+import '../meeting_detail/meeting_detail_screen.dart';
 import '../subjects/subjects_providers.dart';
+import 'study_next_steps.dart';
 import 'study_providers.dart';
 
 /// One review session: today's due cards, one at a time, question first.
@@ -18,13 +21,19 @@ import 'study_providers.dart';
 /// comes round again before the session ends — that is what the ten-minute
 /// relearn step means in practice.
 class ReviewScreen extends ConsumerStatefulWidget {
-  const ReviewScreen({super.key, this.subjectId});
+  const ReviewScreen({super.key, this.subjectId, this.meetingId});
 
   /// Null reviews every subject.
   final int? subjectId;
 
-  static Route<void> route({int? subjectId}) =>
-      MaterialPageRoute(builder: (_) => ReviewScreen(subjectId: subjectId));
+  /// Only the cards one lesson's výpisky produced.
+  final int? meetingId;
+
+  static Route<void> route({int? subjectId, int? meetingId}) =>
+      MaterialPageRoute(
+        builder: (_) =>
+            ReviewScreen(subjectId: subjectId, meetingId: meetingId),
+      );
 
   @override
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
@@ -33,6 +42,9 @@ class ReviewScreen extends ConsumerStatefulWidget {
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   List<StudyCard>? _queue;
   Map<int, String> _subjects = const {};
+
+  /// When each source lesson happened, for the card's provenance line.
+  Map<int, DateTime> _lessonDates = const {};
   Object? _error;
   var _index = 0;
   var _revealed = false;
@@ -50,11 +62,25 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       final now = ref.read(studyClockProvider)();
       final cards = await ref
           .read(studyCardsDaoProvider)
-          .dueCards(now, subjectId: widget.subjectId);
+          .dueCards(
+            now,
+            subjectId: widget.subjectId,
+            meetingId: widget.meetingId,
+          );
       final subjects = await ref.read(subjectsDaoProvider).allSubjects();
+      final meetings = ref.read(appDatabaseProvider).meetingsDao;
+      final dates = <int, DateTime>{};
+      for (final id in {
+        for (final c in cards)
+          if (c.meetingId != null) c.meetingId!,
+      }) {
+        final m = await meetings.watchMeetingByIdOnce(id);
+        if (m != null) dates[id] = m.createdAt;
+      }
       if (!mounted) return;
       setState(() {
         _queue = cards;
+        _lessonDates = dates;
         _subjects = {for (final s in subjects) s.subject.id: s.subject.name};
       });
     } catch (e) {
@@ -113,7 +139,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final queue = _queue;
-    final title = widget.subjectId == null
+    final title = widget.meetingId != null
+        ? 'Opakování hodiny'
+        : widget.subjectId == null
         ? 'Opakování'
         : _subjects[widget.subjectId] ?? 'Opakování';
 
@@ -126,24 +154,37 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     } else if (queue == null) {
       body = const Center(child: CircularProgressIndicator());
     } else if (queue.isEmpty) {
-      body = EmptyState(
-        icon: Icons.style_outlined,
-        title: 'Dnes není co opakovat',
-        message:
-            'Kartičky vznikají z výpisků hodin. Každá se vrátí, '
-            'až na ni podle plánu přijde řada.',
-        action: FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Zavřít'),
-        ),
+      body = _Finished(
+        tally: _tally,
+        subjectId: widget.subjectId,
+        meetingId: widget.meetingId,
+        nothingDue: true,
       );
     } else if (_index >= queue.length) {
-      body = _Finished(tally: _tally);
+      // One subject, when the session was about one: the next steps need it.
+      final subjectIds = {for (final c in queue) c.subjectId};
+      body = _Finished(
+        tally: _tally,
+        subjectId:
+            widget.subjectId ??
+            (subjectIds.length == 1 ? subjectIds.first : null),
+        meetingId: widget.meetingId,
+        nothingDue: false,
+      );
     } else {
       body = _ReviewBody(
         card: queue[_index],
         subjectName: widget.subjectId == null
             ? _subjects[queue[_index].subjectId]
+            : null,
+        provenance: studyCardProvenance(
+          queue[_index],
+          lessonDate: _lessonDates[queue[_index].meetingId],
+        ),
+        onOpenLesson: _lessonDates.containsKey(queue[_index].meetingId)
+            ? () =>
+                  Navigator.of(context)
+                      .push(MeetingDetailScreen.route(queue[_index].meetingId!))
             : null,
         position: _index + 1,
         total: queue.length,
@@ -178,6 +219,8 @@ class _ReviewBody extends StatelessWidget {
   const _ReviewBody({
     required this.card,
     required this.subjectName,
+    required this.provenance,
+    required this.onOpenLesson,
     required this.position,
     required this.total,
     required this.revealed,
@@ -190,6 +233,12 @@ class _ReviewBody extends StatelessWidget {
 
   final StudyCard card;
   final String? subjectName;
+
+  /// Where the card came from and that a model wrote it.
+  final String provenance;
+
+  /// Opens the source lesson; null when the card has none any more.
+  final VoidCallback? onOpenLesson;
   final int position;
   final int total;
   final bool revealed;
@@ -222,6 +271,22 @@ class _ReviewBody extends StatelessWidget {
                 card.back,
                 style: theme.textTheme.titleMedium?.copyWith(height: 1.4),
               ),
+              const SizedBox(height: Gap.lg),
+              Text(
+                provenance,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              if (onOpenLesson != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onOpenLesson,
+                    icon: const Icon(Icons.north_east_rounded, size: 18),
+                    label: const Text('Otevřít hodinu'),
+                  ),
+                ),
             ],
           )
         : const SizedBox(key: ValueKey('front'), width: double.infinity);
@@ -377,28 +442,89 @@ class _GradeButton extends StatelessWidget {
   }
 }
 
-class _Finished extends StatelessWidget {
-  const _Finished({required this.tally});
+class _Finished extends ConsumerWidget {
+  const _Finished({
+    required this.tally,
+    required this.subjectId,
+    required this.meetingId,
+    required this.nothingDue,
+  });
 
   final Map<ReviewGrade, int> tally;
+  final int? subjectId;
+  final int? meetingId;
+
+  /// The session had no cards at all, rather than ending after some.
+  final bool nothingDue;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final reviewed = tally.values.fold(0, (a, b) => a + b);
     final parts = [
       for (final g in ReviewGrade.values)
         if (tally[g]! > 0) '${g.label}: ${tally[g]}',
     ].join(' · ');
-    return EmptyState(
-      icon: Icons.check_circle_outline,
-      title: 'Hotovo na dnešek',
-      message:
-          '${czechCount(reviewed, 'hodnocení', 'hodnocení', 'hodnocení')}'
-          '${parts.isEmpty ? '' : '\n$parts'}',
-      action: FilledButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Zavřít'),
-      ),
+    final dueLeft = subjectId == null
+        ? 0
+        : ref.watch(dueStudyCountProvider(subjectId)).valueOrNull ?? 0;
+
+    final title = nothingDue ? 'Dnes není co opakovat' : 'Hotovo na dnešek';
+    final message = nothingDue
+        ? 'Kartičky vznikají z výpisků hodin. Každá se vrátí, '
+              'až na ni podle plánu přijde řada.'
+        : '${czechCount(reviewed, 'hodnocení', 'hodnocení', 'hodnocení')}'
+              '${parts.isEmpty ? '' : '\n$parts'}';
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: Gap.xl),
+      children: [
+        const SizedBox(height: Gap.xl),
+        Icon(
+          nothingDue ? Icons.style_outlined : Icons.check_circle_outline,
+          size: 56,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(height: Gap.md),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: Gap.sm),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Gap.xl),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        NextDueLine(subjectId: subjectId, meetingId: meetingId),
+        if (subjectId != null)
+          NextStepsGroup(
+            steps: subjectNextSteps(
+              context,
+              subjectId: subjectId!,
+              dueLeft: dueLeft,
+            ),
+          ),
+        const SizedBox(height: Gap.lg),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+          child: FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            child: const Text('Zavřít'),
+          ),
+        ),
+      ],
     );
   }
 }
