@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../spacing.dart';
+import 'stagger_reveal.dart';
 
 /// Generated notes, laid out.
 ///
@@ -18,9 +19,21 @@ import '../spacing.dart';
 /// Shared by the meeting's notes tab and the saved-notes library, so a note
 /// looks the same before and after it is saved.
 class NotesText extends StatelessWidget {
-  const NotesText({super.key, required this.content});
+  const NotesText({super.key, required this.content, this.reveal = false});
 
   final String content;
+
+  /// Fades the blocks in one after another the first time this exact text is
+  /// shown. Meant for notes that were just generated; a saved note that is
+  /// merely reopened passes false and appears at once.
+  final bool reveal;
+
+  /// Texts already revealed in this session, so a rebuild, a tab switch or a
+  /// reopened screen never plays the reveal a second time.
+  static final _revealed = <int>{};
+
+  @visibleForTesting
+  static void resetReveals() => _revealed.clear();
 
   /// The bullet's own text, or null if the line is not a bullet. Models are
   /// inconsistent about which mark they use even when the prompt says `- `.
@@ -142,6 +155,12 @@ class NotesText extends StatelessWidget {
     }
 
     closeRemember();
+    if (reveal && blocks.length > 1) {
+      return StaggerReveal(
+        animate: _revealed.add(content.hashCode),
+        children: blocks,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: blocks,

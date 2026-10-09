@@ -3,11 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
+import '../../core/motion.dart';
 import '../../core/providers.dart';
 import '../../core/spacing.dart';
+import '../../core/widgets/count_up.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/notes_text.dart';
+import '../../core/widgets/pop_in.dart';
+import '../../core/widgets/pressable.dart';
 import '../../learning/exam_prep.dart';
 import '../legal/ai_disclaimer.dart';
 import '../notes_library/saved_note_screen.dart';
@@ -218,6 +222,7 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
               Text('Co umět', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: Gap.md),
               NotesText(
+                reveal: true,
                 content: prep.summary.isEmpty
                     ? '- Shrnutí chybí, rovnou k otázkám.'
                     : prep.summary,
@@ -259,26 +264,41 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
           : isPicked && !isRight
           ? scheme.errorContainer
           : null;
+      final reduced = reducedMotion(context);
       return Padding(
         padding: const EdgeInsets.only(bottom: Gap.sm),
-        child: Material(
-          color: tint ?? scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(14),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: _picked != null ? null : () => setState(() => _picked = i),
-            child: Padding(
-              padding: const EdgeInsets.all(Gap.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(q.options[i], style: theme.textTheme.bodyLarge),
+        child: Pressable(
+          child: AnimatedContainer(
+            duration: reduced ? Duration.zero : AppDuration.quick,
+            curve: AppCurve.standard,
+            decoration: BoxDecoration(
+              color: tint ?? scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: _picked != null ? null : () => _choose(i, q),
+                child: Padding(
+                  padding: const EdgeInsets.all(Gap.lg),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          q.options[i],
+                          style: theme.textTheme.bodyLarge,
+                        ),
+                      ),
+                      if (_picked != null && isRight)
+                        const PopIn(
+                          child: Icon(Icons.check_circle, color: Colors.green),
+                        ),
+                      if (isPicked && !isRight)
+                        PopIn(child: Icon(Icons.cancel, color: scheme.error)),
+                    ],
                   ),
-                  if (_picked != null && isRight)
-                    const Icon(Icons.check_circle, color: Colors.green),
-                  if (isPicked && !isRight)
-                    Icon(Icons.cancel, color: scheme.error),
-                ],
+                ),
               ),
             ),
           ),
@@ -381,6 +401,15 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
     );
   }
 
+  void _choose(int i, ExamQuestion q) {
+    if (i == q.correct) {
+      HapticFeedback.selectionClick();
+    } else {
+      HapticFeedback.mediumImpact();
+    }
+    setState(() => _picked = i);
+  }
+
   /// Starts over from the topic picker, with the same subject.
   void _restart() {
     setState(() {
@@ -420,16 +449,22 @@ class _ExamPrepScreenState extends ConsumerState<ExamPrepScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.xl, Gap.lg, Gap.xl),
       children: [
-        Icon(
-          Icons.emoji_events_outlined,
-          size: 56,
-          color: theme.colorScheme.primary,
+        Center(
+          child: PopIn(
+            child: Icon(
+              Icons.emoji_events_outlined,
+              size: 56,
+              color: theme.colorScheme.primary,
+            ),
+          ),
         ),
         const SizedBox(height: Gap.md),
-        Text(
-          '$right z ${_answers.length} správně',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.headlineSmall,
+        Center(
+          child: CountUp(
+            value: right,
+            style: theme.textTheme.headlineSmall,
+            format: (v) => '$v z ${_answers.length} správně',
+          ),
         ),
         if (message.isNotEmpty) ...[
           const SizedBox(height: Gap.sm),

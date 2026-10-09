@@ -5,8 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/accent.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
+import '../../core/widgets/count_up.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/flip_card.dart';
 import '../../core/widgets/inset_group.dart';
+import '../../core/widgets/pop_in.dart';
+import '../../core/widgets/pressable.dart';
 import '../../data/db/app_database.dart';
 import '../../learning/scheduler.dart';
 import '../../learning/study_flow.dart';
@@ -88,6 +92,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     }
   }
 
+  void _reveal() {
+    HapticFeedback.lightImpact();
+    setState(() => _revealed = true);
+  }
+
   ReviewState _stateOf(StudyCard c) => ReviewState(
     ease: c.ease,
     intervalDays: c.intervalDays,
@@ -134,6 +143,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       _index++;
       _revealed = false;
     });
+    if (_index >= queue.length) HapticFeedback.mediumImpact();
   }
 
   @override
@@ -192,7 +202,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         busy: _busy,
         stateOf: _stateOf,
         now: ref.read(studyClockProvider),
-        onReveal: () => setState(() => _revealed = true),
+        onReveal: _reveal,
         onGrade: _grade,
       );
     }
@@ -204,9 +214,14 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ? null
             : PreferredSize(
                 preferredSize: const Size.fromHeight(3),
-                child: LinearProgressIndicator(
-                  value: _index / queue.length,
-                  minHeight: 3,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: _index / queue.length),
+                  duration: reducedMotion(context)
+                      ? Duration.zero
+                      : AppDuration.base,
+                  curve: AppCurve.standard,
+                  builder: (_, value, _) =>
+                      LinearProgressIndicator(value: value, minHeight: 3),
                 ),
               ),
       ),
@@ -259,37 +274,121 @@ class _ReviewBody extends StatelessWidget {
       '$position / $total',
     ].join(' · ');
 
-    final answer = revealed
-        ? Column(
-            key: const ValueKey('back'),
+    final reduced = reducedMotion(context);
+    final outline = context.accent.hairline(scheme.outlineVariant);
+    final radius = BorderRadius.circular(InsetGroup.radius);
+
+    // The same card with and without the answer. The flip swaps between them,
+    // and the back keeps the question on top, so the student still sees what
+    // was asked.
+    Widget face({required bool back}) => GradientOutline(
+      gradient: outline,
+      borderRadius: radius,
+      width: 0.8,
+      child: Material(
+        color: scheme.surfaceContainerLow,
+        borderRadius: radius,
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.xl),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: Gap.lg),
-              Divider(color: scheme.outlineVariant),
-              const SizedBox(height: Gap.lg),
-              SelectableText(
-                card.back,
-                style: theme.textTheme.titleMedium?.copyWith(height: 1.4),
-              ),
-              const SizedBox(height: Gap.lg),
               Text(
-                provenance,
-                style: theme.textTheme.bodySmall?.copyWith(
+                meta.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
                   color: scheme.onSurfaceVariant,
+                  letterSpacing: 0.6,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              if (onOpenLesson != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: onOpenLesson,
-                    icon: const Icon(Icons.north_east_rounded, size: 18),
-                    label: const Text('Otevřít hodinu'),
+              const SizedBox(height: Gap.md),
+              Text(
+                card.front,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                ),
+              ),
+              if (back) ...[
+                const SizedBox(height: Gap.lg),
+                Divider(color: scheme.outlineVariant),
+                const SizedBox(height: Gap.lg),
+                SelectableText(
+                  card.back,
+                  style: theme.textTheme.titleMedium?.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: Gap.lg),
+                Text(
+                  provenance,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
+                if (onOpenLesson != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onOpenLesson,
+                      icon: const Icon(Icons.north_east_rounded, size: 18),
+                      label: const Text('Otevřít hodinu'),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Slides the next card in from the right while the old one leaves to the
+    // left; keyed by position so a card graded „Znovu" that comes round again
+    // still gets its own entrance.
+    final cardKey = ValueKey('card$position');
+    Widget slide(Widget child, Animation<double> a) {
+      final incoming = child.key == cardKey;
+      return FadeTransition(
+        opacity: a,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(incoming ? 0.12 : -0.12, 0),
+            end: Offset.zero,
+          ).animate(a),
+          child: child,
+        ),
+      );
+    }
+
+    final bottom = revealed
+        ? Row(
+            key: const ValueKey('grades'),
+            children: [
+              for (final g in ReviewGrade.values) ...[
+                if (g != ReviewGrade.again) const SizedBox(width: Gap.sm),
+                Expanded(
+                  child: Pressable(
+                    child: _GradeButton(
+                      grade: g,
+                      next: describeNextReview(
+                        schedule(stateOf(card), g, at),
+                        at,
+                      ),
+                      onPressed: busy ? null : () => onGrade(g),
+                    ),
+                  ),
+                ),
+              ],
             ],
           )
-        : const SizedBox(key: ValueKey('front'), width: double.infinity);
+        : Pressable(
+            key: const ValueKey('reveal'),
+            child: FilledButton(
+              onPressed: onReveal,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+              child: const Text('Ukázat odpověď'),
+            ),
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -299,50 +398,26 @@ class _ReviewBody extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.lg, Gap.lg, Gap.lg),
             child: GestureDetector(
               onTap: revealed ? null : onReveal,
-              child: GradientOutline(
-                gradient: context.accent.hairline(scheme.outlineVariant),
-                borderRadius: BorderRadius.circular(InsetGroup.radius),
-                width: 0.8,
-                child: Material(
-                  color: scheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(InsetGroup.radius),
-                  child: Padding(
-                    padding: const EdgeInsets.all(Gap.xl),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          meta.toUpperCase(),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            letterSpacing: 0.6,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: Gap.md),
-                        Text(
-                          card.front,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            height: 1.25,
-                          ),
-                        ),
-                        AnimatedSwitcher(
-                          duration: reducedMotion(context)
-                              ? Duration.zero
-                              : AppDuration.quick,
-                          switchInCurve: AppCurve.standard,
-                          transitionBuilder: (child, a) => FadeTransition(
-                            opacity: a,
-                            child: SizeTransition(
-                              sizeFactor: a,
-                              alignment: Alignment.topCenter,
-                              child: child,
-                            ),
-                          ),
-                          child: answer,
-                        ),
-                      ],
+              child: AnimatedSwitcher(
+                duration: reduced ? Duration.zero : AppDuration.base,
+                switchInCurve: AppCurve.standard,
+                switchOutCurve: AppCurve.standard,
+                transitionBuilder: slide,
+                layoutBuilder: (current, previous) => Stack(
+                  alignment: Alignment.topCenter,
+                  children: [...previous, ?current],
+                ),
+                child: SizedBox(
+                  key: cardKey,
+                  width: double.infinity,
+                  child: AnimatedSize(
+                    duration: reduced ? Duration.zero : AppDuration.base,
+                    curve: AppCurve.standard,
+                    alignment: Alignment.topCenter,
+                    child: FlipCard(
+                      front: face(back: false),
+                      back: face(back: true),
+                      flipped: revealed,
                     ),
                   ),
                 ),
@@ -352,31 +427,17 @@ class _ReviewBody extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(Gap.lg, 0, Gap.lg, Gap.lg),
-          child: revealed
-              ? Row(
-                  children: [
-                    for (final g in ReviewGrade.values) ...[
-                      if (g != ReviewGrade.again) const SizedBox(width: Gap.sm),
-                      Expanded(
-                        child: _GradeButton(
-                          grade: g,
-                          next: describeNextReview(
-                            schedule(stateOf(card), g, at),
-                            at,
-                          ),
-                          onPressed: busy ? null : () => onGrade(g),
-                        ),
-                      ),
-                    ],
-                  ],
-                )
-              : FilledButton(
-                  onPressed: onReveal,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                  child: const Text('Ukázat odpověď'),
-                ),
+          child: AnimatedSize(
+            duration: reduced ? Duration.zero : AppDuration.quick,
+            curve: AppCurve.standard,
+            alignment: Alignment.bottomCenter,
+            child: AnimatedSwitcher(
+              duration: reduced ? Duration.zero : AppDuration.quick,
+              transitionBuilder: (child, a) =>
+                  FadeTransition(opacity: a, child: child),
+              child: bottom,
+            ),
+          ),
         ),
       ],
     );
@@ -442,6 +503,68 @@ class _GradeButton extends StatelessWidget {
   }
 }
 
+/// One grade's share of the session: a bar that grows to its length.
+class _TallyBar extends StatelessWidget {
+  const _TallyBar({
+    required this.label,
+    required this.count,
+    required this.share,
+    required this.color,
+  });
+
+  final String label;
+  final int count;
+  final double share;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reduced = reducedMotion(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Gap.sm),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(label, style: theme.textTheme.labelLarge),
+          ),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                height: 10,
+                color: theme.colorScheme.surfaceContainerHighest,
+                alignment: Alignment.centerLeft,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: share),
+                  duration: reduced ? Duration.zero : AppDuration.slow,
+                  curve: AppCurve.standard,
+                  builder: (_, value, _) => FractionallySizedBox(
+                    widthFactor: value.clamp(0.0, 1.0),
+                    child: Container(color: color),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: Gap.sm),
+          SizedBox(
+            width: 28,
+            child: Text(
+              '$count',
+              textAlign: TextAlign.end,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Finished extends ConsumerWidget {
   const _Finished({
     required this.tally,
@@ -460,30 +583,48 @@ class _Finished extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final reviewed = tally.values.fold(0, (a, b) => a + b);
-    final parts = [
-      for (final g in ReviewGrade.values)
-        if (tally[g]! > 0) '${g.label}: ${tally[g]}',
-    ].join(' · ');
+    final peak = tally.values.fold(0, (a, b) => a > b ? a : b);
     final dueLeft = subjectId == null
         ? 0
         : ref.watch(dueStudyCountProvider(subjectId)).valueOrNull ?? 0;
 
     final title = nothingDue ? 'Dnes není co opakovat' : 'Hotovo na dnešek';
-    final message = nothingDue
-        ? 'Kartičky vznikají z výpisků hodin. Každá se vrátí, '
-              'až na ni podle plánu přijde řada.'
-        : '${czechCount(reviewed, 'hodnocení', 'hodnocení', 'hodnocení')}'
-              '${parts.isEmpty ? '' : '\n$parts'}';
+    final muted = theme.textTheme.bodyMedium?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final gradeColors = {
+      ReviewGrade.again: scheme.error,
+      ReviewGrade.hard: scheme.tertiary,
+      ReviewGrade.good: scheme.primary,
+      ReviewGrade.easy: scheme.secondary,
+    };
 
     return ListView(
       padding: const EdgeInsets.only(bottom: Gap.xl),
       children: [
         const SizedBox(height: Gap.xl),
-        Icon(
-          nothingDue ? Icons.style_outlined : Icons.check_circle_outline,
-          size: 56,
-          color: theme.colorScheme.primary,
+        Center(
+          child: PopIn(
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: context.accent.softGradient(strength: 1.4),
+                border: Border.all(
+                  color: scheme.primary.withValues(alpha: .35),
+                  width: 1.2,
+                ),
+              ),
+              child: Icon(
+                nothingDue ? Icons.style_outlined : Icons.check_rounded,
+                size: 44,
+                color: scheme.primary,
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: Gap.md),
         Text(
@@ -496,14 +637,40 @@ class _Finished extends ConsumerWidget {
         const SizedBox(height: Gap.sm),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Gap.xl),
-          child: Text(
-            message,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          child: nothingDue
+              ? Text(
+                  'Kartičky vznikají z výpisků hodin. Každá se vrátí, '
+                  'až na ni podle plánu přijde řada.',
+                  textAlign: TextAlign.center,
+                  style: muted,
+                )
+              : Center(
+                  child: CountUp(
+                    value: reviewed,
+                    style: muted,
+                    format: (v) =>
+                        czechCount(v, 'hodnocení', 'hodnocení', 'hodnocení'),
+                  ),
+                ),
+        ),
+        if (!nothingDue && peak > 0) ...[
+          const SizedBox(height: Gap.lg),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Gap.xl),
+            child: Column(
+              children: [
+                for (final g in ReviewGrade.values)
+                  if (tally[g]! > 0)
+                    _TallyBar(
+                      label: g.label,
+                      count: tally[g]!,
+                      share: tally[g]! / peak,
+                      color: gradeColors[g]!,
+                    ),
+              ],
             ),
           ),
-        ),
+        ],
         NextDueLine(subjectId: subjectId, meetingId: meetingId),
         if (subjectId != null)
           NextStepsGroup(

@@ -13,6 +13,7 @@ import '../../../core/share.dart';
 import '../../../core/spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/notes_text.dart';
+import '../../../core/widgets/text_skeleton.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/db/tables/context_cards_table.dart';
 import '../../../data/db/tables/meeting_notes_table.dart';
@@ -399,8 +400,8 @@ class _GeneratingIndicator extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const LinearProgressIndicator(),
-          const SizedBox(height: Gap.sm),
+          const TextSkeleton(),
+          const SizedBox(height: Gap.xs),
           Text(
             'Generuji poznámky…',
             style: Theme.of(context).textTheme.bodySmall,
@@ -527,7 +528,14 @@ class _NotesBody extends StatelessWidget {
             ],
           ),
           const SizedBox(height: Gap.sm),
-          NotesText(content: note.content!),
+          NotesText(
+            content: note.content!,
+            // Only notes that landed a moment ago fade in; reopening an old
+            // lesson shows them at once.
+            reveal:
+                DateTime.now().difference(note.createdAt) <
+                const Duration(minutes: 3),
+          ),
           const AiDisclaimer(),
         ],
       ),
