@@ -8,12 +8,15 @@ import '../../../core/accent.dart';
 import '../../legal/ai_disclaimer.dart';
 import '../../../ai/card_suggestions.dart';
 import '../../../core/motion.dart';
+import '../../../core/logging.dart';
 import '../../../core/providers.dart';
 import '../../../core/share.dart';
 import '../../../core/spacing.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/notes_text.dart';
 import '../../../core/widgets/text_skeleton.dart';
+import '../../../core/widgets/pressable.dart';
+import 'card_suggestions_view.dart';
 import '../../../data/db/app_database.dart';
 import '../../../data/db/tables/context_cards_table.dart';
 import '../../../data/db/tables/meeting_notes_table.dart';
@@ -44,6 +47,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
   /// Null until the user picks one or a stored row tells us what was used last;
   /// see [_effectiveDepth].
   NotesDepth? _picked;
+  bool _savingNote = false;
 
   Future<void> _generate(NotesDepth depth) async {
     // The generator writes its own progress and failure to the row, so this
@@ -77,52 +81,82 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
   /// Keeps a copy of the notes in the library, under a title and folder the
   /// user picks.
   Future<void> _save(MeetingNote note) async {
-    final dao = ref.read(savedNotesDaoProvider);
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-    final meeting = ref.read(meetingProvider(widget.meetingId)).valueOrNull;
+    if (_savingNote) return;
+    _savingNote = true;
+    try {
+      final dao = ref.read(savedNotesDaoProvider);
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      final meeting = ref.read(meetingProvider(widget.meetingId)).valueOrNull;
 
-    final picked = await showSaveNoteSheet(
-      context,
-      initialTitle: meeting?.title ?? 'Poznámky ze schůzky',
-      initialFolderId: meeting?.subjectId,
-    );
-    if (picked == null) return;
-
-    final id = await dao.saveNote(
-      title: picked.title,
-      content: note.content!,
-      folderId: picked.folderId,
-      meetingId: widget.meetingId,
-      depth: note.depth,
-    );
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('Uloženo do knihovny.'),
-          action: SnackBarAction(
-            label: 'Otevřít',
-            onPressed: () => navigator.push(SavedNoteScreen.route(id)),
-          ),
-        ),
+      final picked = await showSaveNoteSheet(
+        context,
+        initialTitle: meeting?.title ?? 'Poznámky ze schůzky',
+        initialFolderId: meeting?.subjectId,
       );
+      if (picked == null) return;
+
+      final id = await dao.saveNote(
+        title: picked.title,
+        content: note.content!,
+        folderId: picked.folderId,
+        meetingId: widget.meetingId,
+        depth: note.depth,
+      );
+      unawaited(HapticFeedback.lightImpact());
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Uloženo do knihovny.'),
+            action: SnackBarAction(
+              label: 'Otevřít',
+              onPressed: () => navigator.push(SavedNoteScreen.route(id)),
+            ),
+          ),
+        );
+    } catch (e, st) {
+      AppLog.e('notes.save', 'note not saved', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Poznámky se nepodařilo uložit. Zkus to znovu.'),
+          ),
+        );
+      }
+    } finally {
+      _savingNote = false;
+    }
   }
 
   /// Turns a suggestion into a card of the lesson's subject.
   Future<void> _addSuggestion(CardSuggestion suggestion, int subjectId) async {
     final messenger = ScaffoldMessenger.of(context);
     final digests = ref.read(cardDigestServiceProvider);
-    final id = await ref
-        .read(subjectsDaoProvider)
-        .createCard(
-          subjectId: subjectId,
-          title: suggestion.title,
-          content: suggestion.content,
-          kind: CardKind.lesson,
-        );
+    final db = ref.read(appDatabaseProvider);
+    final dao = ref.read(subjectsDaoProvider);
+    // Check and remove in the same transaction as the add. A failed removal
+    // must not leave a saved card that would be added a second time on retry.
+    final id = await db.transaction(() async {
+      final note = await db.meetingNotesDao.forMeeting(widget.meetingId);
+      if (note == null ||
+          !decodeCardSuggestions(note.cardSuggestions).contains(suggestion)) {
+        return null;
+      }
+      final id = await dao.createCard(
+        subjectId: subjectId,
+        title: suggestion.title,
+        content: suggestion.content,
+        kind: CardKind.lesson,
+      );
+      await _dropSuggestion(suggestion);
+      return id;
+    });
+    if (id == null) return;
     unawaited(digests.digest(id));
-    await _dropSuggestion(suggestion);
+    unawaited(HapticFeedback.lightImpact());
+    if (!mounted) return;
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -229,13 +263,15 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: Gap.md),
-        FilledButton.icon(
-          onPressed: generating ? null : () => _generate(depth),
-          icon: const Icon(Icons.auto_awesome),
-          label: Text(
-            note == null
-                ? (lesson ? 'Vytvořit výpisky' : 'Vytvořit poznámky')
-                : 'Vytvořit znovu',
+        Pressable(
+          child: FilledButton.icon(
+            onPressed: generating ? null : () => _generate(depth),
+            icon: const Icon(Icons.auto_awesome),
+            label: Text(
+              note == null
+                  ? (lesson ? 'Vytvořit výpisky' : 'Vytvořit poznámky')
+                  : 'Vytvořit znovu',
+            ),
           ),
         ),
         const SizedBox(height: Gap.xl),
@@ -306,86 +342,13 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
             content != null &&
             content.isNotEmpty)
           LessonStudyPanel(meetingId: widget.meetingId, subjectId: subjectId),
-        if (suggestions.isNotEmpty && subjectId != null)
-          _CardSuggestions(
+        if (subjectId != null)
+          CardSuggestionsView(
             suggestions: suggestions,
             onAdd: (s) => _addSuggestion(s, subjectId),
             onDismiss: _dropSuggestion,
           ),
       ],
-    );
-  }
-}
-
-/// Topics from the výpisky that could become cards.
-class _CardSuggestions extends StatelessWidget {
-  const _CardSuggestions({
-    required this.suggestions,
-    required this.onAdd,
-    required this.onDismiss,
-  });
-
-  final List<CardSuggestion> suggestions;
-  final ValueChanged<CardSuggestion> onAdd;
-  final ValueChanged<CardSuggestion> onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: Gap.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Uložit jako kartu', style: theme.textTheme.titleSmall),
-          const SizedBox(height: Gap.sm),
-          for (final s in suggestions)
-            Card(
-              key: ValueKey(s.title),
-              margin: const EdgeInsets.only(bottom: Gap.sm),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Gap.md,
-                  Gap.sm,
-                  Gap.xs,
-                  Gap.sm,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(s.title, style: theme.textTheme.titleSmall),
-                          const SizedBox(height: Gap.xs),
-                          Text(
-                            s.content,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Nechci',
-                      onPressed: () => onDismiss(s),
-                    ),
-                    FilledButton.tonal(
-                      style: tonalButtonStyle(context),
-                      onPressed: () => onAdd(s),
-                      child: const Text('Přidat'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
@@ -516,14 +479,16 @@ class _NotesBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: Gap.xs),
-              FilledButton.tonalIcon(
-                style: tonalButtonStyle(context),
-                onPressed: stale ? null : onSave,
-                icon: Icon(
-                  saved ? Icons.bookmark : Icons.bookmark_add_outlined,
-                  size: 18,
+              Pressable(
+                child: FilledButton.tonalIcon(
+                  style: tonalButtonStyle(context),
+                  onPressed: stale ? null : onSave,
+                  icon: Icon(
+                    saved ? Icons.bookmark : Icons.bookmark_add_outlined,
+                    size: 18,
+                  ),
+                  label: Text(saved ? 'Uloženo' : 'Uložit'),
                 ),
-                label: Text(saved ? 'Uloženo' : 'Uložit'),
               ),
             ],
           ),

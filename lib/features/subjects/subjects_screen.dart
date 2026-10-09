@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
+import '../../core/app_route.dart';
+import '../../core/widgets/pressable.dart';
 import '../../core/motion.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
@@ -126,6 +128,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen> {
           children: [
             for (final summary in list)
               Entrance(
+                key: ValueKey(summary.subject.id),
                 enabled: entering[summary.subject.id] != null,
                 delay: firstPaint && entering[summary.subject.id] != null
                     ? AppMotion.staggerDelay(entering[summary.subject.id]!)
@@ -157,14 +160,21 @@ class _SubjectRow extends StatelessWidget {
 
     return ListRow(
       leadingSlot: slot,
-      leading: GradientIconTile(
-        icon: Icons.menu_book_rounded,
-        color: subjectColor(context, subject.colorIndex),
+      leading: HeroMode(
+        enabled:
+            !reducedMotion(context) && TickerMode.valuesOf(context).enabled,
+        child: Hero(
+          tag: subjectHeroTag(subject.id),
+          child: GradientIconTile(
+            icon: Icons.menu_book_rounded,
+            color: subjectColor(context, subject.colorIndex),
+          ),
+        ),
       ),
       title: subject.name,
       subtitle: counts,
-      onTap: () =>
-          Navigator.of(context).push(SubjectDetailScreen.route(subject.id)),
+      onTap: () => Navigator.of(context)
+          .push(SubjectDetailScreen.route(subject.id, heroSubject: subject)),
     );
   }
 }
@@ -187,29 +197,31 @@ class GradientFab extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = context.accent;
     final radius = BorderRadius.circular(Gap.lg);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: accent.fillGradient,
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: accent.fill.withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: FloatingActionButton.extended(
-        onPressed: onPressed,
-        backgroundColor: Colors.transparent,
-        foregroundColor: accent.onFill,
-        elevation: 0,
-        focusElevation: 0,
-        hoverElevation: 0,
-        highlightElevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: radius),
-        icon: Icon(icon),
-        label: Text(label),
+    return Pressable(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: accent.fillGradient,
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: accent.fill.withValues(alpha: 0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: FloatingActionButton.extended(
+          onPressed: onPressed,
+          backgroundColor: Colors.transparent,
+          foregroundColor: accent.onFill,
+          elevation: 0,
+          focusElevation: 0,
+          hoverElevation: 0,
+          highlightElevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: radius),
+          icon: Icon(icon),
+          label: Text(label),
+        ),
       ),
     );
   }

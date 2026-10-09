@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
@@ -195,7 +198,7 @@ class SyllabusImportScreen extends ConsumerStatefulWidget {
     required Subject subject,
     String? text,
     List<PickedPhoto>? photos,
-  }) => MaterialPageRoute(
+  }) => AppRoute(
     builder: (_) =>
         SyllabusImportScreen(subject: subject, text: text, photos: photos),
   );

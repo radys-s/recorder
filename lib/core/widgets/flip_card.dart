@@ -34,10 +34,15 @@ class _FlipCardState extends State<FlipCard>
     duration: AppDuration.base,
     value: widget.flipped ? 1 : 0,
   );
-  late final Animation<double> _curve = CurvedAnimation(
-    parent: _controller,
-    curve: AppCurve.standard,
+  late final Animation<double> _curve = _controller.drive(
+    CurveTween(curve: AppCurve.standard),
   );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) _controller.value = widget.flipped ? 1 : 0;
+  }
 
   @override
   void didUpdateWidget(FlipCard old) {

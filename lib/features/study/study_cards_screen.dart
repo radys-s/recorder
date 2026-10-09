@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -22,7 +25,7 @@ class StudyCardsScreen extends ConsumerWidget {
   final int subjectId;
 
   static Route<void> route(int subjectId) =>
-      MaterialPageRoute(builder: (_) => StudyCardsScreen(subjectId: subjectId));
+      AppRoute(builder: (_) => StudyCardsScreen(subjectId: subjectId));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

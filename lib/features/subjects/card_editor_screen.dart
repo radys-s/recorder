@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -64,7 +67,7 @@ class CardEditorScreen extends ConsumerStatefulWidget {
     String? initialTitle,
     String? initialContent,
     List<String> initialImagePaths = const [],
-  }) => MaterialPageRoute<void>(
+  }) => AppRoute<void>(
     builder: (_) => CardEditorScreen(
       subjectId: subjectId,
       card: card,
@@ -304,8 +307,10 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       });
       final problem = found.geminiProblem;
       if (!found.viaGemini && found.sources.isEmpty) {
-        _say('Dohledáno bez ověření na webu — ověř fakta, hlavně data a jména.'
-            '${problem == null ? '' : ' $problem'}');
+        _say(
+          'Dohledáno bez ověření na webu — ověř fakta, hlavně data a jména.'
+          '${problem == null ? '' : ' $problem'}',
+        );
       } else if (problem != null) {
         _say('Přes Gemini to nešlo, dohledáno stručně přes Groq. $problem');
       } else if (!found.viaGemini) {
@@ -359,6 +364,7 @@ class _CardEditorScreenState extends ConsumerState<CardEditorScreen> {
       // In the background: the digest is a nicety for later lessons and must
       // never hold the editor open. It skips cards that already have one.
       unawaited(digests.digest(id));
+      unawaited(HapticFeedback.lightImpact());
       navigator.pop();
     } catch (e, st) {
       AppLog.e(_tag, 'card not saved', e, st);

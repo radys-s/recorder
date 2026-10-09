@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
+import '../../core/motion.dart';
+import '../../core/widgets/entrance.dart';
+import '../../core/widgets/pressable.dart';
+import '../../core/widgets/result_transition.dart';
 import '../../core/formatting.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/async_view.dart';
@@ -33,18 +40,26 @@ class SubjectDetailScreen extends ConsumerStatefulWidget {
     super.key,
     required this.subjectId,
     this.initialTab = 0,
+    this.heroSubject,
   });
 
   final int subjectId;
 
   /// 0 Karty, 1 Hodiny, 2 Přehled, 3 Nastavení.
   final int initialTab;
+  final Subject? heroSubject;
 
-  static Route<void> route(int subjectId, {int initialTab = 0}) =>
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            SubjectDetailScreen(subjectId: subjectId, initialTab: initialTab),
-      );
+  static Route<void> route(
+    int subjectId, {
+    int initialTab = 0,
+    Subject? heroSubject,
+  }) => AppRoute<void>(
+    builder: (_) => SubjectDetailScreen(
+      subjectId: subjectId,
+      initialTab: initialTab,
+      heroSubject: heroSubject,
+    ),
+  );
 
   @override
   ConsumerState<SubjectDetailScreen> createState() =>
@@ -73,20 +88,33 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
   Widget build(BuildContext context) {
     final value = ref.watch(subjectProvider(widget.subjectId));
     final subject = value.valueOrNull;
+    // The route snapshot bridges the first frame only, not a deleted subject.
+    final headerSubject = value.isLoading && !value.hasValue
+        ? widget.heroSubject
+        : subject;
 
     return Scaffold(
       appBar: AppBar(
-        title: subject == null
+        title: headerSubject == null
             ? const Text('Předmět')
             : Row(
                 children: [
-                  SubjectDot(
-                    color: subjectColor(context, subject.colorIndex),
-                    size: 12,
+                  HeroMode(
+                    enabled: !reducedMotion(context),
+                    child: Hero(
+                      tag: subjectHeroTag(headerSubject.id),
+                      child: GradientIconTile(
+                        icon: Icons.menu_book_rounded,
+                        color: subjectColor(context, headerSubject.colorIndex),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: Gap.sm),
                   Flexible(
-                    child: Text(subject.name, overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      headerSubject.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -101,12 +129,14 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
         ),
       ),
       floatingActionButton: subject != null && _tabs.index == 0
-          ? FloatingActionButton.extended(
-              onPressed: () =>
-                  Navigator.of(context)
-                      .push(CardEditorScreen.route(subjectId: subject.id)),
-              icon: const Icon(Icons.add),
-              label: const Text('Nová karta'),
+          ? Pressable(
+              child: FloatingActionButton.extended(
+                onPressed: () =>
+                    Navigator.of(context)
+                        .push(CardEditorScreen.route(subjectId: subject.id)),
+                icon: const Icon(Icons.add),
+                label: const Text('Nová karta'),
+              ),
             )
           : null,
       body: AsyncView(
@@ -146,8 +176,12 @@ class _CardsTab extends ConsumerStatefulWidget {
   ConsumerState<_CardsTab> createState() => _CardsTabState();
 }
 
-class _CardsTabState extends ConsumerState<_CardsTab> {
+class _CardsTabState extends ConsumerState<_CardsTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   final _search = TextEditingController();
+  final _seen = <int>{};
 
   @override
   void dispose() {
@@ -157,6 +191,7 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final hidden = ref.watch(pendingIdsProvider(DeletionKind.card));
     final cards = ref
         .watch(subjectCardsProvider(widget.subjectId))
@@ -195,6 +230,10 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
               card,
         ];
 
+        final entering = {
+          for (final card in visible)
+            if (_seen.add(card.id)) card.id,
+        };
         return ListView(
           padding: const EdgeInsets.fromLTRB(
             Gap.lg,
@@ -220,11 +259,22 @@ class _CardsTabState extends ConsumerState<_CardsTab> {
                 padding: EdgeInsets.only(top: Gap.xl),
                 child: Center(child: Text('Nic nenalezeno')),
               ),
-            for (final card in visible)
-              Padding(
-                padding: const EdgeInsets.only(bottom: Gap.sm),
-                child: _CardTile(card: card),
+            ResultTransition(
+              revision: _search.text,
+              child: Column(
+                children: [
+                  for (final card in visible)
+                    Entrance(
+                      key: ValueKey(card.id),
+                      enabled: entering.contains(card.id),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: Gap.sm),
+                        child: _CardTile(card: card),
+                      ),
+                    ),
+                ],
               ),
+            ),
           ],
         );
       },
@@ -243,63 +293,65 @@ class _CardTile extends StatelessWidget {
     final scheme = theme.colorScheme;
     final preview = notePreview(card.content);
 
-    return Card(
-      child: InkWell(
-        onTap: () => Navigator.of(
-          context,
-        ).push(CardEditorScreen.route(subjectId: card.subjectId, card: card)),
-        child: Padding(
-          padding: const EdgeInsets.all(Gap.md),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: scheme.tertiaryContainer,
-                  borderRadius: BorderRadius.circular(Gap.md),
+    return Pressable(
+      child: Card(
+        child: InkWell(
+          onTap: () => Navigator.of(
+            context,
+          ).push(CardEditorScreen.route(subjectId: card.subjectId, card: card)),
+          child: Padding(
+            padding: const EdgeInsets.all(Gap.md),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: scheme.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(Gap.md),
+                  ),
+                  child: Icon(
+                    Icons.style_outlined,
+                    size: 19,
+                    color: scheme.onTertiaryContainer,
+                  ),
                 ),
-                child: Icon(
-                  Icons.style_outlined,
-                  size: 19,
-                  color: scheme.onTertiaryContainer,
+                const SizedBox(width: Gap.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        card.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: Gap.xs),
+                      Text(
+                        preview.isEmpty ? 'Bez obsahu' : preview,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontStyle: preview.isEmpty ? FontStyle.italic : null,
+                        ),
+                      ),
+                      const SizedBox(height: Gap.sm),
+                      Text(
+                        'Upraveno ${formatMeetingDate(card.updatedAt)}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.outline,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      card.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: Gap.xs),
-                    Text(
-                      preview.isEmpty ? 'Bez obsahu' : preview,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontStyle: preview.isEmpty ? FontStyle.italic : null,
-                      ),
-                    ),
-                    const SizedBox(height: Gap.sm),
-                    Text(
-                      'Upraveno ${formatMeetingDate(card.updatedAt)}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: scheme.outline,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -309,13 +361,25 @@ class _CardTile extends StatelessWidget {
 
 // ---------------------------------------------------------------- lessons
 
-class _LessonsTab extends ConsumerWidget {
+class _LessonsTab extends ConsumerStatefulWidget {
   const _LessonsTab({required this.subjectId});
 
   final int subjectId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_LessonsTab> createState() => _LessonsTabState();
+}
+
+class _LessonsTabState extends ConsumerState<_LessonsTab>
+    with AutomaticKeepAliveClientMixin {
+  final _seen = <int>{};
+  int get subjectId => widget.subjectId;
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
     final hidden = ref.watch(pendingIdsProvider(DeletionKind.meeting));
     final lessons = ref
         .watch(subjectLessonsProvider(subjectId))
@@ -345,6 +409,10 @@ class _LessonsTab extends ConsumerWidget {
         final perLesson =
             ref.watch(subjectLessonStudyProvider(subjectId)).valueOrNull ??
             const <int, StudyStats>{};
+        final entering = {
+          for (final meeting in list)
+            if (_seen.add(meeting.id)) meeting.id,
+        };
         return ListView(
           padding: const EdgeInsets.fromLTRB(Gap.lg, Gap.md, Gap.lg, Gap.xl),
           children: [
@@ -354,11 +422,15 @@ class _LessonsTab extends ConsumerWidget {
               dividerIndent: ListRow.textIndent + 28,
               children: [
                 for (final meeting in list)
-                  _lessonRow(
-                    context,
-                    meeting,
-                    hasNotes: withNotes.contains(meeting.id),
-                    stats: perLesson[meeting.id],
+                  Entrance(
+                    key: ValueKey(meeting.id),
+                    enabled: entering.contains(meeting.id),
+                    child: _lessonRow(
+                      context,
+                      meeting,
+                      hasNotes: withNotes.contains(meeting.id),
+                      stats: perLesson[meeting.id],
+                    ),
                   ),
               ],
             ),

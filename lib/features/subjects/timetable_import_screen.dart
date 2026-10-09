@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
@@ -84,7 +87,7 @@ class TimetableImportScreen extends ConsumerStatefulWidget {
   final List<PickedPhoto> photos;
 
   static Route<void> route(List<PickedPhoto> photos) =>
-      MaterialPageRoute(builder: (_) => TimetableImportScreen(photos: photos));
+      AppRoute(builder: (_) => TimetableImportScreen(photos: photos));
 
   @override
   ConsumerState<TimetableImportScreen> createState() =>

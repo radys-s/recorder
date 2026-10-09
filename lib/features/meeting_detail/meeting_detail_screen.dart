@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../core/app_route.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../audio/recording_controller.dart';
@@ -63,7 +64,7 @@ class MeetingDetailScreen extends ConsumerStatefulWidget {
     int meetingId, {
     int? focusSegmentId,
     int initialTab = 0,
-  }) => MaterialPageRoute<void>(
+  }) => AppRoute<void>(
     settings: RouteSettings(name: routeNameFor(meetingId)),
     builder: (_) => MeetingDetailScreen(
       meetingId: meetingId,

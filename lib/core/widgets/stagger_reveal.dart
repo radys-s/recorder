@@ -16,7 +16,7 @@ class StaggerReveal extends StatefulWidget {
     this.animate = true,
     this.crossAxisAlignment = CrossAxisAlignment.start,
     this.maxStaggered = 8,
-  });
+  }) : assert(maxStaggered > 0);
 
   final List<Widget> children;
   final bool animate;
@@ -38,6 +38,19 @@ class _StaggerRevealState extends State<StaggerReveal>
       _controller = AnimationController(vsync: this, duration: AppDuration.slow)
         ..forward();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) _controller?.value = 1;
+  }
+
+  @override
+  void didUpdateWidget(StaggerReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A reveal is a mount-time decision, never replayed by a stream rebuild.
+    if (!widget.animate) _controller?.value = 1;
   }
 
   @override
@@ -69,9 +82,12 @@ class _StaggerRevealState extends State<StaggerReveal>
   Widget _slot(AnimationController c, Widget child, int index, int steps) {
     // Each child owns a window of 55% of the timeline, shifted by its index.
     final start = steps == 0 ? 0.0 : 0.45 * index / steps;
-    final animation = CurvedAnimation(
-      parent: c,
-      curve: Interval(start, start + 0.55, curve: AppCurve.standard),
+    // CurveTween owns no status listener; unlike CurvedAnimation it needs no
+    // disposal when a document rebuilds or changes the number of blocks.
+    final animation = c.drive(
+      CurveTween(
+        curve: Interval(start, start + 0.55, curve: AppCurve.standard),
+      ),
     );
     return FadeTransition(
       opacity: animation,

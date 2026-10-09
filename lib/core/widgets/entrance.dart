@@ -50,8 +50,10 @@ class _EntranceState extends State<Entrance>
     duration: AppDuration.base,
     value: _run ? 0 : 1,
   );
-  late final CurvedAnimation _curve =
-      CurvedAnimation(parent: _controller, curve: AppCurve.standard);
+  late final CurvedAnimation _curve = CurvedAnimation(
+    parent: _controller,
+    curve: AppCurve.standard,
+  );
   Timer? _delay;
 
   @override
@@ -64,6 +66,15 @@ class _EntranceState extends State<Entrance>
       _delay = Timer(widget.delay, () {
         if (mounted) _controller.forward();
       });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reducedMotion(context)) {
+      _delay?.cancel();
+      _controller.value = 1;
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../accent.dart';
 import '../spacing.dart';
+import 'pressable.dart';
 
 /// A filter chip with a count after its label; the selected one gets the
 /// accent's lit outline, the rest a plain one.
@@ -29,33 +30,35 @@ class CountChip extends StatelessWidget {
     final radius = BorderRadius.circular(Gap.sm);
 
     // The selected chip gets the accent's lit outline, the rest a plain one.
-    return ChoiceChip(
-      avatar: avatar,
-      selected: selected,
-      onSelected: (_) => onSelected(),
-      shape: selected
-          ? GradientRoundedRectangleBorder(
-              borderRadius: radius,
-              gradient: accent.outlineGradient(),
-              width: 1.2,
-            )
-          : RoundedRectangleBorder(
-              borderRadius: radius,
-              side: BorderSide(color: scheme.outlineVariant),
+    return Pressable(
+      child: ChoiceChip(
+        avatar: avatar,
+        selected: selected,
+        onSelected: (_) => onSelected(),
+        shape: selected
+            ? GradientRoundedRectangleBorder(
+                borderRadius: radius,
+                gradient: accent.outlineGradient(),
+                width: 1.2,
+              )
+            : RoundedRectangleBorder(
+                borderRadius: radius,
+                side: BorderSide(color: scheme.outlineVariant),
+              ),
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            const SizedBox(width: Gap.sm - 2),
+            Text(
+              '$count',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: selected ? accent.text : scheme.onSurfaceVariant,
+                fontWeight: selected ? FontWeight.w700 : null,
+              ),
             ),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          const SizedBox(width: Gap.sm - 2),
-          Text(
-            '$count',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: selected ? accent.text : scheme.onSurfaceVariant,
-              fontWeight: selected ? FontWeight.w700 : null,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

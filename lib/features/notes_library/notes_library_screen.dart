@@ -8,6 +8,7 @@ import '../../core/widgets/count_chip.dart';
 import '../../core/widgets/async_view.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/entrance.dart';
+import '../../core/widgets/result_transition.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/menu_row.dart';
 import '../../data/db/app_database.dart';
@@ -277,30 +278,34 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
     // as the gradient on the row's tile rather than as another box.
     return SliverList(
       delegate: SliverChildListDelegate([
-        InsetGroup(
-          label: label,
-          trailingLabel: czechCount(
-            visible.length,
-            'poznámka',
-            'poznámky',
-            'poznámek',
-          ),
-          dividerIndent: Gap.lg + _NoteRow.slot,
-          children: [
-            for (final note in visible)
-              Entrance(
-                enabled: entering[note.id] != null,
-                delay: firstPaint && entering[note.id] != null
-                    ? AppMotion.staggerDelay(entering[note.id]!)
-                    : Duration.zero,
-                child: _NoteRow(
-                  note: note,
-                  subject: byId[note.folderId],
-                  // In a folder's own view its name on every row is noise.
-                  showSubject: filter.kind != FolderFilterKind.folder,
+        ResultTransition(
+          revision: (_search.text, filter),
+          child: InsetGroup(
+            label: label,
+            trailingLabel: czechCount(
+              visible.length,
+              'poznámka',
+              'poznámky',
+              'poznámek',
+            ),
+            dividerIndent: Gap.lg + _NoteRow.slot,
+            children: [
+              for (final note in visible)
+                Entrance(
+                  key: ValueKey(note.id),
+                  enabled: entering[note.id] != null,
+                  delay: firstPaint && entering[note.id] != null
+                      ? AppMotion.staggerDelay(entering[note.id]!)
+                      : Duration.zero,
+                  child: _NoteRow(
+                    note: note,
+                    subject: byId[note.folderId],
+                    // In a folder's own view its name on every row is noise.
+                    showSubject: filter.kind != FolderFilterKind.folder,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ]),
     );

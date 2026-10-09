@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,7 +34,7 @@ class ExamPrepScreen extends ConsumerStatefulWidget {
   final int subjectId;
 
   static Route<void> route(int subjectId) =>
-      MaterialPageRoute(builder: (_) => ExamPrepScreen(subjectId: subjectId));
+      AppRoute(builder: (_) => ExamPrepScreen(subjectId: subjectId));
 
   @override
   ConsumerState<ExamPrepScreen> createState() => _ExamPrepScreenState();

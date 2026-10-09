@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
@@ -19,7 +22,9 @@ Future<int?> createSubjectFlow(BuildContext context, WidgetRef ref) async {
     maxLength: SavedNotesDao.maxFolderNameLength,
   );
   if (name == null) return null;
-  return dao.createFolder(name);
+  final id = await dao.createFolder(name);
+  unawaited(HapticFeedback.lightImpact());
+  return id;
 }
 
 Future<void> renameSubjectFlow(
@@ -37,6 +42,7 @@ Future<void> renameSubjectFlow(
   );
   if (name == null || name == subject.name) return;
   await dao.renameFolder(subject.id, name);
+  unawaited(HapticFeedback.lightImpact());
 }
 
 /// Asks, then deletes the subject with its cards. Says what goes and what
@@ -58,7 +64,7 @@ Future<bool> confirmAndDeleteSubject(
     message: cards == 0
         ? 'Poznámky a nahrané hodiny zůstanou, jen bez předmětu.'
         : 'Smaže se i ${czechCount(cards, 'karta', 'karty', 'karet')}. '
-            'Poznámky a nahrané hodiny zůstanou, jen bez předmětu.',
+              'Poznámky a nahrané hodiny zůstanou, jen bez předmětu.',
     confirmLabel: 'Smazat',
     destructive: true,
   );

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -33,11 +36,9 @@ class ReviewScreen extends ConsumerStatefulWidget {
   /// Only the cards one lesson's výpisky produced.
   final int? meetingId;
 
-  static Route<void> route({int? subjectId, int? meetingId}) =>
-      MaterialPageRoute(
-        builder: (_) =>
-            ReviewScreen(subjectId: subjectId, meetingId: meetingId),
-      );
+  static Route<void> route({int? subjectId, int? meetingId}) => AppRoute(
+    builder: (_) => ReviewScreen(subjectId: subjectId, meetingId: meetingId),
+  );
 
   @override
   ConsumerState<ReviewScreen> createState() => _ReviewScreenState();
@@ -106,7 +107,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   Future<void> _grade(ReviewGrade grade) async {
     final queue = _queue;
-    if (queue == null || _busy || _index >= queue.length) return;
+    // A stale button can still receive a second tap before the next frame.
+    // Once saved, the next card must be revealed before it can be graded.
+    if (queue == null || _busy || !_revealed || _index >= queue.length) return;
     final card = queue[_index];
     final outcome = schedule(
       _stateOf(card),

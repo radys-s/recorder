@@ -4,12 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accent.dart';
+import '../../core/app_route.dart';
 import '../../core/logging.dart';
 import '../../core/pending_deletions.dart';
 import '../../core/search.dart';
 import '../../core/spacing.dart';
 import '../../core/widgets/count_chip.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/entrance.dart';
+import '../../core/widgets/result_transition.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../data/db/app_database.dart';
 import '../../data/search_service.dart';
@@ -23,7 +26,7 @@ class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
   static Route<void> route() =>
-      MaterialPageRoute<void>(builder: (_) => const SearchScreen());
+      AppRoute<void>(builder: (_) => const SearchScreen());
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -39,6 +42,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   int _run = 0;
 
   List<SearchHit>? _hits;
+  String _acceptedQuery = '';
+  final _seenResults = <String>{};
   bool _busy = false;
 
   /// Null shows every kind.
@@ -131,6 +136,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (!mounted || run != _run) return;
     setState(() {
       _hits = hits;
+      _acceptedQuery = query;
       _busy = false;
       // A filter left on a kind this query has no hits in would show nothing.
       if (_kind != null && !hits.any((h) => h.kind == _kind)) _kind = null;
@@ -176,6 +182,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             hiddenNotes: ref.watch(pendingIdsProvider(DeletionKind.note)),
             hiddenCards: ref.watch(pendingIdsProvider(DeletionKind.card)),
           );
+
+    final entering = <String>{};
+    for (final hit in hits ?? const <SearchHit>[]) {
+      final id = _hitKey(hit);
+      if (_seenResults.add(id)) entering.add(id);
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -236,6 +248,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               message: 'Zkus jiné slovo — hledá se na všechna slova zároveň.',
             )
           : _Results(
+              revision: (
+                _acceptedQuery,
+                _kind,
+                Object.hashAll(hits.map(_hitKey)),
+              ),
+              entering: entering,
               hits: hits,
               kind: _kind,
               onKind: (k) => setState(() => _kind = k),
@@ -346,6 +364,8 @@ class _Start extends ConsumerWidget {
 /// The hits grouped by kind, with a chip row to narrow them to one kind.
 class _Results extends StatelessWidget {
   const _Results({
+    required this.revision,
+    required this.entering,
     required this.hits,
     required this.kind,
     required this.onKind,
@@ -353,6 +373,8 @@ class _Results extends StatelessWidget {
   });
 
   final List<SearchHit> hits;
+  final Object revision;
+  final Set<String> entering;
   final SearchKind? kind;
   final ValueChanged<SearchKind?> onKind;
   final void Function(SearchHit) onTap;
@@ -374,60 +396,70 @@ class _Results extends StatelessWidget {
         k: hits.where((h) => h.kind == k).toList(growable: false),
     }..removeWhere((_, v) => v.isEmpty);
 
-    return ListView(
-      padding: EdgeInsets.only(
-        top: Gap.sm,
-        bottom: Gap.xxl + MediaQuery.paddingOf(context).bottom,
-      ),
-      children: [
-        if (groups.length > 1)
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
-            child: Row(
-              children: [
-                CountChip(
-                  label: 'Vše',
-                  count: hits.length,
-                  selected: kind == null,
-                  onSelected: () => onKind(null),
-                ),
-                for (final e in groups.entries) ...[
-                  const SizedBox(width: Gap.sm),
+    return ResultTransition(
+      revision: revision,
+      child: ListView(
+        padding: EdgeInsets.only(
+          top: Gap.sm,
+          bottom: Gap.xxl + MediaQuery.paddingOf(context).bottom,
+        ),
+        children: [
+          if (groups.length > 1)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: Gap.lg),
+              child: Row(
+                children: [
                   CountChip(
-                    label: e.key.label,
-                    count: e.value.length,
-                    selected: kind == e.key,
-                    onSelected: () => onKind(e.key),
+                    label: 'Vše',
+                    count: hits.length,
+                    selected: kind == null,
+                    onSelected: () => onKind(null),
                   ),
+                  for (final e in groups.entries) ...[
+                    const SizedBox(width: Gap.sm),
+                    CountChip(
+                      label: e.key.label,
+                      count: e.value.length,
+                      selected: kind == e.key,
+                      onSelected: () => onKind(e.key),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        for (final e in groups.entries)
-          if (kind == null || kind == e.key)
-            InsetGroup(
-              label: e.key.label,
-              trailingLabel: '${e.value.length}',
-              dividerIndent: Gap.lg + _slot,
-              children: [
-                for (final hit in e.value)
-                  ListRow(
-                    leadingSlot: _slot,
-                    leading: GradientIconTile(icon: _icon(hit.kind)),
-                    title: hit.title,
-                    subtitle: hit.subtitle,
-                    excerptSpan: hit.excerpt.text.isEmpty
-                        ? null
-                        : searchExcerptSpan(context, hit.excerpt),
-                    onTap: () => onTap(hit),
-                  ),
-              ],
-            ),
-      ],
+          for (final e in groups.entries)
+            if (kind == null || kind == e.key)
+              InsetGroup(
+                label: e.key.label,
+                trailingLabel: '${e.value.length}',
+                dividerIndent: Gap.lg + _slot,
+                children: [
+                  for (final hit in e.value)
+                    Entrance(
+                      key: ValueKey(_hitKey(hit)),
+                      enabled: entering.contains(_hitKey(hit)),
+                      child: ListRow(
+                        leadingSlot: _slot,
+                        leading: GradientIconTile(icon: _icon(hit.kind)),
+                        title: hit.title,
+                        subtitle: hit.subtitle,
+                        excerptSpan: hit.excerpt.text.isEmpty
+                            ? null
+                            : searchExcerptSpan(context, hit.excerpt),
+                        onTap: () => onTap(hit),
+                      ),
+                    ),
+                ],
+              ),
+        ],
+      ),
     );
   }
 }
+
+String _hitKey(SearchHit hit) =>
+    '${hit.kind}:${hit.meetingId}:${hit.segmentId}:${hit.noteId}:${hit.cardId}';
 
 /// The excerpt with the matched word marked in the accent, so the eye lands
 /// on the reason this row is in the list rather than on its first words.

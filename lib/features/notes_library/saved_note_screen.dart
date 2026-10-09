@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../core/app_route.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -33,7 +36,7 @@ class SavedNoteScreen extends ConsumerWidget {
   final int noteId;
 
   static Route<void> route(int noteId) =>
-      MaterialPageRoute<void>(builder: (_) => SavedNoteScreen(noteId: noteId));
+      AppRoute<void>(builder: (_) => SavedNoteScreen(noteId: noteId));
 
   Future<void> _copy(BuildContext context, SavedNote note) async {
     await Clipboard.setData(ClipboardData(text: note.content));
@@ -128,7 +131,8 @@ class SavedNoteScreen extends ConsumerWidget {
       }
     } on AiException catch (e) {
       AppLog.e('learning.generate', 'note ${note.id}: ${e.message}');
-      text = 'Kartičky se nepodařilo vytvořit. Zkus to později, nebo '
+      text =
+          'Kartičky se nepodařilo vytvořit. Zkus to později, nebo '
           'zkontroluj klíče v Nastavení.';
     } catch (e, st) {
       AppLog.e('learning.generate', 'note ${note.id}: failed', e, st);
@@ -322,7 +326,7 @@ class SavedNoteEditorScreen extends ConsumerStatefulWidget {
 
   final SavedNote note;
 
-  static Route<void> route(SavedNote note) => MaterialPageRoute<void>(
+  static Route<void> route(SavedNote note) => AppRoute<void>(
     fullscreenDialog: true,
     builder: (_) => SavedNoteEditorScreen(note: note),
   );

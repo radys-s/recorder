@@ -23,14 +23,15 @@ class _TextSkeletonState extends State<TextSkeleton>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (reducedMotion(context)) {
-      _controller?.dispose();
-      _controller = null;
+    if (reducedMotion(context) || !TickerMode.valuesOf(context).enabled) {
+      _controller?.stop();
+      if (reducedMotion(context)) _controller?.value = 0;
     } else {
       _controller ??= AnimationController(
         vsync: this,
         duration: const Duration(milliseconds: 1500),
-      )..repeat();
+      );
+      if (!_controller!.isAnimating) _controller!.repeat();
     }
   }
 
@@ -76,7 +77,7 @@ class _TextSkeletonState extends State<TextSkeleton>
     );
 
     return ExcludeSemantics(
-      child: controller == null
+      child: controller == null || reducedMotion(context)
           ? lines(-.4)
           : AnimatedBuilder(
               animation: controller,
