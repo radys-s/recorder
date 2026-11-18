@@ -1,9 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
 import '../../core/app_route.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../audio/recording_controller.dart';
@@ -269,6 +267,14 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         (s) => s.isRecording && s.meetingId == widget.meetingId,
       ),
     );
+    // Nothing can play while any lesson records, so the player would only
+    // say so.
+    final anyRecording = ref.watch(
+      recordingControllerProvider.select((s) => s.isRecording),
+    );
+    final segments =
+        ref.watch(meetingSegmentsProvider(widget.meetingId)).valueOrNull ??
+        const <TranscriptSegment>[];
     final prefs = ref.watch(preferencesProvider);
     final liveAnswers = prefs.valueOrNull?.liveAnswersEnabled ?? false;
 
@@ -393,18 +399,12 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                         listenable: Listenable.merge([tabs, _playerEngaged]),
                         builder: (context, player) => _KeyboardCollapse(
                           collapsed:
-                              isThisOneRecording ||
+                              anyRecording ||
                               (tabs.index == 1 && !_playerEngaged.value),
                           child: player!,
                         ),
                         child: MeetingAudioPlayer(
-                          segments:
-                              ref
-                                  .watch(
-                                    meetingSegmentsProvider(widget.meetingId),
-                                  )
-                                  .valueOrNull ??
-                              const [],
+                          segments: segments,
                           audioCleared:
                               meeting.valueOrNull?.audioClearedAt != null,
                           engaged: _playerEngaged,

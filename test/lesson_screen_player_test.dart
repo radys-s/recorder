@@ -42,6 +42,7 @@ void main() {
     WidgetTester tester, {
     required bool recording,
     int initialTab = 0,
+    bool otherLessonRecording = false,
   }) async {
     // Wide enough for the test font (Ahem) in the chat bar.
     tester.view.physicalSize = const Size(800, 900);
@@ -61,7 +62,13 @@ void main() {
         overrides: [
           appDatabaseProvider.overrideWithValue(db),
           recordingControllerProvider.overrideWith(
-            () => _Recording(recording ? id : null),
+            () => _Recording(
+              recording
+                  ? id
+                  : otherLessonRecording
+                  ? id + 1
+                  : null,
+            ),
           ),
         ],
         child: MaterialApp(
@@ -101,6 +108,26 @@ void main() {
     tester,
   ) async {
     await pump(tester, recording: false, initialTab: 1);
+    expect(find.text('Zvuk hodiny'), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('switching to the notes folds the idle player away', (
+    tester,
+  ) async {
+    await pump(tester, recording: false);
+    await tester.tap(find.text('Poznámky'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text('Zvuk hodiny'), findsNothing);
+    await finish(tester);
+  });
+
+  testWidgets('another lesson recording hides the player here too', (
+    tester,
+  ) async {
+    await pump(tester, recording: false, otherLessonRecording: true);
     expect(find.text('Zvuk hodiny'), findsNothing);
     await finish(tester);
   });
