@@ -20,9 +20,14 @@ class MeetingAudioPlayer extends ConsumerStatefulWidget {
     super.key,
     required this.segments,
     required this.audioCleared,
+    this.engaged,
   });
   final List<TranscriptSegment> segments;
   final bool audioCleared;
+
+  /// Set to true once the student starts playback, so the screen can keep
+  /// the player in view while it is in use.
+  final ValueNotifier<bool>? engaged;
   @override
   ConsumerState<MeetingAudioPlayer> createState() => _MeetingAudioPlayerState();
 }
@@ -117,6 +122,7 @@ class _MeetingAudioPlayerState extends ConsumerState<MeetingAudioPlayer> {
           return;
         }
         if (_player == null) {
+          widget.engaged?.value = true;
           _owner = ref.read(localPlaybackProvider);
           _player = _owner!.createPlayer();
           _subscriptions.addAll([
