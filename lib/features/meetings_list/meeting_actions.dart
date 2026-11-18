@@ -22,7 +22,8 @@ final meetingDeleterProvider = Provider<MeetingDeleter>((ref) {
   );
 });
 
-/// `Hodina 14.09. 10:30` or `Nahrávka 14.09. 10:30` — the title a recording gets when nobody names it.
+/// `Hodina 14.09. 10:30`, `Nahrávka 14.09. 10:30` (or an older
+/// `Schůzka …`) — the title a recording gets when nobody names it.
 /// The list shows the time instead of a title like this, since the day heading
 /// above the row already says the rest.
 bool isDefaultMeetingTitle(String title) =>
@@ -50,7 +51,7 @@ Future<void> confirmAndDeleteMeeting(
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text('Nahrávku nejde smazat, dokud se nahrává. Nejdřív ji zastav.'),
+          content: Text('Nahrávání ještě běží. Nejdřív ho zastav, pak nahrávku smažeš.'),
         ),
       );
     return;

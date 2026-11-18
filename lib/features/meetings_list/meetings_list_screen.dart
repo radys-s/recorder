@@ -339,7 +339,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 ? Theme.of(context).colorScheme.outline
                 : subjectColor(context, subject.colorIndex),
           ),
-          title: named ? s.meeting.title : (subject?.name ?? 'Hodina'),
+          title: named ? s.meeting.title : (subject?.name ?? 'Nahrávka'),
           excerpt: notePreview(notes.content ?? ''),
           subtitle: [
             if (named) ?subject?.name,

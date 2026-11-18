@@ -774,7 +774,7 @@ class _SensitivitySection extends ConsumerWidget {
           title: 'Citlivost poslechu',
           description:
               'Automaticky si na začátku nahrávání změří místnost a '
-              'průběžně se jí přizpůsobuje. Hodně zachytí i tichou hodinu '
+              'průběžně se jí přizpůsobuje. Hodně zachytí i tichý hlas '
               'nebo vzdáleného mluvčího, jen občas přepíše i šum. Málo se hodí '
               'do hlučné místnosti. Změna platí hned, i během nahrávání.',
         ),

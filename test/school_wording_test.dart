@@ -5,10 +5,18 @@ import 'package:flutter_test/flutter_test.dart';
 /// Aftermind records school lessons. Texts a student reads must not call a
 /// lesson a business meeting („schůzka"), and must name tabs that exist.
 void main() {
-  final uiFiles = Directory('lib/features')
+  // lib/ai holds prompt examples that mention a meeting on purpose.
+  // One line at a time and single-quoted strings only: a guard, not a proof.
+  final uiFiles = Directory('lib')
       .listSync(recursive: true)
       .whereType<File>()
-      .where((f) => f.path.endsWith('.dart'));
+      .where(
+        (f) =>
+            f.path.endsWith('.dart') &&
+            !f.path.contains(
+              '${Platform.pathSeparator}ai${Platform.pathSeparator}',
+            ),
+      );
 
   test('no user-facing string says schůzka', () {
     final offenders = <String>[];
