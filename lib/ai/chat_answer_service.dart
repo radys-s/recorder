@@ -54,6 +54,10 @@ class ChatAnswerService {
   /// How long one question may take over every route together.
   final Duration watchdog;
 
+  // Reserve synchronously, before querying SQLite. A pending row alone cannot
+  // protect two taps that both read the database before either inserts it.
+  final _running = <int>{};
+
   Future<bool> _roomy() async {
     final check = _hasRoomyRoute;
     if (check == null) return false;
@@ -140,6 +144,15 @@ class ChatAnswerService {
   }
 
   Future<void> _run(ChatMessage message, _Task task) async {
+    if (!_running.add(message.id)) return;
+    try {
+      await _runReserved(message, task);
+    } finally {
+      _running.remove(message.id);
+    }
+  }
+
+  Future<void> _runReserved(ChatMessage message, _Task task) async {
     final userMessageId = message.id;
     final existing = await _chat.replyTo(userMessageId);
     // A second tap while the first call is still out must not fire another.
@@ -157,10 +170,16 @@ class ChatAnswerService {
       );
     }
 
+    var current = true;
     try {
       // A hung call must end in a visible failure, never in „Přemýšlím…"
       // forever: the sum of both timeouts below can be a minute and a half.
-      await _answer(message, replyId, task).timeout(watchdog);
+      await _answer(
+        message,
+        replyId,
+        task,
+        isCurrent: () => current,
+      ).timeout(watchdog);
     } on AiPermanentException catch (e) {
       AppLog.e(_tag, 'message $userMessageId rejected', e);
       await _chat.failReply(
@@ -175,17 +194,27 @@ class ChatAnswerService {
         'Zkus to za chvíli znovu.',
       );
     } on TimeoutException catch (e) {
+      // Future.timeout does not cancel the provider. Its eventual result must
+      // never update this row after a retry has started using that same row.
+      current = false;
       AppLog.e(_tag, 'message $userMessageId: no answer in time', e);
       await _chat.failReply(replyId, 'Odpověď trvá moc dlouho. Zkus to znovu.');
     } catch (e, st) {
       AppLog.e(_tag, 'message $userMessageId failed', e, st);
       await _chat.failReply(replyId, 'Odpověď se nepodařilo získat.');
+    } finally {
+      current = false;
     }
   }
 
   /// The whole call for one question: context, Gemini then the router, parse,
   /// store. Throws what the providers throw; [ask] turns it into a failed row.
-  Future<void> _answer(ChatMessage message, int replyId, _Task task) async {
+  Future<void> _answer(
+    ChatMessage message,
+    int replyId,
+    _Task task, {
+    required bool Function() isCurrent,
+  }) async {
     final material = await _lessonContext.load(message.meetingId);
     final segments = await _segments.segmentsForMeeting(message.meetingId);
     final transcript = refinedFor == null
@@ -211,7 +240,8 @@ class ChatAnswerService {
 
     LessonContext? built;
     String? raw;
-    if (await _geminiAvailable()) {
+    if (!isCurrent()) return;
+    if (await _geminiAvailable() && isCurrent()) {
       final wide = buildLessonContext(
         material: material,
         transcript: transcript,
@@ -233,12 +263,14 @@ class ChatAnswerService {
     }
 
     if (raw == null) {
+      if (!isCurrent()) return;
       built = buildLessonContext(
         material: material,
         transcript: transcript,
         focus: task.focus,
         budget: await _roomy() ? ContextBudget.routed : ContextBudget.direct,
       );
+      if (!isCurrent()) return;
       raw = await _llm.complete(
         model: kGroqAnswerModel,
         messages: prompt(built),
@@ -250,6 +282,7 @@ class ChatAnswerService {
       );
     }
 
+    if (!isCurrent()) return;
     final reply = parseChatReply(raw);
     if (reply == null) {
       await _chat.failReply(replyId, 'Odpověď nepřišla celá. Zkus to znovu.');

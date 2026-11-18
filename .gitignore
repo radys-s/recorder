@@ -32,6 +32,11 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+# Private recovery archives / databases must never be committed.
+aftermind-recovery*.zip
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
 
 # Symbolication related
 app.*.symbols
@@ -54,3 +59,6 @@ flutter_*.log
 
 # Playwright screenshots and logs from the web preview
 .playwright-mcp/
+
+# Local vendored Pillow for screenshot tooling
+tool/.pillow/

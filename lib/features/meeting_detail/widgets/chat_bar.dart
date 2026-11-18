@@ -26,11 +26,14 @@ class ChatBar extends ConsumerStatefulWidget {
     super.key,
     required this.meetingId,
     required this.recording,
+    this.keyboardOpen = false,
     this.onSent,
   });
 
   final int meetingId;
   final bool recording;
+  // Read above Scaffold, which removes consumed keyboard insets from its body.
+  final bool keyboardOpen;
 
   /// Called after a message was stored, so the transcript can bring it (and
   /// the answer that follows) into view even when the reader is far above.
@@ -253,6 +256,8 @@ class _ChatBarState extends ConsumerState<ChatBar> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final keyboard =
+        widget.keyboardOpen || MediaQuery.viewInsetsOf(context).bottom > 0;
 
     final pill = OutlineInputBorder(
       borderRadius: BorderRadius.circular(24),
@@ -278,7 +283,7 @@ class _ChatBarState extends ConsumerState<ChatBar> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (widget.recording)
+                if (widget.recording && !keyboard)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
                       Gap.sm,
@@ -286,7 +291,10 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                       Gap.sm,
                       Gap.xs,
                     ),
-                    child: Row(
+                    child: Wrap(
+                      spacing: Gap.sm,
+                      runSpacing: Gap.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         FilledButton.tonalIcon(
                           onPressed: _answering ? null : _answerNow,
@@ -307,7 +315,6 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                             _answering ? 'Hledám otázku…' : 'Odpověz teď',
                           ),
                         ),
-                        const SizedBox(width: Gap.sm),
                         OutlinedButton.icon(
                           onPressed: _markImportant,
                           style: OutlinedButton.styleFrom(
@@ -329,47 +336,58 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                     final typed = _controller.text.trim().isNotEmpty;
                     if (!typed) _override = null;
                     final intent = typed ? _intentFor(_controller.text) : null;
+                    final controls = intent == null && !_focus.hasFocus
+                        ? const SizedBox(width: double.infinity)
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: Gap.xs,
+                            ),
+                            child: Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (intent != null)
+                                  _IntentLabel(
+                                    intent: intent,
+                                    compact: keyboard,
+                                    onTap: () => setState(
+                                      () => _override = cycleChatIntent(intent),
+                                    ),
+                                  ),
+                                if (_focus.hasFocus && keyboard)
+                                  IconButton(
+                                    onPressed: _dismissKeyboard,
+                                    tooltip: 'Skrýt klávesnici',
+                                    icon: const Icon(
+                                      Icons.keyboard_hide_outlined,
+                                    ),
+                                  ),
+                                if (_focus.hasFocus && !keyboard)
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      HapticFeedback.selectionClick();
+                                      _dismissKeyboard();
+                                    },
+                                    style: TextButton.styleFrom(
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.keyboard_hide_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Skrýt klávesnici'),
+                                  ),
+                              ],
+                            ),
+                          );
+                    // A zero-duration AnimatedSize can invalidate its own
+                    // layout. Reduced motion means final layout, not animation.
+                    if (reducedMotion(context)) return controls;
                     return AnimatedSize(
-                      duration: reducedMotion(context)
-                          ? Duration.zero
-                          : AppDuration.quick,
+                      duration: AppDuration.quick,
                       curve: AppCurve.standard,
                       alignment: Alignment.topCenter,
-                      child: intent == null && !_focus.hasFocus
-                          ? const SizedBox(width: double.infinity)
-                          : Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: Gap.xs,
-                              ),
-                              child: Row(
-                                children: [
-                                  if (intent != null)
-                                    _IntentLabel(
-                                      intent: intent,
-                                      onTap: () => setState(
-                                        () =>
-                                            _override = cycleChatIntent(intent),
-                                      ),
-                                    ),
-                                  const Spacer(),
-                                  if (_focus.hasFocus)
-                                    TextButton.icon(
-                                      onPressed: () {
-                                        HapticFeedback.selectionClick();
-                                        _dismissKeyboard();
-                                      },
-                                      style: TextButton.styleFrom(
-                                        visualDensity: VisualDensity.compact,
-                                      ),
-                                      icon: const Icon(
-                                        Icons.keyboard_hide_outlined,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Skrýt klávesnici'),
-                                    ),
-                                ],
-                              ),
-                            ),
+                      child: controls,
                     );
                   },
                 ),
@@ -391,7 +409,7 @@ class _ChatBarState extends ConsumerState<ChatBar> {
                           focusNode: _focus,
                           onTapOutside: _onTapOutside,
                           minLines: 1,
-                          maxLines: 4,
+                          maxLines: keyboard ? 1 : 4,
                           textCapitalization: TextCapitalization.sentences,
                           textInputAction: TextInputAction.send,
                           onSubmitted: (_) => _send(),
@@ -436,10 +454,15 @@ enum _PhotoSource { camera, gallery }
 /// tap cycles it, so a wrong guess is fixed where the student is looking
 /// instead of on the bubble afterwards.
 class _IntentLabel extends StatelessWidget {
-  const _IntentLabel({required this.intent, required this.onTap});
+  const _IntentLabel({
+    required this.intent,
+    required this.onTap,
+    this.compact = false,
+  });
 
   final ChatIntent intent;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -460,23 +483,29 @@ class _IntentLabel extends StatelessWidget {
             horizontal: Gap.sm,
             vertical: Gap.sm,
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(
-                'Odešle se jako: ',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (!compact)
+                Text(
+                  'Odešle se jako: ',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
-              Icon(chip.icon, size: 16, color: theme.colorScheme.primary),
-              const SizedBox(width: Gap.xs),
-              Text(
-                chip.label,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(chip.icon, size: 16, color: theme.colorScheme.primary),
+                  const SizedBox(width: Gap.xs),
+                  Text(
+                    chip.label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

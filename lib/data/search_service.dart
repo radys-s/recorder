@@ -1,215 +1,233 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/search.dart';
 import 'db/app_database.dart';
 
-/// Searches everything the app has written: lessons, transcripts, notes, cards
-/// and the chat typed during a lesson.
-///
-/// One-shot reads, not streams. A search is a question asked once, and a
-/// stream per table would keep the whole corpus subscribed for as long as the
-/// screen is open — the lesson M26 taught with `Stream.first`.
+/// Uses the existing local tables and matching rules; no index or AI calls.
 class SearchService {
   SearchService(this._db);
-
   final AppDatabase _db;
 
-  /// At most this many hits per kind, and per lesson within the transcripts,
-  /// so one talkative lesson cannot bury every other result.
-  static const _perKind = 25;
-  static const _perMeeting = 3;
+  /// Observe table invalidations without subscribing to the corpus itself.
+  Stream<void> get changes => _db
+      .customSelect(
+        'SELECT 1',
+        readsFrom: {
+          _db.meetings,
+          _db.subjects,
+          _db.transcriptSegments,
+          _db.refinedSegments,
+          _db.meetingNotes,
+          _db.savedNotes,
+          _db.contextCards,
+          _db.chatMessages,
+        },
+      )
+      .watch()
+      .map((_) {});
 
-  Future<List<SearchHit>> search(String query) async {
+  Future<bool> hasLibraryContent() async {
+    final row = await _db.customSelect('''
+      SELECT EXISTS(SELECT 1 FROM meetings) OR
+        EXISTS(SELECT 1 FROM saved_notes) OR
+        EXISTS(SELECT 1 FROM context_cards) AS has_content
+    ''').getSingle();
+    return row.read<int>('has_content') != 0;
+  }
+
+  Future<List<SearchHit>> search(
+    String query, {
+    SearchFilter filter = const SearchFilter(),
+    bool browse = false,
+    int limit = 25,
+  }) async {
     final words = searchWords(query);
-    if (words.isEmpty) return const [];
-
+    if (words.isEmpty && !browse) return const [];
     final subjects = {
       for (final s in await _db.subjectsDao.allSubjects())
         s.subject.id: s.subject.name,
     };
     final meetings = await _db.meetingsDao.allMeetingsOnce();
     final byId = {for (final m in meetings) m.id: m};
+    final documents = <_SearchDocument>[];
 
-    final hits = <SearchHit>[
-      ..._lessons(meetings, subjects, words),
-      ...await _transcripts(byId, subjects, words),
-      ...await _notes(subjects, words),
-      ...await _cards(subjects, words),
-      ...await _chat(byId, subjects, words),
-    ];
-    return hits;
-  }
-
-  Iterable<SearchHit> _lessons(
-    List<Meeting> meetings,
-    Map<int, String> subjects,
-    List<String> words,
-  ) {
-    final hits = <SearchHit>[];
-    for (final m in meetings) {
-      final subject = subjects[m.subjectId];
-      if (!matchesWords('${m.title}\n${subject ?? ''}', words)) continue;
-      hits.add(
-        SearchHit(
-          kind: SearchKind.lesson,
-          title: m.title,
-          subtitle: subject,
-          excerpt: excerptAround(m.title, words),
-          meetingId: m.id,
-          at: m.createdAt,
-        ),
+    void add(
+      SearchKind kind,
+      String title,
+      String text, {
+      int? meetingId,
+      int? segmentId,
+      int? noteId,
+      int? cardId,
+      int? subjectId,
+      required DateTime at,
+    }) {
+      final hit = SearchHit(
+        kind: kind,
+        title: title,
+        excerpt: const SearchExcerpt.plain(''),
+        subtitle: subjects[subjectId],
+        meetingId: meetingId,
+        segmentId: segmentId,
+        noteId: noteId,
+        cardId: cardId,
+        subjectId: subjectId,
+        at: at,
       );
-    }
-    return _trim(hits);
-  }
-
-  Future<Iterable<SearchHit>> _transcripts(
-    Map<int, Meeting> meetings,
-    Map<int, String> subjects,
-    List<String> words,
-  ) async {
-    final live = await (_db.select(
-      _db.transcriptSegments,
-    )..where((t) => t.content.isNotNull())).get();
-    final refined = await (_db.select(
-      _db.refinedSegments,
-    )..where((t) => t.content.isNotNull())).get();
-
-    // A refined window covers the same minutes as the live chunks inside it,
-    // so a word present in both would otherwise be found twice. The refined
-    // text is the better one, so it goes first and the live chunks it covers
-    // are skipped.
-    final hits = <SearchHit>[];
-    final perMeeting = <int, int>{};
-    final coveredRanges = <int, List<(int, int)>>{};
-
-    void add(int meetingId, int? segmentId, String text) {
-      final count = perMeeting[meetingId] ?? 0;
-      if (count >= _perMeeting) return;
-      final meeting = meetings[meetingId];
-      if (meeting == null) return;
-      perMeeting[meetingId] = count + 1;
-      hits.add(
-        SearchHit(
-          kind: SearchKind.transcript,
-          title: meeting.title,
-          subtitle: subjects[meeting.subjectId],
-          excerpt: excerptAround(text, words),
-          meetingId: meetingId,
-          segmentId: segmentId,
-          at: meeting.createdAt,
-        ),
-      );
-    }
-
-    for (final w in refined) {
-      coveredRanges.putIfAbsent(w.meetingId, () => []).add((
-        w.startMs,
-        w.endMs,
-      ));
-      if (!matchesWords(w.content!, words)) continue;
-      add(w.meetingId, null, w.content!);
-    }
-    for (final s in live) {
-      final covered = coveredRanges[s.meetingId]?.any(
-        (r) => s.startMs >= r.$1 && s.startMs < r.$2,
-      );
-      if (covered ?? false) continue;
-      if (!matchesWords(s.content!, words)) continue;
-      add(s.meetingId, s.id, s.content!);
-    }
-    return _trim(hits);
-  }
-
-  Future<Iterable<SearchHit>> _notes(
-    Map<int, String> subjects,
-    List<String> words,
-  ) async {
-    final notes = await _db.select(_db.savedNotes).get();
-    final hits = <SearchHit>[];
-    for (final n in notes) {
-      if (!matchesWords('${n.title}\n${n.content}', words)) continue;
-      hits.add(
-        SearchHit(
-          kind: SearchKind.note,
-          title: n.title,
-          subtitle: subjects[n.folderId],
-          excerpt: excerptAround(n.content, words),
-          noteId: n.id,
-          at: n.updatedAt,
-        ),
-      );
-    }
-    return _trim(hits);
-  }
-
-  Future<Iterable<SearchHit>> _cards(
-    Map<int, String> subjects,
-    List<String> words,
-  ) async {
-    final cards = await _db.select(_db.contextCards).get();
-    final hits = <SearchHit>[];
-    for (final c in cards) {
-      if (!matchesWords(
-        '${c.title}\n${c.content}\n${c.keywords ?? ''}',
-        words,
-      )) {
-        continue;
+      if (filter.allows(hit)) {
+        documents.add(_SearchDocument(hit, text));
       }
-      hits.add(
-        SearchHit(
-          kind: SearchKind.card,
-          title: c.title,
-          subtitle: subjects[c.subjectId],
-          excerpt: excerptAround(
-            c.content.trim().isEmpty ? (c.keywords ?? '') : c.content,
-            words,
-          ),
-          cardId: c.id,
-          at: c.updatedAt,
-        ),
+    }
+
+    for (final m in meetings) {
+      add(
+        SearchKind.lesson,
+        m.title,
+        m.title,
+        meetingId: m.id,
+        subjectId: m.subjectId,
+        at: m.createdAt,
       );
     }
-    return _trim(hits);
-  }
-
-  Future<Iterable<SearchHit>> _chat(
-    Map<int, Meeting> meetings,
-    Map<int, String> subjects,
-    List<String> words,
-  ) async {
-    final messages = await _db.select(_db.chatMessages).get();
-    final hits = <SearchHit>[];
-    for (final m in messages) {
-      // An answer's short line and its explanation are as much part of the
-      // lesson as what the student typed.
-      final text = [
-        m.body,
-        m.short ?? '',
-        m.detail ?? '',
-      ].where((t) => t.trim().isNotEmpty).join('\n');
-      if (text.trim().isEmpty || !matchesWords(text, words)) continue;
-      final meeting = meetings[m.meetingId];
-      if (meeting == null) continue;
-      hits.add(
-        SearchHit(
-          kind: SearchKind.chat,
-          title: meeting.title,
-          subtitle: subjects[meeting.subjectId],
-          excerpt: excerptAround(text, words),
-          meetingId: m.meetingId,
-          at: meeting.createdAt,
-        ),
+    // Filter-only browsing finds lessons, not every chunk of every lesson.
+    if (!browse || words.isNotEmpty) {
+      final refined = await _db.select(_db.refinedSegments).get();
+      final ranges = <int, List<(int, int)>>{};
+      for (final w in refined) {
+        final m = byId[w.meetingId];
+        if (m == null || w.content == null || w.content!.trim().isEmpty) {
+          continue;
+        }
+        ranges.putIfAbsent(m.id, () => []).add((w.startMs, w.endMs));
+        add(
+          SearchKind.transcript,
+          m.title,
+          w.content!,
+          meetingId: m.id,
+          subjectId: m.subjectId,
+          at: m.createdAt,
+        );
+      }
+      for (final s in await _db.select(_db.transcriptSegments).get()) {
+        final m = byId[s.meetingId];
+        if (m == null || s.content == null || s.content!.trim().isEmpty) {
+          continue;
+        }
+        if (ranges[m.id]?.any((r) => s.startMs >= r.$1 && s.startMs < r.$2) ??
+            false) {
+          continue;
+        }
+        add(
+          SearchKind.transcript,
+          m.title,
+          s.content!,
+          meetingId: m.id,
+          segmentId: s.id,
+          subjectId: m.subjectId,
+          at: m.createdAt,
+        );
+      }
+      for (final n in await _db.select(_db.meetingNotes).get()) {
+        final m = byId[n.meetingId];
+        if (m == null || n.content == null || n.content!.trim().isEmpty) {
+          continue;
+        }
+        add(
+          SearchKind.lessonNotes,
+          m.title,
+          n.content!,
+          meetingId: m.id,
+          subjectId: m.subjectId,
+          at: m.createdAt,
+        );
+      }
+      for (final m in await _db.select(_db.chatMessages).get()) {
+        final lesson = byId[m.meetingId];
+        if (lesson == null) continue;
+        final text = [m.body, m.short ?? '', m.detail ?? ''].join('\n');
+        if (text.trim().isEmpty) continue;
+        add(
+          SearchKind.chat,
+          lesson.title,
+          text,
+          meetingId: lesson.id,
+          subjectId: lesson.subjectId,
+          at: lesson.createdAt,
+        );
+      }
+    }
+    for (final n in await _db.select(_db.savedNotes).get()) {
+      add(
+        SearchKind.note,
+        n.title,
+        n.content,
+        noteId: n.id,
+        subjectId: n.folderId,
+        at: n.updatedAt,
       );
     }
-    return _trim(hits);
+    for (final c in await _db.select(_db.contextCards).get()) {
+      add(
+        SearchKind.card,
+        c.title,
+        '${c.content}\n${c.keywords ?? ''}',
+        cardId: c.id,
+        subjectId: c.subjectId,
+        at: c.updatedAt,
+      );
+    }
+    // Normalize and scan long transcripts away from the native UI isolate.
+    // compute executes inline on web; mobile performance is the target here.
+    return compute(_matchDocuments, (documents, words, limit));
   }
+}
 
-  /// Newest first, capped — the order a person reads a result list in.
-  List<SearchHit> _trim(List<SearchHit> hits) {
-    hits.sort((a, b) {
-      final at = a.at, bt = b.at;
-      if (at == null || bt == null) return 0;
-      return bt.compareTo(at);
-    });
-    return hits.length <= _perKind ? hits : hits.sublist(0, _perKind);
+class _SearchDocument {
+  const _SearchDocument(this.hit, this.excerptText);
+  final SearchHit hit;
+  final String excerptText;
+}
+
+List<SearchHit> _matchDocuments(
+  (List<_SearchDocument>, List<String>, int) input,
+) {
+  final (documents, words, limit) = input;
+  documents.sort((a, b) => b.hit.at!.compareTo(a.hit.at!));
+  final counts = <SearchKind, int>{};
+  final perMeeting = <int, int>{};
+  final hits = <SearchHit>[];
+  for (final document in documents) {
+    final h = document.hit;
+    if ((counts[h.kind] ?? 0) >= limit) continue;
+    if (h.kind == SearchKind.transcript &&
+        (perMeeting[h.meetingId] ?? 0) >= 3) {
+      continue;
+    }
+    if (words.isNotEmpty &&
+        !matchesWords(
+          '${h.title}\n${h.subtitle ?? ''}\n${document.excerptText}',
+          words,
+        )) {
+      continue;
+    }
+    counts[h.kind] = (counts[h.kind] ?? 0) + 1;
+    if (h.kind == SearchKind.transcript) {
+      perMeeting[h.meetingId!] = (perMeeting[h.meetingId] ?? 0) + 1;
+    }
+    hits.add(
+      SearchHit(
+        kind: h.kind,
+        title: h.title,
+        subtitle: h.subtitle,
+        excerpt: excerptAround(document.excerptText, words),
+        meetingId: h.meetingId,
+        segmentId: h.segmentId,
+        noteId: h.noteId,
+        cardId: h.cardId,
+        subjectId: h.subjectId,
+        at: h.at,
+      ),
+    );
   }
+  return hits;
 }

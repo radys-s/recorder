@@ -15,6 +15,8 @@ import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/inset_group.dart';
 import '../../core/widgets/section_header.dart';
 import '../../data/data_privacy.dart';
+import '../../data/recovery_backup.dart'
+    if (dart.library.js_interop) '../../data/recovery_backup_stub.dart';
 import '../../data/db/app_database.dart';
 import '../../legal/data_processors.dart';
 import '../legal/about_screen.dart';
@@ -76,7 +78,8 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
       final now = DateTime.now();
       final data = await exportAllData(ref.read(appDatabaseProvider), now: now);
       final dir = await getTemporaryDirectory();
-      final name = 'aftermind-export-${DateFormat('yyyy-MM-dd').format(now)}.json';
+      final name =
+          'aftermind-export-${DateFormat('yyyy-MM-dd').format(now)}.json';
       final file = File(p.join(dir.path, name));
       await file.writeAsString(
         const JsonEncoder.withIndent('  ').convert(data),
@@ -94,6 +97,47 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
       );
     } catch (e) {
       _notify('Export se nepovedl: ${userMessage(e)}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _backup() async {
+    if (ref.read(recordingControllerProvider).isRecording) {
+      _notify('Nejdřív ukonči nahrávání a počkej na uložení.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final temporary = await getTemporaryDirectory();
+      final dir = await temporary.createTemp('aftermind-recovery-share-');
+      final file = await RecoveryBackup.create(
+        documents: docs,
+        destination: File(p.join(dir.path, 'aftermind-recovery.zip')),
+        snapshotTo: (path) => ref.read(appDatabaseProvider).customStatement(
+          'VACUUM INTO ?',
+          [path],
+        ),
+      );
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'application/zip')],
+          subject: 'Aftermind – soukromá záloha včetně zvuku',
+          sharePositionOrigin: box == null || !box.hasSize
+              ? null
+              : box.localToGlobal(Offset.zero) & box.size,
+        ),
+      );
+      _notify(
+        result.status == ShareResultStatus.success
+            ? 'Záloha byla ověřena. Před aktualizací zkontroluj uloženou kopii mimo telefon.'
+            : 'Záloha byla ověřena, ale její uložení mimo telefon nebylo potvrzeno.',
+      );
+    } catch (e) {
+      _notify('Zálohu se nepodařilo ověřit: ${userMessage(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -119,7 +163,7 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
     final second = await showConfirmDialog(
       context,
       title: 'Opravdu? Nejde to vrátit.',
-      message: 'Pokud si chceš něco nechat, nejdřív data exportuj.',
+      message: 'Pokud si chceš něco nechat, nejdřív ulož zálohu včetně zvuku mimo telefon.',
       confirmLabel: 'Smazat vše',
       destructive: true,
     );
@@ -168,8 +212,22 @@ class _PrivacySectionState extends ConsumerState<PrivacySection> {
             ),
             ListRow(
               leadingSlot: ListRow.leadingWidth + 12,
-              title: 'Exportovat data',
-              subtitle: 'Soubor JSON s hodinami, přepisy a poznámkami',
+              title: _busy ? 'Pracuji s daty…' : 'Záloha včetně zvuku',
+              subtitle: 'Ověřený ZIP pro obnovu; obsahuje soukromé nahrávky a fotografie, ne klíče. Ulož mimo telefon.',
+              leading: _busy
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.backup_outlined),
+              chevron: true,
+              onTap: _busy ? null : _backup,
+            ),
+            ListRow(
+              leadingSlot: ListRow.leadingWidth + 12,
+              title: 'Exportovat texty',
+              subtitle:
+                  'JSON bez zvuku a fotografií. Není to obnovitelná záloha.',
               leading: const Icon(Icons.ios_share_outlined),
               chevron: true,
               onTap: _busy ? null : _export,

@@ -83,6 +83,8 @@ dependencies:
   # Already locked (a dependency of other packages); the Google sign-in
   # hashes its PKCE verifier with it.
   crypto: ^3.0.7
+  # Already locked by the tooling; streaming recovery ZIPs include local audio.
+  archive: ^4.2.0
 
 dev_dependencies:
   flutter_test:

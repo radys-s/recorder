@@ -179,6 +179,7 @@ class RecordingController extends Notifier<RecordingState> {
   CaptureWatchdog _watchdog = CaptureWatchdog();
   SilentMicDetector? _silentMic;
   bool _restarting = false;
+  Future<void>? _restartInFlight;
   bool _writingPending = false;
   int _watchdogTicks = 0;
   DateTime? _lastRepause;
@@ -410,10 +411,11 @@ class RecordingController extends Notifier<RecordingState> {
         const Duration(seconds: 1),
         (_) => unawaited(_watchdogTick()),
       );
-      _pendingTimer = Timer.periodic(
-        const Duration(seconds: 5),
-        (_) => unawaited(_pendingWrite = _writePending()),
-      );
+      _pendingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        // A skipped overlapping tick must not replace the actual in-flight
+        // write with a completed no-op that stop would then mistakenly await.
+        if (!_writingPending) unawaited(_pendingWrite = _writePending());
+      });
 
       state = RecordingState(
         isRecording: true,
@@ -492,6 +494,9 @@ class RecordingController extends Notifier<RecordingState> {
       _cancelTimers();
       _prefsSubscription?.close();
       _prefsSubscription = null;
+      // A route-recovery restart already in flight must finish before stop.
+      // Otherwise it can reopen the native microphone after the user stopped it.
+      await _restartInFlight;
       try {
         await _subscription?.cancel();
       } catch (e, st) {
@@ -752,17 +757,18 @@ class RecordingController extends Notifier<RecordingState> {
     );
   }
 
-  Future<void> _watchdogTick() async {
+  Future<void> _watchdogTick() => checkCaptureHealth(now: DateTime.now());
+
+  /// One watchdog tick, with an explicit clock for deterministic integration tests.
+  @visibleForTesting
+  Future<void> checkCaptureHealth({required DateTime now}) async {
     if (!state.isRecording || _stopping || _restarting) return;
-    final verdict = _watchdog.check(
-      DateTime.now(),
-      paused: state.isPaused || _pausing,
-    );
+    final verdict = _watchdog.check(now, paused: state.isPaused || _pausing);
     switch (verdict) {
       case WatchdogVerdict.healthy:
         break;
       case WatchdogVerdict.restart:
-        await _restartSource();
+        await (_restartInFlight = _restartSource());
       case WatchdogVerdict.giveUp:
         await _giveUp(
           'Mikrofon přestal fungovat a nepodařilo se ho obnovit.',
@@ -985,22 +991,38 @@ class RecordingController extends Notifier<RecordingState> {
 
       // The segment row goes in regardless of network state — that is what
       // makes "transcript so far, mid-recording" work by construction.
-      final segmentId = await _db.transcriptSegmentsDao.insertSegment(
-        TranscriptSegmentsCompanion.insert(
-          meetingId: meetingId,
-          sequence: chunk.sequence,
-          startMs: chunk.startMs,
-          endMs: chunk.endMs,
-          status: skip ? SegmentStatus.transcribed : SegmentStatus.pending,
-          localAudioPath: storedPath,
-          createdAt: DateTime.now(),
-          voicedMs: Value(chunk.voicedMs),
-          cutReason: Value(chunk.cutReason.name),
-          // The filter must judge this chunk by the room it was recorded in.
-          noSpeechThreshold: Value(profile.noSpeechProbThreshold),
-          lowLogprobThreshold: Value(profile.lowAvgLogprobThreshold),
-        ),
-      );
+      final segmentId = await _db.transaction(() async {
+        final id = await _db.transcriptSegmentsDao.insertSegment(
+          TranscriptSegmentsCompanion.insert(
+            meetingId: meetingId,
+            sequence: chunk.sequence,
+            startMs: chunk.startMs,
+            endMs: chunk.endMs,
+            status: skip ? SegmentStatus.transcribed : SegmentStatus.pending,
+            localAudioPath: storedPath,
+            createdAt: DateTime.now(),
+            voicedMs: Value(chunk.voicedMs),
+            cutReason: Value(chunk.cutReason.name),
+            // The filter must judge this chunk by the room it was recorded in.
+            noSpeechThreshold: Value(profile.noSpeechProbThreshold),
+            lowLogprobThreshold: Value(profile.lowAvgLogprobThreshold),
+          ),
+        );
+        if (!skip) {
+          final now = DateTime.now();
+          await _db.uploadQueueDao.enqueue(
+            UploadQueueCompanion.insert(
+              segmentId: id,
+              meetingId: meetingId,
+              localFilePath: storedPath,
+              status: QueueStatus.pending,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+        }
+        return id;
+      });
 
       if (skip) {
         ref
@@ -1027,18 +1049,6 @@ class RecordingController extends Notifier<RecordingState> {
         );
         return;
       }
-
-      final now = DateTime.now();
-      await _db.uploadQueueDao.enqueue(
-        UploadQueueCompanion.insert(
-          segmentId: segmentId,
-          meetingId: meetingId,
-          localFilePath: storedPath,
-          status: QueueStatus.pending,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
 
       ref
           .read(listeningDiagnosticsProvider)

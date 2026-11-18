@@ -404,7 +404,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             Expanded(
               child: TabBarView(
                 children: [
-                  _buildTranscript(isThisOneRecording),
+                  _buildTranscript(
+                    isThisOneRecording,
+                    keyboardOpen: keyboardOpen,
+                  ),
                   MeetingNotesTab(meetingId: widget.meetingId),
                 ],
               ),
@@ -415,7 +418,10 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     );
   }
 
-  Widget _buildTranscript(bool isThisOneRecording) {
+  Widget _buildTranscript(
+    bool isThisOneRecording, {
+    required bool keyboardOpen,
+  }) {
     final cards =
         ref.watch(answerCardsProvider(widget.meetingId)).valueOrNull ??
         const <AnswerCard>[];
@@ -457,7 +463,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
             alignment: Alignment.topCenter,
             child: FadeTransition(opacity: animation, child: child),
           ),
-          child: latest == null
+          child: latest == null || keyboardOpen
               ? const SizedBox(key: ValueKey('none'), width: double.infinity)
               : LatestAnswerPanel(
                   key: ValueKey(latest.id),
@@ -465,11 +471,16 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   onDismiss: () => _dismissCard(latest.id),
                 ),
         ),
-        TranscriptionWaitNotice(meetingId: widget.meetingId),
-        _refinedHeader(recording: isThisOneRecording),
+        // Secondary headers return when typing ends. Results remain in the
+        // timeline/DB; a tall header must not squeeze the input off the screen.
+        if (!keyboardOpen) ...[
+          TranscriptionWaitNotice(meetingId: widget.meetingId),
+          _refinedHeader(recording: isThisOneRecording),
+        ],
         Expanded(child: _transcriptList(isThisOneRecording, cards, messages)),
         // Stopping lives in the recording banner, so the bar has the bottom.
         ChatBar(
+          keyboardOpen: keyboardOpen,
           meetingId: widget.meetingId,
           recording: isThisOneRecording,
           onSent: _scrollToEnd,
@@ -750,16 +761,18 @@ class _KeyboardCollapse extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = Visibility(
+      visible: !collapsed,
+      maintainState: true,
+      child: child,
+    );
+    if (reducedMotion(context)) return content;
     return ClipRect(
       child: AnimatedSize(
-        duration: reducedMotion(context) ? Duration.zero : AppDuration.quick,
+        duration: AppDuration.quick,
         curve: AppCurve.standard,
         alignment: Alignment.topCenter,
-        child: Visibility(
-          visible: !collapsed,
-          maintainState: true,
-          child: child,
-        ),
+        child: content,
       ),
     );
   }

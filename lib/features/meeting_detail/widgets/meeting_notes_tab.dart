@@ -297,17 +297,23 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
         if (outdated) ...[
           Card(
             color: Theme.of(context).colorScheme.secondaryContainer,
-            child: ListTile(
-              leading: const Icon(Icons.edit_note),
-              title: const Text('Přepis se změnil'),
-              subtitle: Text(
-                lesson
-                    ? 'Výpisky jsou ze starší verze přepisu.'
-                    : 'Poznámky jsou ze starší verze přepisu.',
-              ),
-              trailing: TextButton(
-                onPressed: () => _generate(depth),
-                child: const Text('Vytvořit znovu'),
+            child: Padding(
+              padding: const EdgeInsets.all(Gap.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Přepis se změnil'),
+                  Text(
+                    lesson
+                        ? 'Výpisky jsou ze starší verze přepisu.'
+                        : 'Poznámky jsou ze starší verze přepisu.',
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _generate(depth),
+                    icon: const Icon(Icons.edit_note),
+                    label: const Text('Vytvořit znovu'),
+                  ),
+                ],
               ),
             ),
           ),
@@ -454,16 +460,17 @@ class _NotesBody extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: Gap.xs,
+            runSpacing: Gap.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  stale
-                      ? 'Předchozí verze (${note.depth.label})'
-                      : note.depth.label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
+              Text(
+                stale
+                    ? 'Předchozí verze (${note.depth.label})'
+                    : note.depth.label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.outline,
                 ),
               ),
               IconButton(

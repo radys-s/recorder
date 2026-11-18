@@ -3,12 +3,13 @@ import 'dart:convert';
 import '../stt/transcript_sanitizer.dart';
 
 /// What a hit is, which is also how the results are grouped.
-enum SearchKind { lesson, transcript, note, card, chat }
+enum SearchKind { lesson, transcript, lessonNotes, note, card, chat }
 
 extension SearchKindLabel on SearchKind {
   String get label => switch (this) {
     SearchKind.lesson => 'Hodiny',
     SearchKind.transcript => 'Přepisy',
+    SearchKind.lessonNotes => 'Výpisky z hodin',
     SearchKind.note => 'Poznámky',
     SearchKind.card => 'Karty',
     SearchKind.chat => 'Chat v hodině',
@@ -27,6 +28,7 @@ class SearchHit {
     this.noteId,
     this.cardId,
     this.at,
+    this.subjectId,
   });
 
   final SearchKind kind;
@@ -46,6 +48,20 @@ class SearchHit {
 
   /// Sorting key across kinds: the newest lesson or note first.
   final DateTime? at;
+  final int? subjectId;
+}
+
+/// Filters apply before result limits, not to an already truncated list.
+class SearchFilter {
+  const SearchFilter({this.subjectId, this.from, this.until});
+  final int? subjectId;
+  final DateTime? from;
+  final DateTime? until;
+
+  bool allows(SearchHit hit) =>
+      (subjectId == null || hit.subjectId == subjectId) &&
+      (from == null || (hit.at != null && !hit.at!.isBefore(from!))) &&
+      (until == null || (hit.at != null && hit.at!.isBefore(until!)));
 }
 
 /// A slice of text around a match, with the match's place in it.

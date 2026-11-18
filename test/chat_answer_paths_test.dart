@@ -203,4 +203,35 @@ void main() {
     await first;
     expect((await db.chatMessagesDao.replyTo(q))!.status, ChatStatus.ready);
   });
+
+  test('simultaneous taps reserve one reply before database awaits', () async {
+    final q = await question();
+    final llm = _Llm(_good);
+    final s = service(llm);
+    await Future.wait([s.ask(q), s.ask(q), s.ask(q)]);
+    expect(llm.calls, 1);
+    final replies = (await db.select(db.chatMessages).get()).where(
+      (m) => m.replyTo == q,
+    );
+    expect(replies, hasLength(1));
+  });
+
+  test('a timed-out request cannot overwrite its successful retry', () async {
+    final q = await question();
+    final oldRequest = Completer<LlmCompletion>();
+    final llm = _Llm(oldRequest);
+    final s = service(llm, watchdog: const Duration(milliseconds: 80));
+    await s.ask(q);
+    expect((await db.chatMessagesDao.replyTo(q))!.status, ChatStatus.failed);
+    llm.behaviour = _good;
+    await s.ask(q);
+    oldRequest.complete(
+      const LlmCompletion(
+        content:
+            '{"short":"Pozdní stará odpověď","detail":"","basis":"knowledge"}',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect((await db.chatMessagesDao.replyTo(q))!.short, 'Myslivec');
+  });
 }

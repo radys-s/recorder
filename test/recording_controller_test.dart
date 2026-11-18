@@ -27,9 +27,12 @@ Uint8List _loud(int ms) {
 
 /// A microphone the test drives by hand.
 class _FakeSource implements PcmAudioSource {
-  _FakeSource({this.throwOnStop = false, this.earlyBytes});
+  _FakeSource({this.throwOnStop = false, this.earlyBytes, this.restartGate});
 
   final bool throwOnStop;
+  final Completer<void>? restartGate;
+  final restartStarted = Completer<void>();
+  int stops = 0;
 
   /// Delivered right after start(), before the controller is set up.
   final Uint8List? earlyBytes;
@@ -59,6 +62,8 @@ class _FakeSource implements PcmAudioSource {
   @override
   Future<Stream<Uint8List>> restart() async {
     restarts++;
+    if (!restartStarted.isCompleted) restartStarted.complete();
+    await restartGate?.future;
     await controller.close();
     controller = StreamController<Uint8List>();
     return controller.stream;
@@ -66,6 +71,7 @@ class _FakeSource implements PcmAudioSource {
 
   @override
   Future<void> stop() async {
+    stops++;
     if (throwOnStop) throw StateError('platform said no');
   }
 
@@ -330,8 +336,10 @@ void main() {
 
     await controller.start();
     source.emit(_loud(500));
-    // Real time: the watchdog counts wall-clock seconds without bytes.
-    await Future<void>.delayed(const Duration(milliseconds: 4600));
+    await settle();
+    await controller.checkCaptureHealth(
+      now: DateTime.now().add(const Duration(seconds: 4)),
+    );
     expect(source.restarts, greaterThanOrEqualTo(1));
     expect(c.read(recordingControllerProvider).isRecording, isTrue);
 
@@ -341,4 +349,51 @@ void main() {
     await stopAndDrain(controller);
     expect(c.read(recordingControllerProvider).totalBytes, 1500 * _bytesPerMs);
   });
+
+  test(
+    'stop waits for an in-flight microphone restart before stopping it',
+    () async {
+      final gate = Completer<void>();
+      final source = _FakeSource(restartGate: gate);
+      final c = container(source);
+      final controller = c.read(recordingControllerProvider.notifier);
+      await controller.start();
+      source.emit(_loud(3000));
+      await settle();
+      final health = controller.checkCaptureHealth(
+        now: DateTime.now().add(const Duration(seconds: 4)),
+      );
+      await source.restartStarted.future;
+      final stopping = controller.stop();
+      await settle();
+      expect(source.stops, 0);
+      expect(c.read(recordingControllerProvider).isSaving, isTrue);
+      gate.complete();
+      await health;
+      await stopping;
+      expect(source.stops, 1);
+      expect(c.read(recordingControllerProvider).isRecording, isFalse);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    },
+  );
+
+  test(
+    'queue insertion failure cannot leave an unprocessable segment row',
+    () async {
+      final source = _FakeSource();
+      final c = container(source);
+      final controller = c.read(recordingControllerProvider.notifier);
+      await controller.start();
+      await db.customStatement(
+        '''CREATE TRIGGER synthetic_queue_failure
+      BEFORE INSERT ON upload_queue BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END''',
+      );
+      source.emit(_loud(3000));
+      await settle();
+      await stopAndDrain(controller);
+      expect(await db.select(db.transcriptSegments).get(), isEmpty);
+      expect(await db.select(db.uploadQueue).get(), isEmpty);
+      expect(c.read(recordingControllerProvider).error, contains('uložit'));
+    },
+  );
 }

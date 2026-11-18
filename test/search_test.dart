@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/core/search.dart';
 import 'package:recorder/data/db/app_database.dart';
 import 'package:recorder/data/db/tables/chat_messages_table.dart';
+import 'package:recorder/data/db/tables/preferences_table.dart';
 import 'package:recorder/data/db/tables/refined_segments_table.dart';
 import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 import 'package:recorder/data/search_service.dart';
@@ -208,6 +209,78 @@ void main() {
     test('a blank query asks nothing of the database', () async {
       await seedMeeting('Hodina');
       expect(await SearchService(db).search('   '), isEmpty);
+    });
+
+    test('finds unsaved lesson notes and removes deleted lessons', () async {
+      final id = await seedMeeting('Biologie');
+      await db.meetingNotesDao.markGenerating(
+        id,
+        NotesDepth.brief,
+        'synthetic',
+      );
+      await db.meetingNotesDao.markReady(id, 'Fotosyntéza potřebuje světlo.');
+      final hit = (await SearchService(db).search('fotosynteza')).single;
+      expect(hit.kind, SearchKind.lessonNotes);
+      expect(hit.meetingId, id);
+      expect(hit.excerpt.text, contains('Fotosyntéza'));
+      await db.meetingsDao.deleteMeeting(id);
+      expect(await SearchService(db).search('fotosynteza'), isEmpty);
+    });
+
+    test(
+      'subject and period filters apply before limits; browsing needs no query',
+      () async {
+        final subject = await db.savedNotesDao.createFolder('Biologie');
+        final id = await seedMeeting('Buňka', subjectId: subject);
+        for (var i = 0; i < 30; i++) {
+          await db.meetingsDao.insertMeeting(
+            MeetingsCompanion.insert(
+              title: 'Buňka $i',
+              createdAt: DateTime(2026, 10, 1),
+            ),
+          );
+        }
+        final service = SearchService(db);
+        expect(await service.search('bunka'), hasLength(25));
+        expect(await service.search('bunka', limit: 50), hasLength(31));
+        final filter = SearchFilter(
+          subjectId: subject,
+          from: DateTime(2026, 9, 18),
+          until: DateTime(2026, 9, 19),
+        );
+        expect(
+          (await service.search('bunka', filter: filter)).single.meetingId,
+          id,
+        );
+        expect(
+          (await service.search(
+            '',
+            browse: true,
+            filter: filter,
+          )).single.meetingId,
+          id,
+        );
+        expect(
+          await service.search(
+            'bunka',
+            filter: SearchFilter(from: DateTime(2027)),
+          ),
+          isEmpty,
+        );
+      },
+    );
+
+    test('subject and text words can match different fields', () async {
+      final subject = await db.savedNotesDao.createFolder('Dějepis');
+      await db.savedNotesDao.saveNote(
+        title: 'Husité',
+        content: 'Jan Žižka',
+        folderId: subject,
+      );
+      expect(
+        (await SearchService(db).search('dejepis zizka')).single.title,
+        'Husité',
+      );
     });
   });
 

@@ -14,6 +14,7 @@ import '../../core/widgets/menu_row.dart';
 import '../../data/db/app_database.dart';
 import '../../data/db/daos/saved_notes_dao.dart';
 import '../settings/settings_screen.dart';
+import '../search/search_screen.dart';
 import '../subjects/subject_actions.dart';
 import '../subjects/subjects_providers.dart';
 import 'notes_library_providers.dart';
@@ -100,6 +101,12 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
           SliverAppBar.large(
             title: const Text('Knihovna'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Hledat v hodinách a látce',
+                onPressed: () =>
+                    Navigator.of(context).push(SearchScreen.route()),
+              ),
               if (selected != null)
                 PopupMenuButton<_FolderAction>(
                   icon: const Icon(Icons.more_vert),

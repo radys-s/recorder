@@ -121,19 +121,23 @@ class _LoadingSkeletonState extends State<LoadingSkeleton>
     final base = scheme.surfaceContainerHigh;
     final shine = scheme.surfaceContainerLow;
 
-    final blocks = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < widget.rows; i++)
-          Container(
-            height: 76,
-            margin: const EdgeInsets.only(bottom: Gap.sm),
-            decoration: BoxDecoration(
-              color: base,
-              borderRadius: BorderRadius.circular(Gap.radius),
+    final blocks = SingleChildScrollView(
+      primary: false,
+      physics: const NeverScrollableScrollPhysics(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < widget.rows; i++)
+            Container(
+              height: 76,
+              margin: const EdgeInsets.only(bottom: Gap.sm),
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(Gap.radius),
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
 
     return Semantics(
@@ -180,37 +184,40 @@ class _AsyncError extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Gap.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 44,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: Gap.lg),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+      child: SingleChildScrollView(
+        primary: false,
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 44,
+                color: theme.colorScheme.error,
               ),
-            ),
-            if (onRetry != null) ...[
               const SizedBox(height: Gap.lg),
-              OutlinedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Zkusit znovu'),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
+              if (onRetry != null) ...[
+                const SizedBox(height: Gap.lg),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Zkusit znovu'),
+                ),
+              ],
+              if (kDebugMode) ...[
+                const SizedBox(height: Gap.lg),
+                _DebugDetail(error: error),
+              ],
             ],
-            if (kDebugMode) ...[
-              const SizedBox(height: Gap.lg),
-              _DebugDetail(error: error),
-            ],
-          ],
+          ),
         ),
       ),
     );

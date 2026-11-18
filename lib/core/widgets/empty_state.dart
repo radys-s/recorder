@@ -33,52 +33,55 @@ class EmptyState extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(Gap.xxl),
-        child: ConstrainedBox(
-          // Centred text wider than this stops reading as a sentence.
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // A tinted disc rather than a bare grey glyph: the bare icon read
-              // as a disabled control, not as an illustration.
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer.withValues(alpha: 0.7),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  icon,
-                  size: 32,
-                  color: scheme.onSecondaryContainer,
-                ),
-              ),
-              const SizedBox(height: Gap.lg),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: scheme.onSurface,
-                ),
-              ),
-              if (message != null) ...[
-                const SizedBox(height: Gap.sm),
-                Text(
-                  message!,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
+      child: SingleChildScrollView(
+        primary: false,
+        child: Padding(
+          padding: const EdgeInsets.all(Gap.xxl),
+          child: ConstrainedBox(
+            // Centred text wider than this stops reading as a sentence.
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // A tinted disc rather than a bare grey glyph: the bare icon read
+                // as a disabled control, not as an illustration.
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: scheme.secondaryContainer.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 32,
+                    color: scheme.onSecondaryContainer,
                   ),
                 ),
+                const SizedBox(height: Gap.lg),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: scheme.onSurface,
+                  ),
+                ),
+                if (message != null) ...[
+                  const SizedBox(height: Gap.sm),
+                  Text(
+                    message!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (action != null) ...[
+                  const SizedBox(height: Gap.xl),
+                  action!,
+                ],
               ],
-              if (action != null) ...[
-                const SizedBox(height: Gap.xl),
-                action!,
-              ],
-            ],
+            ),
           ),
         ),
       ),

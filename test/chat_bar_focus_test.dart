@@ -40,6 +40,7 @@ Future<AppDatabase> _pump(
   WidgetTester tester, {
   required bool recording,
   VoidCallback? onSent,
+  double scale = 1,
 }) async {
   final db = AppDatabase.forTesting(NativeDatabase.memory());
   addTearDown(db.close);
@@ -53,12 +54,26 @@ Future<AppDatabase> _pump(
         ),
       ],
       child: MaterialApp(
-        home: Scaffold(
-          body: Column(
-            children: [
-              const Expanded(child: Center(child: Text('přepis'))),
-              ChatBar(meetingId: 1, recording: recording, onSent: onSent),
-            ],
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(scale),
+            disableAnimations: scale > 1,
+          ),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Column(
+              children: [
+                const Expanded(child: Center(child: Text('přepis'))),
+                ChatBar(
+                  meetingId: 1,
+                  recording: recording,
+                  onSent: onSent,
+                  keyboardOpen: MediaQuery.viewInsetsOf(context).bottom > 0,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -78,6 +93,29 @@ bool _focused(WidgetTester tester) =>
     tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus;
 
 void main() {
+  for (final recording in [false, true]) {
+    testWidgets(
+      'chat controls fit 320px, large text and keyboard, recording=$recording',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1;
+        tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetViewInsets);
+        await _pump(tester, recording: recording, scale: 2);
+        await tester.tap(find.byType(TextField));
+        await tester.enterText(
+          find.byType(TextField),
+          'Velmi dlouhá otázka k této uložené hodině?',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(tester.takeException(), isNull);
+        expect(find.byTooltip('Odeslat'), findsOneWidget);
+        await _unmount(tester);
+      },
+    );
+  }
   testWidgets('tapping outside the bar puts the keyboard away', (tester) async {
     await _pump(tester, recording: false);
     await tester.tap(find.byType(TextField));
