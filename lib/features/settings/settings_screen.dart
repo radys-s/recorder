@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/accent.dart';
 import '../../ai/gemini_key_check.dart';
 import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
-import '../../ai/llm_provider.dart';
 import '../../audio/recording_controller.dart';
 import '../../core/constants.dart';
 import '../../core/providers.dart';
@@ -21,6 +21,7 @@ import '../debug/web_answer_probe.dart';
 import 'ai_services_section.dart';
 import 'service_status_section.dart';
 import 'appearance_section.dart';
+import 'key_check.dart';
 import 'drive_sync_section.dart';
 import '../../legal/data_processors.dart';
 import '../legal/data_processor_notice.dart';
@@ -29,22 +30,97 @@ import 'privacy_section.dart';
 import 'storage_section.dart';
 import 'study_profile_section.dart';
 
-/// Groq API key entry. Phase 1 has nothing else to configure, apart from the
-/// debug-only diagnostics section at the bottom.
-class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+/// Everything a student configures. The keys come first: without one nothing
+/// is transcribed, and the onboarding step that opens this screen is about
+/// exactly that.
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key, this.focusKey = false});
+
+  /// Puts the cursor in the Groq key field, for screens that open Settings
+  /// only to add a key.
+  final bool focusKey;
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Nastavení')),
+      body: ListView(
+        padding: const EdgeInsets.all(Gap.lg),
+        children: [
+          GroqKeySection(autofocus: focusKey),
+          const _GeminiKeySection(),
+          const AiServicesSection(),
+          const ServiceStatusSection(),
+          const AppearanceSection(),
+          const StudyProfileSection(),
+          const _LanguageSection(),
+          const _MicTipsSection(),
+          const LessonRemindersSection(),
+          const StorageSection(),
+          const DriveSyncSection(),
+          const _SensitivitySection(),
+          const _LiveAnswersSection(),
+          const _GlobalRulesSection(),
+          const PrivacySection(),
+          if (kDebugMode) const _DiagnosticsSection(),
+        ],
+      ),
+    );
+  }
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+/// Opens the page where a free key is made, in the browser.
+class GetKeyLink extends StatelessWidget {
+  const GetKeyLink(this.url, {super.key});
+
+  final String url;
+
+  Future<void> _open(BuildContext context) async {
+    var opened = false;
+    try {
+      opened = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {}
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Odkaz se nepodařilo otevřít: $url')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: () => _open(context),
+        icon: const Icon(Icons.open_in_new, size: 18),
+        label: const Text('Získat klíč zdarma'),
+      ),
+    );
+  }
+}
+
+/// The Groq key: the one that makes transcription work. Saving checks the key
+/// straight away, so a typo is found now and not in the next lesson.
+class GroqKeySection extends ConsumerStatefulWidget {
+  const GroqKeySection({super.key, this.autofocus = false});
+
+  final bool autofocus;
+
+  @override
+  ConsumerState<GroqKeySection> createState() => _GroqKeySectionState();
+}
+
+class _GroqKeySectionState extends ConsumerState<GroqKeySection> {
   final _controller = TextEditingController();
   bool _obscured = true;
   bool _busy = false;
 
-  /// What the last „Ověřit klíč" found; shown on the Groq key card.
-  String? _verified;
+  /// What the last check found; shown on the key card.
+  KeyCheck? _check;
 
   @override
   void dispose() {
@@ -64,17 +140,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _check = null;
+    });
     try {
       await ref.read(apiKeyStoreProvider).write(value);
       _controller.clear();
       _invalidateKeyProviders();
       // Chunks waiting for a key, or parked because the old one was refused,
       // start moving again now rather than at the next tick.
-      unawaited(ref.read(queueWorkerProvider).keysChanged());
+      unawaited(ref.read(keysChangedProvider)());
       final hint = apiKeyFormatHint('Groq', cleanApiKey(value));
-      _verified = null;
-      _notify('Klíč uložen.${hint == null ? '' : ' $hint'}');
+      final check = await _runCheck();
+      _notify('${savedKeyMessage('Groq', check)}${hint == null ? '' : ' $hint'}');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     } finally {
@@ -83,42 +162,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// Asks Groq which models the key can use — the one call that separates a
-  /// wrong key from a wrong model from no connection. Works in release, since
-  /// a tester's first question is "is my key any good".
+  /// wrong key from a wrong model from no connection.
+  Future<KeyCheck> _runCheck() async {
+    final check = await checkKey(
+      'Groq',
+      ref.read(groqModelListerProvider),
+      needsTranscription: true,
+    );
+    if (mounted) setState(() => _check = check);
+    return check;
+  }
+
   Future<void> _verify() async {
     setState(() {
       _busy = true;
-      _verified = null;
+      _check = null;
     });
-    String result;
     try {
-      final ids = await listGroqModels(ref.read(apiKeyStoreProvider));
-      final hasWhisper =
-          ids.contains(kGroqWhisperModel) ||
-          ids.contains(kGroqWhisperTurboModel);
-      result = hasWhisper
-          ? 'Klíč funguje · přepis je dostupný.'
-          : 'Klíč funguje, ale přepisovací model tam chybí — aplikace zkusí '
-                'záložní.';
-    } on AiException catch (e) {
-      result = 'Ověření selhalo: ${redactSecrets(e.message)}';
-    } catch (_) {
-      result = 'Ověření selhalo. Zkontroluj připojení a zkus to znovu.';
+      await _runCheck();
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _verified = result;
-    });
   }
 
   Future<void> _clear() async {
     setState(() => _busy = true);
     try {
       await ref.read(apiKeyStoreProvider).delete();
-      _verified = null;
+      _check = null;
       _invalidateKeyProviders();
-      unawaited(ref.read(queueWorkerProvider).keysChanged());
+      unawaited(ref.read(keysChangedProvider)());
       _notify('Klíč smazán.');
     } catch (e) {
       _notify('Klíč se nepodařilo smazat: ${userMessage(e)}');
@@ -137,100 +210,90 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final masked = ref.watch(maskedApiKeyProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final refused = _check?.works == false;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nastavení')),
-      body: ListView(
-        padding: const EdgeInsets.all(Gap.lg),
-        children: [
-          const AppearanceSection(first: true),
-          const SectionHeader(
-            title: 'Groq API klíč',
-            description:
-                'Uložený jen na tomhle zařízení, v systémovém '
-                'úložišti klíčů. Odesílá se do Groqu a nikam jinam.',
-          ),
-          Card(
-            child: ListTile(
-              leading: Icon(
-                masked.valueOrNull == null ? Icons.key_off : Icons.key,
-                color: masked.valueOrNull == null
-                    ? Theme.of(context).colorScheme.error
-                    : null,
-              ),
-              title: Text(masked.valueOrNull ?? 'Žádný klíč není uložený'),
-              subtitle: Text(
-                _verified ??
-                    (masked.valueOrNull == null
-                        ? 'Bez klíče se přepis nespustí.'
-                        : 'Uložením nového klíče tenhle přepíšeš.'),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(
+          first: true,
+          title: 'Groq API klíč',
+          description:
+              'Klíč pro přepis nahraných hodin. Uložený jen na tomhle zařízení, '
+              'v systémovém úložišti klíčů. Odesílá se do Groqu a nikam jinam.',
+        ),
+        Card(
+          child: ListTile(
+            leading: Icon(
+              masked.valueOrNull == null || refused ? Icons.key_off : Icons.key,
+              color: masked.valueOrNull == null || refused
+                  ? scheme.error
+                  : null,
+            ),
+            title: Text(masked.valueOrNull ?? 'Žádný klíč není uložený'),
+            subtitle: Text(
+              _check?.message ??
+                  (masked.valueOrNull == null
+                      ? 'Bez klíče se přepis nespustí. Klíč je zdarma.'
+                      : 'Uložením nového klíče tenhle přepíšeš.'),
             ),
           ),
-          const SizedBox(height: Gap.lg),
-          TextField(
-            controller: _controller,
-            obscureText: _obscured,
-            enabled: !_busy,
-            autocorrect: false,
-            enableSuggestions: false,
-            decoration: InputDecoration(
-              labelText: 'Nový klíč',
-              hintText: 'gsk_...',
-              suffixIcon: IconButton(
-                icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
-                tooltip: _obscured ? 'Zobrazit klíč' : 'Skrýt klíč',
-                onPressed: () => setState(() => _obscured = !_obscured),
-              ),
+        ),
+        if (masked.valueOrNull == null || refused)
+          const GetKeyLink('https://console.groq.com/keys'),
+        const SizedBox(height: Gap.md),
+        // Checking a key offline can take a while; say that something is
+        // happening.
+        if (_busy) const LinearProgressIndicator(),
+        TextField(
+          controller: _controller,
+          autofocus: widget.autofocus,
+          obscureText: _obscured,
+          enabled: !_busy,
+          autocorrect: false,
+          enableSuggestions: false,
+          onSubmitted: (_) => _busy ? null : _save(),
+          decoration: InputDecoration(
+            labelText: 'Nový klíč',
+            hintText: 'gsk_...',
+            suffixIcon: IconButton(
+              icon: Icon(_obscured ? Icons.visibility : Icons.visibility_off),
+              tooltip: _obscured ? 'Zobrazit klíč' : 'Skrýt klíč',
+              onPressed: () => setState(() => _obscured = !_obscured),
             ),
           ),
-          const SizedBox(height: Gap.md),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _busy ? null : _save,
-                  icon: const Icon(Icons.save),
-                  label: const Text('Uložit'),
-                ),
+        ),
+        const SizedBox(height: Gap.md),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _save,
+                icon: const Icon(Icons.save),
+                label: const Text('Uložit'),
               ),
-              const SizedBox(width: Gap.md),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _busy || masked.valueOrNull == null
-                      ? null
-                      : _clear,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Smazat'),
-                ),
+            ),
+            const SizedBox(width: Gap.md),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy || masked.valueOrNull == null ? null : _clear,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Smazat'),
               ),
-            ],
-          ),
-          if (masked.valueOrNull != null) ...[
-            const SizedBox(height: Gap.sm),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : _verify,
-              icon: const Icon(Icons.verified_outlined),
-              label: const Text('Ověřit klíč'),
             ),
           ],
-          const DataProcessorNotice(DataProcessor.groq),
-          const _GeminiKeySection(),
-          const AiServicesSection(),
-          const ServiceStatusSection(),
-          const StudyProfileSection(),
-          const _LanguageSection(),
-          const _MicTipsSection(),
-          const LessonRemindersSection(),
-          const StorageSection(),
-          const DriveSyncSection(),
-          const _SensitivitySection(),
-          const _LiveAnswersSection(),
-          const _GlobalRulesSection(),
-          const PrivacySection(),
-          if (kDebugMode) const _DiagnosticsSection(),
+        ),
+        if (masked.valueOrNull != null) ...[
+          const SizedBox(height: Gap.sm),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _verify,
+            icon: const Icon(Icons.verified_outlined),
+            label: const Text('Ověřit klíč'),
+          ),
         ],
-      ),
+        const DataProcessorNotice(DataProcessor.groq),
+      ],
     );
   }
 }
@@ -252,6 +315,9 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
   /// What the last „Ověřit klíč" found; shown on the key card.
   GeminiKeyReport? _report;
 
+  /// What the check after saving found, until „Ověřit klíč" says more.
+  KeyCheck? _quick;
+
   @override
   void dispose() {
     _controller.dispose();
@@ -263,6 +329,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
     ref.invalidate(maskedGeminiKeyProvider);
     ref.read(geminiModelResolverProvider).reset();
     _report = null;
+    _quick = null;
   }
 
   void _notify(String message) {
@@ -291,9 +358,15 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       await ref.read(geminiKeyStoreProvider).write(value);
       _controller.clear();
       _invalidate();
-      unawaited(ref.read(queueWorkerProvider).keysChanged());
+      unawaited(ref.read(keysChangedProvider)());
       final hint = apiKeyFormatHint('Gemini', cleanApiKey(value));
-      _notify('Gemini klíč uložen.${hint == null ? '' : ' $hint'}');
+      // Listing models is free; the full „Ověřit klíč" test spends requests.
+      final check = await checkKey(
+        'Gemini',
+        ref.read(geminiModelListerProvider),
+      );
+      if (mounted) setState(() => _quick = check);
+      _notify('${savedKeyMessage('Gemini', check)}${hint == null ? '' : ' $hint'}');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     }
@@ -303,7 +376,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
     try {
       await ref.read(geminiKeyStoreProvider).delete();
       _invalidate();
-      unawaited(ref.read(queueWorkerProvider).keysChanged());
+      unawaited(ref.read(keysChangedProvider)());
       _notify('Gemini klíč smazán.');
     } catch (e) {
       _notify('Klíč se nepodařilo smazat: ${userMessage(e)}');
@@ -322,7 +395,10 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       override: (await prefs.current()).geminiModelOverride,
     );
     if (!mounted) return;
-    setState(() => _report = report);
+    setState(() {
+      _report = report;
+      _quick = null;
+    });
     final pick = await showDialog<bool>(
       context: context,
       builder: (context) => _GeminiReportDialog(report: report),
@@ -380,6 +456,8 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
   @override
   Widget build(BuildContext context) {
     final masked = ref.watch(maskedGeminiKeyProvider).valueOrNull;
+    final refused =
+        masked != null && (_report?.works == false || _quick?.works == false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -393,7 +471,10 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
         ),
         Card(
           child: ListTile(
-            leading: Icon(masked == null ? Icons.key_off : Icons.key),
+            leading: Icon(
+              masked == null || refused ? Icons.key_off : Icons.key,
+              color: refused ? Theme.of(context).colorScheme.error : null,
+            ),
             title: Text(masked ?? 'Žádný klíč není uložený'),
             subtitle: Text(
               masked == null
@@ -404,11 +485,15 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
                       final r? when !r.works =>
                         'Ověření selhalo — klepni na '
                             'Ověřit klíč pro detail.',
-                      _ => 'Uložením nového klíče tenhle přepíšeš.',
+                      _ =>
+                        _quick?.message ??
+                            'Uložením nového klíče tenhle přepíšeš.',
                     },
             ),
           ),
         ),
+        if (masked == null || refused)
+          const GetKeyLink('https://aistudio.google.com/apikey'),
         const SizedBox(height: Gap.sm),
         Text(
           'Bezplatná verze Gemini může vstupy použít ke zlepšování služeb '

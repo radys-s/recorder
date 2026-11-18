@@ -77,7 +77,7 @@ class TranscriptionWaitNotice extends ConsumerWidget {
                 TextButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const SettingsScreen(),
+                      builder: (_) => const SettingsScreen(focusKey: true),
                     ),
                   ),
                   child: const Text('Otevřít nastavení'),

@@ -92,7 +92,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
       if (!await confirmTranscriptionKey(
             context,
             ref,
-            openSettings: _openSettings,
+            openSettings: () => _openSettings(focusKey: true),
           ) ||
           !mounted) {
         return;
@@ -131,9 +131,12 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
     await ref.read(recordingControllerProvider.notifier).resume();
   }
 
-  Future<void> _openSettings() async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+  Future<void> _openSettings({bool focusKey = false}) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(focusKey: focusKey),
+      ),
+    );
     if (!mounted) return;
     ref
       ..invalidate(hasApiKeyProvider)
@@ -143,6 +146,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
   Future<void> _onboardingStep(OnboardingStep step) async {
     switch (step) {
       case OnboardingStep.groqKey:
+        await _openSettings(focusKey: true);
       case OnboardingStep.geminiKey:
       case OnboardingStep.study:
         await _openSettings();
