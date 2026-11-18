@@ -125,8 +125,14 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _playerEngaged.dispose();
     super.dispose();
   }
+
+  /// Whether the student has started the player on this screen. Until then
+  /// the notes tab keeps it out of the way; after, it stays so playback can
+  /// be paused while reading.
+  final _playerEngaged = ValueNotifier(false);
 
   /// How many rows the transcript had at the last build; the tail is followed
   /// only when that grows.
@@ -261,6 +267,14 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         (s) => s.isRecording && s.meetingId == widget.meetingId,
       ),
     );
+    // Nothing can play while any lesson records, so the player would only
+    // say so.
+    final anyRecording = ref.watch(
+      recordingControllerProvider.select((s) => s.isRecording),
+    );
+    final segments =
+        ref.watch(meetingSegmentsProvider(widget.meetingId)).valueOrNull ??
+        const <TranscriptSegment>[];
     final prefs = ref.watch(preferencesProvider);
     final liveAnswers = prefs.valueOrNull?.liveAnswersEnabled ?? false;
 
@@ -375,13 +389,28 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
               collapsed: keyboardOpen,
               child: Column(
                 children: [
-                  MeetingAudioPlayer(
-                    segments:
-                        ref
-                            .watch(meetingSegmentsProvider(widget.meetingId))
-                            .valueOrNull ??
-                        const [],
-                    audioCleared: meeting.valueOrNull?.audioClearedAt != null,
+                  // The player is useless while this lesson records, and on
+                  // the notes it pushed the first line halfway down the
+                  // screen. It stays mounted, so playback never stops.
+                  Builder(
+                    builder: (context) {
+                      final tabs = DefaultTabController.of(context);
+                      return ListenableBuilder(
+                        listenable: Listenable.merge([tabs, _playerEngaged]),
+                        builder: (context, player) => _KeyboardCollapse(
+                          collapsed:
+                              anyRecording ||
+                              (tabs.index == 1 && !_playerEngaged.value),
+                          child: player!,
+                        ),
+                        child: MeetingAudioPlayer(
+                          segments: segments,
+                          audioCleared:
+                              meeting.valueOrNull?.audioClearedAt != null,
+                          engaged: _playerEngaged,
+                        ),
+                      );
+                    },
                   ),
                   if (meeting.valueOrNull?.interrupted == true)
                     Padding(
