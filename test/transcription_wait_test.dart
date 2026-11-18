@@ -9,6 +9,12 @@ import 'package:recorder/data/db/tables/transcript_segments_table.dart';
 import 'package:recorder/features/meeting_detail/meeting_detail_providers.dart';
 
 void main() {
+  test('pending chunks are counted in correct Czech', () {
+    expect(pendingChunksText(1), contains('zpracování 1 úseku;'));
+    expect(pendingChunksText(3), contains('zpracování 3 úseků;'));
+    expect(pendingChunksText(12), contains('zpracování 12 úseků;'));
+  });
+
   test('a limit names the time it ends', () {
     expect(
       transcriptionWaitText(

@@ -67,8 +67,8 @@ class _SaveNoteSheetState extends State<_SaveNoteSheet> {
               Text('Uložit poznámky', style: theme.textTheme.titleLarge),
               const SizedBox(height: Gap.xs),
               Text(
-                'Uloží se kopie. Když poznámky u schůzky vytvoříš znovu nebo '
-                'schůzku smažeš, tahle verze zůstane.',
+                'Uloží se kopie. Když výpisky u hodiny vytvoříš znovu nebo '
+                'hodinu smažeš, tahle verze zůstane.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

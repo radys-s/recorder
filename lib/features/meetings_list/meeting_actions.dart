@@ -22,12 +22,12 @@ final meetingDeleterProvider = Provider<MeetingDeleter>((ref) {
   );
 });
 
-/// `Schůzka 14.09. 10:30` — the title a recording gets when nobody names it.
+/// `Hodina 14.09. 10:30` or `Nahrávka 14.09. 10:30` — the title a recording gets when nobody names it.
 /// The list shows the time instead of a title like this, since the day heading
 /// above the row already says the rest.
 bool isDefaultMeetingTitle(String title) =>
     RegExp(
-      r'^(?:Schůzka|Hodina) \d{1,2}\. ?\d{1,2}\. \d{1,2}:\d{2}$',
+      r'^(?:Schůzka|Hodina|Nahrávka) \d{1,2}\. ?\d{1,2}\. \d{1,2}:\d{2}$',
     ).hasMatch(title);
 
 /// Deletes the meeting with its audio, transcript, answers and notes after
@@ -50,7 +50,7 @@ Future<void> confirmAndDeleteMeeting(
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
-          content: Text('Nahrávanou schůzku nejde smazat. Nejdřív ji zastav.'),
+          content: Text('Nahrávku nejde smazat, dokud se nahrává. Nejdřív ji zastav.'),
         ),
       );
     return;
@@ -73,7 +73,7 @@ Future<void> confirmAndDeleteMeeting(
         messenger
           ..hideCurrentSnackBar()
           ..showSnackBar(
-            const SnackBar(content: Text('Schůzku se nepodařilo smazat.')),
+            const SnackBar(content: Text('Nahrávku se nepodařilo smazat.')),
           );
       }
     },
@@ -88,7 +88,7 @@ Future<void> renameMeetingFlow(
   final dao = ref.read(appDatabaseProvider).meetingsDao;
   final name = await showTextInputDialog(
     context,
-    title: 'Přejmenovat schůzku',
+    title: 'Přejmenovat nahrávku',
     label: 'Název',
     initialValue: meeting.title,
     maxLength: 80,

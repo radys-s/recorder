@@ -91,7 +91,7 @@ class _MeetingNotesTabState extends ConsumerState<MeetingNotesTab> {
 
       final picked = await showSaveNoteSheet(
         context,
-        initialTitle: meeting?.title ?? 'Poznámky ze schůzky',
+        initialTitle: meeting?.title ?? 'Výpisky z hodiny',
         initialFolderId: meeting?.subjectId,
       );
       if (picked == null) return;

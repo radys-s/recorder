@@ -1102,7 +1102,7 @@ class RecordingController extends Notifier<RecordingState> {
 
   static String _defaultTitle(DateTime at, {required bool lesson}) {
     String two(int v) => v.toString().padLeft(2, '0');
-    return '${lesson ? 'Hodina' : 'Schůzka'} ${two(at.day)}.${two(at.month)}. '
+    return '${lesson ? 'Hodina' : 'Nahrávka'} ${two(at.day)}.${two(at.month)}. '
         '${two(at.hour)}:${two(at.minute)}';
   }
 }

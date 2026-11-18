@@ -28,6 +28,12 @@ class TranscriptionWait {
   int get hashCode => Object.hash(kind, until);
 }
 
+/// The notice for chunks that are saved but not yet transcribed, counted in
+/// correct Czech („1 úseku", „3 úseků").
+String pendingChunksText(int pending) =>
+    'Zvuk je uložený. Přepis čeká na zpracování $pending '
+    '${pending == 1 ? 'úseku' : 'úseků'}; po připojení doběhne automaticky.';
+
 /// What the student reads while chunks wait: one sentence that says why, and
 /// for a limit also when it ends.
 String transcriptionWaitText(TranscriptionWait wait) {

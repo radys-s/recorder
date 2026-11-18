@@ -62,7 +62,7 @@ class TranscriptionWaitNotice extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       wait == null
-                          ? 'Zvuk je uložený. Přepis čeká na zpracování $pending úseků; po připojení doběhne automaticky.'
+                          ? pendingChunksText(pending)
                           : transcriptionWaitText(wait),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: missingKey

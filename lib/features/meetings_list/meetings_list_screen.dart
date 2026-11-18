@@ -477,7 +477,7 @@ class _MeetingRow extends ConsumerWidget {
     );
     final subject = summary.subject;
     final named = !isDefaultMeetingTitle(meeting.title);
-    final title = named ? meeting.title : (subject?.name ?? 'Schůzka');
+    final title = named ? meeting.title : (subject?.name ?? 'Nahrávka');
     final subtitle = [
       if (named && subject != null) subject.name,
       formatTimeOfDay(meeting.createdAt),

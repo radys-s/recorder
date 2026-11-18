@@ -144,7 +144,7 @@ class AudioCleaner {
       sizes.add(
         MeetingAudioSize(
           meetingId: id,
-          title: titles[id] ?? 'Smazaná schůzka',
+          title: titles[id] ?? 'Smazaná nahrávka',
           bytes: bytes,
         ),
       );
