@@ -15,11 +15,13 @@ import '../ai/llm_provider.dart';
 import '../ai/timetable_import.dart';
 import '../app.dart';
 import '../audio/recording_controller.dart';
+import '../core/constants.dart';
 import '../core/photo_picker.dart';
 import '../core/providers.dart';
 import '../data/db/app_database.dart';
 import '../data/db/tables/preferences_table.dart';
 import '../data/secure/api_key_store.dart';
+import '../features/settings/key_check.dart';
 import '../learning/exam_prep.dart';
 import '../legal/legal_texts.dart';
 import 'demo_seed.dart';
@@ -78,6 +80,13 @@ Future<void> main() async {
         customAiBaseUrlStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         customAiModelStoreProvider.overrideWithValue(_MemoryKeyStore(null)),
         llmProvider.overrideWithValue(_FakeLlm()),
+        // Saving a key checks it; in the preview that check stays offline.
+        groqModelListerProvider.overrideWithValue(
+          () async => const [kGroqWhisperModel],
+        ),
+        geminiModelListerProvider.overrideWithValue(
+          () async => const ['gemini-flash-latest'],
+        ),
         // Nothing in the preview may reach Google.
         geminiProvider.overrideWith(
           (ref) => _FakeGemini(ref.read(geminiKeyStoreProvider)),
