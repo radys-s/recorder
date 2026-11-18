@@ -250,7 +250,9 @@ class TranscriptionQueueWorker {
   /// attempts, shown as waiting, and a pass starts now.
   Future<void> retrySegments(Iterable<int> segmentIds) async {
     for (final id in segmentIds) {
-      await _queueDao.requeueForSegment(id);
+      // A chunk with no parked row is already moving or done; marking it
+      // pending would leave it waiting for a row that never comes.
+      if (await _queueDao.requeueForSegment(id) == 0) continue;
       await _segmentsDao.updateSegmentStatus(id, SegmentStatus.pending);
     }
     await _drain();

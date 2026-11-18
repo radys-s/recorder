@@ -114,7 +114,8 @@ class _FailedNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // „Se nepodařilo přepsat" takes the accusative: 1 úsek, 2–4 úseky, 5+ úseků.
+    // After „se nepodařilo přepsat": 1 úsek, 2–4 úseky, 5+ úseků (genitive
+    // after the numeral).
     final chunks = switch (count) {
       1 => '1 úsek',
       2 || 3 || 4 => '$count úseky',

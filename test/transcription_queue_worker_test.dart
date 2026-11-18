@@ -122,7 +122,7 @@ class _Queue implements UploadQueueDao {
   Future<int> requeueForSegment(int segmentId) async {
     var n = 0;
     for (final r in [...rows]) {
-      if (r.segmentId == segmentId && r.status != QueueStatus.succeeded) {
+      if (r.segmentId == segmentId && r.status == QueueStatus.failedPermanent) {
         n++;
         _change(
           r.id,
@@ -807,6 +807,23 @@ void main() {
       expect(world.row(1).status, QueueStatus.succeeded);
       expect(world.segment(1).status, SegmentStatus.transcribed);
       expect(world.segment(2).status, SegmentStatus.transcribed);
+    });
+
+    test('a retry leaves a chunk alone unless it was parked', () async {
+      final world = _World((_) => _text('Hotovo.'));
+      world.enqueue(1, status: QueueStatus.succeeded);
+      world.segments.byId[world.segmentId(1)] = world
+          .segment(1)
+          .copyWith(
+            status: SegmentStatus.transcribed,
+            content: const Value('Hotovo.'),
+          );
+
+      await world.worker.retrySegments([world.segmentId(1)]);
+      await _settle();
+
+      expect(world.row(1).status, QueueStatus.succeeded);
+      expect(world.segment(1).status, SegmentStatus.transcribed);
     });
 
     test('an unclassified error is retried, not fatal', () async {

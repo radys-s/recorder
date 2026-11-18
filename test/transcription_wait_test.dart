@@ -154,6 +154,43 @@ void main() {
       expect(find.text('Zkusit znovu vše'), findsOne);
     });
 
+    for (final (count, words) in [
+      (1, '1 úsek se'),
+      (5, '5 úseků se'),
+    ]) {
+      testWidgets('counts $count failed chunk(s) in Czech', (tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              transcriptionWaitProvider.overrideWith(
+                (ref) => Stream.value(null),
+              ),
+              meetingSegmentsProvider(1).overrideWith(
+                (ref) => Stream.value([
+                  for (var i = 0; i < count; i++)
+                    TranscriptSegment(
+                      id: i,
+                      meetingId: 1,
+                      sequence: i,
+                      startMs: 0,
+                      endMs: 1000,
+                      status: SegmentStatus.failed,
+                      localAudioPath: 'synthetic.wav',
+                      createdAt: DateTime(2026),
+                    ),
+                ]),
+              ),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(body: TranscriptionWaitNotice(meetingId: 1)),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(find.textContaining(words), findsOne);
+      });
+    }
+
     testWidgets('shows why chunks wait', (tester) async {
       await pump(
         tester,
