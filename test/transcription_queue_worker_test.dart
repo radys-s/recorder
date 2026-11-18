@@ -119,6 +119,26 @@ class _Queue implements UploadQueueDao {
       _change(id, (x) => x.copyWith(status: QueueStatus.pending));
 
   @override
+  Future<int> requeueForSegment(int segmentId) async {
+    var n = 0;
+    for (final r in [...rows]) {
+      if (r.segmentId == segmentId && r.status != QueueStatus.succeeded) {
+        n++;
+        _change(
+          r.id,
+          (x) => x.copyWith(
+            status: QueueStatus.pending,
+            attemptCount: 0,
+            nextRetryAt: const Value(null),
+            lastError: const Value(null),
+          ),
+        );
+      }
+    }
+    return n;
+  }
+
+  @override
   Future<List<int>> requeueKeyFailures() async {
     final ids = <int>[];
     for (final r in [...rows]) {
@@ -760,6 +780,33 @@ void main() {
       expect(world.row(1).lastError, '$kKeyErrorTag bad key');
       expect(world.segment(1).status, SegmentStatus.failed);
       expect(world.stt.calls, hasLength(1));
+    });
+
+    test('every parked chunk of a lesson is retried with one call', () async {
+      var broken = true;
+      final world = _World(
+        (path) => broken
+            ? throw const SttPermanentException('bad audio', statusCode: 400)
+            : _text(path == _path(1) ? 'První věta.' : 'Druhá věta.'),
+      );
+      world.enqueue(1);
+      world.enqueue(2);
+
+      await world.worker.start();
+      await _until(() => world.row(2).status == QueueStatus.failedPermanent);
+      expect(world.segment(1).status, SegmentStatus.failed);
+
+      broken = false;
+      await world.worker.retrySegments([
+        world.segmentId(1),
+        world.segmentId(2),
+      ]);
+      await _until(() => world.row(2).status == QueueStatus.succeeded);
+      await world.worker.stop();
+
+      expect(world.row(1).status, QueueStatus.succeeded);
+      expect(world.segment(1).status, SegmentStatus.transcribed);
+      expect(world.segment(2).status, SegmentStatus.transcribed);
     });
 
     test('an unclassified error is retried, not fatal', () async {

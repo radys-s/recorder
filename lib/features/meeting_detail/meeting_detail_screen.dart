@@ -179,15 +179,8 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     });
   }
 
-  Future<void> _retry(TranscriptSegment segment) async {
-    final db = ref.read(appDatabaseProvider);
-    await db.uploadQueueDao.requeueForSegment(segment.id);
-    await db.transcriptSegmentsDao.updateSegmentStatus(
-      segment.id,
-      SegmentStatus.pending,
-    );
-    unawaited(ref.read(queueWorkerProvider).poke());
-  }
+  Future<void> _retry(TranscriptSegment segment) =>
+      ref.read(queueWorkerProvider).retrySegments([segment.id]);
 
   Future<void> _dismissCard(int cardId) =>
       ref.read(answerCardsDaoProvider).dismiss(cardId);

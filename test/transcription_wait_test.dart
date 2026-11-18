@@ -123,6 +123,37 @@ void main() {
           ),
         );
 
+    testWidgets('failed chunks get one retry for the whole lesson', (
+      tester,
+    ) async {
+      TranscriptSegment failed(int id) => TranscriptSegment(
+        id: id,
+        meetingId: 1,
+        sequence: id,
+        startMs: id * 1000,
+        endMs: id * 1000 + 1000,
+        status: SegmentStatus.failed,
+        localAudioPath: 'synthetic.wav',
+        createdAt: DateTime(2026),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            transcriptionWaitProvider.overrideWith((ref) => Stream.value(null)),
+            meetingSegmentsProvider(1).overrideWith(
+              (ref) => Stream.value([failed(1), failed(2), failed(3)]),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: TranscriptionWaitNotice(meetingId: 1)),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.textContaining('3 úseky se nepodařilo přepsat'), findsOne);
+      expect(find.text('Zkusit znovu vše'), findsOne);
+    });
+
     testWidgets('shows why chunks wait', (tester) async {
       await pump(
         tester,
