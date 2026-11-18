@@ -4,8 +4,8 @@ import '../../ai/gemini_models.dart';
 import '../../ai/groq_models.dart';
 import '../../ai/llm_provider.dart';
 import '../../core/constants.dart';
+import '../../core/gemini_failure.dart';
 import '../../core/providers.dart';
-import '../../core/redaction.dart';
 
 /// Lists the models the saved Groq key can use. A provider so the key card can
 /// be tested without a network.
@@ -61,35 +61,49 @@ Future<KeyCheck> checkKey(
           : 'Klíč funguje, ale přepisovací model tam chybí — aplikace zkusí '
                 'záložní.',
     );
-  } on AiTransientException {
-    return const KeyCheck(
+  } on AiTransientException catch (e) {
+    return KeyCheck(
       null,
-      'Klíč je uložený, ale teď ho nejde ověřit. Zkontroluj připojení '
-      'a klepni na Ověřit klíč.',
+      e.statusCode == 429
+          ? 'Klíč je uložený. $service teď hlásí vyčerpaný limit, ověřit ho '
+                'půjde později.'
+          : _cannotCheck,
     );
   } on AiException catch (e) {
-    final status = e.statusCode;
-    if (status == 400 || status == 401 || status == 403) {
-      return KeyCheck(
+    return switch (e.kind) {
+      GeminiErrorKind.apiDisabled => const KeyCheck(
         false,
-        'Klíč nefunguje — $service ho odmítl. Zkopíruj ho znovu celý '
-        'a ulož.',
-      );
-    }
-    return KeyCheck(false, 'Klíč nefunguje: ${redactSecrets(e.message)}');
+        'Klíč platí, ale v jeho projektu není zapnuté Gemini API. '
+        'Zapni ho v Google AI Studiu.',
+      ),
+      GeminiErrorKind.region => const KeyCheck(
+        false,
+        'Google tuhle službu odsud neposkytuje.',
+      ),
+      GeminiErrorKind.badKey => _refused(service),
+      _ when e.kind == null && (e.statusCode == 401 || e.statusCode == 403) =>
+        _refused(service),
+      // Anything else says nothing certain about the key.
+      _ => const KeyCheck(null, _cannotCheck),
+    };
   } catch (_) {
-    return const KeyCheck(
-      null,
-      'Klíč je uložený, ale teď ho nejde ověřit. Zkontroluj připojení '
-      'a klepni na Ověřit klíč.',
-    );
+    return const KeyCheck(null, _cannotCheck);
   }
 }
 
+KeyCheck _refused(String service) => KeyCheck(
+  false,
+  'Klíč nefunguje — $service ho odmítl. Zkopíruj ho znovu celý a ulož.',
+);
+
+const _cannotCheck =
+    'Klíč je uložený, ale teď ho nejde ověřit. Zkontroluj připojení '
+    'a zkus to znovu.';
+
 /// The snackbar after saving: one sentence that says whether the student is
 /// done.
-String savedKeyMessage(KeyCheck check) => switch (check.works) {
-  true => 'Klíč uložen a funguje.',
-  false => 'Klíč uložen, ale nefunguje. Podrobnosti jsou u klíče.',
-  null => 'Klíč uložen. Ověřit ho teď nejde — zkontroluj připojení.',
+String savedKeyMessage(String service, KeyCheck check) => switch (check.works) {
+  true => '$service klíč uložen a funguje.',
+  false => '$service klíč uložen, ale nefunguje. Podrobnosti jsou u klíče.',
+  null => '$service klíč uložen. Ověřit ho teď nejde.',
 };

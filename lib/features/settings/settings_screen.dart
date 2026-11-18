@@ -153,7 +153,7 @@ class _GroqKeySectionState extends ConsumerState<GroqKeySection> {
       unawaited(ref.read(keysChangedProvider)());
       final hint = apiKeyFormatHint('Groq', cleanApiKey(value));
       final check = await _runCheck();
-      _notify('${savedKeyMessage(check)}${hint == null ? '' : ' $hint'}');
+      _notify('${savedKeyMessage('Groq', check)}${hint == null ? '' : ' $hint'}');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     } finally {
@@ -220,7 +220,7 @@ class _GroqKeySectionState extends ConsumerState<GroqKeySection> {
           first: true,
           title: 'Groq API klíč',
           description:
-              'Klíč pro přepis hodin. Uložený jen na tomhle zařízení, '
+              'Klíč pro přepis nahraných hodin. Uložený jen na tomhle zařízení, '
               'v systémovém úložišti klíčů. Odesílá se do Groqu a nikam jinam.',
         ),
         Card(
@@ -243,6 +243,9 @@ class _GroqKeySectionState extends ConsumerState<GroqKeySection> {
         if (masked.valueOrNull == null || refused)
           const GetKeyLink('https://console.groq.com/keys'),
         const SizedBox(height: Gap.md),
+        // Checking a key offline can take a while; say that something is
+        // happening.
+        if (_busy) const LinearProgressIndicator(),
         TextField(
           controller: _controller,
           autofocus: widget.autofocus,
@@ -363,7 +366,7 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
         ref.read(geminiModelListerProvider),
       );
       if (mounted) setState(() => _quick = check);
-      _notify('${savedKeyMessage(check)}${hint == null ? '' : ' $hint'}');
+      _notify('${savedKeyMessage('Gemini', check)}${hint == null ? '' : ' $hint'}');
     } catch (e) {
       _notify('Klíč se nepodařilo uložit: ${userMessage(e)}');
     }
@@ -392,7 +395,10 @@ class _GeminiKeySectionState extends ConsumerState<_GeminiKeySection> {
       override: (await prefs.current()).geminiModelOverride,
     );
     if (!mounted) return;
-    setState(() => _report = report);
+    setState(() {
+      _report = report;
+      _quick = null;
+    });
     final pick = await showDialog<bool>(
       context: context,
       builder: (context) => _GeminiReportDialog(report: report),

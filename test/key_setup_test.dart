@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:recorder/ai/llm_provider.dart';
 import 'package:recorder/core/constants.dart';
+import 'package:recorder/core/gemini_failure.dart';
 import 'package:recorder/core/providers.dart';
 import 'package:recorder/data/secure/api_key_store.dart';
 import 'package:recorder/features/settings/key_check.dart';
@@ -21,18 +22,21 @@ class _MemoryKeys extends ApiKeyStore {
   Future<void> delete() async => value = null;
 }
 
+var _keysChanged = 0;
+
 Future<_MemoryKeys> _pumpGroq(
   WidgetTester tester,
   Future<List<String>> Function() lister, {
   bool autofocus = false,
 }) async {
+  _keysChanged = 0;
   final keys = _MemoryKeys();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         apiKeyStoreProvider.overrideWithValue(keys),
         groqModelListerProvider.overrideWithValue(lister),
-        keysChangedProvider.overrideWithValue(() async {}),
+        keysChangedProvider.overrideWithValue(() async => _keysChanged++),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -77,6 +81,41 @@ void main() {
       expect(check.message, contains('Zkontroluj připojení'));
     });
 
+    test('only a refusal of the key itself is called a bad key', () async {
+      final disabled = await checkKey(
+        'Gemini',
+        () async => throw const AiPermanentException(
+          'SERVICE_DISABLED',
+          statusCode: 403,
+          kind: GeminiErrorKind.apiDisabled,
+        ),
+      );
+      final badKey = await checkKey(
+        'Gemini',
+        () async => throw const AiPermanentException(
+          'API key not valid',
+          statusCode: 400,
+          kind: GeminiErrorKind.badKey,
+        ),
+      );
+      final odd = await checkKey(
+        'Groq',
+        () async =>
+            throw const AiPermanentException('Response carried no model list.'),
+      );
+      final limit = await checkKey(
+        'Groq',
+        () async =>
+            throw const AiTransientException('rate limited', statusCode: 429),
+      );
+      expect(disabled.works, isFalse);
+      expect(disabled.message, contains('Gemini API'));
+      expect(badKey.message, contains('Gemini ho odmítl'));
+      expect(odd.works, isNull);
+      expect(odd.message, isNot(contains('Response')));
+      expect(limit.message, contains('limit'));
+    });
+
     test('a transcription key without Whisper is flagged', () async {
       final ok = await checkKey(
         'Groq',
@@ -104,7 +143,7 @@ void main() {
       await _save(tester, 'gsk_wrong_key_123456');
 
       expect(
-        find.text('Klíč uložen, ale nefunguje. Podrobnosti jsou u klíče.'),
+        find.text('Groq klíč uložen, ale nefunguje. Podrobnosti jsou u klíče.'),
         findsOneWidget,
       );
       expect(find.textContaining('Groq ho odmítl'), findsOneWidget);
@@ -115,7 +154,8 @@ void main() {
       await _save(tester, 'gsk_good_key_123456');
 
       expect(keys.value, 'gsk_good_key_123456');
-      expect(find.text('Klíč uložen a funguje.'), findsOneWidget);
+      expect(_keysChanged, 1, reason: 'waiting chunks move at once');
+      expect(find.text('Groq klíč uložen a funguje.'), findsOneWidget);
       expect(find.text('Klíč funguje · přepis je dostupný.'), findsOneWidget);
     });
 
