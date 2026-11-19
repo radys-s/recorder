@@ -31,13 +31,12 @@ each, and several texts named things that do not exist.
 | --- | --- | --- |
 | Onboarding → checked transcription key | 6 actions | 3 (tap step, paste, Uložit) |
 | Read notes: first note line | y ≈ 415 | y ≈ 318; all four sections on one screen |
-| Recording screen | disabled player row on top | gone |
 | Recover N failed chunks | N taps | 1 tap |
 | Wrong key detected | during the next lesson | on Save |
 
 Tests: 7 new or extended test files (key check, lesson screen, wording guard,
-wait notice, queue worker, queue DAO on a real database). `flutter analyze`
-clean; iOS CI green on every PR and on main.
+wait notice, queue worker, default titles, queue DAO on an in-memory drift
+database). `flutter analyze` clean; iOS CI green on every PR branch.
 
 **What worked.** The existing web preview (`lib/preview/main_web_preview.dart`)
 made a real walk-through possible without keys or a microphone; stubbing the
@@ -48,7 +47,9 @@ reviews found real issues in #2 (any 400/401/403 called a bad key; Gemini
 card stayed red after a good check) and #5 (retry could reset an upload in
 flight).
 
-**Watch out.** Some files use CRLF (`meeting_detail_screen.dart`,
+The recording screen also lost its disabled player row.
+
+**Watch out.** Some files use CRLF or even mixed endings (`meeting_detail_screen.dart`,
 `transcription_queue_worker.dart`, several tests); edit them byte-preserving.
 The iOS workflow runs only on pushes to main; run it on a PR branch with
 `gh workflow run ios.yml --ref <branch>`.

@@ -109,7 +109,7 @@ const Duration kChatAnswerTimeout = Duration(seconds: 25);
 const Duration kChatWatchdog = Duration(seconds: 70);
 
 /// Secure storage key for the user's Groq API key.
-/// Shown in O aplikaci; `test/legal_texts_test.dart` keeps it equal to the
+/// Shown in O aplikaci; `test/legal_test.dart` keeps it equal to the
 /// version in pubspec.yaml.
 const String kAppVersion = '1.0.1';
 
