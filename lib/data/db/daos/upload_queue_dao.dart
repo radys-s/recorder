@@ -85,12 +85,13 @@ class UploadQueueDao extends DatabaseAccessor<AppDatabase> with _$UploadQueueDao
   ///
   /// [attemptCount] is reset, unlike in [clearRetryBackoff]: a row only reaches
   /// `failedPermanent` after the worker gave up, so "retry" has to mean a fresh
-  /// budget or the button would do nothing. Rows that already succeeded are
-  /// left alone, so a stray tap cannot re-upload a finished chunk.
+  /// budget or the button would do nothing. Only parked rows move, so a stray
+  /// or repeated tap cannot re-upload a finished chunk or reset one that is
+  /// uploading right now.
   Future<int> requeueForSegment(int segmentId) => (update(uploadQueue)
         ..where((t) =>
             t.segmentId.equals(segmentId) &
-            t.status.equalsValue(QueueStatus.succeeded).not()))
+            t.status.equalsValue(QueueStatus.failedPermanent)))
       .write(
         UploadQueueCompanion(
           status: const Value(QueueStatus.pending),

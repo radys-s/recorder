@@ -246,6 +246,18 @@ class TranscriptionQueueWorker {
     await _drain();
   }
 
+  /// The student asked to try these chunks again: back in line with fresh
+  /// attempts, shown as waiting, and a pass starts now.
+  Future<void> retrySegments(Iterable<int> segmentIds) async {
+    for (final id in segmentIds) {
+      // A chunk with no parked row is already moving or done; marking it
+      // pending would leave it waiting for a row that never comes.
+      if (await _queueDao.requeueForSegment(id) == 0) continue;
+      await _segmentsDao.updateSegmentStatus(id, SegmentStatus.pending);
+    }
+    await _drain();
+  }
+
   /// The network came back. Every row waiting out a backoff was waiting for
   /// exactly this, so drop the remaining delay instead of making the user wait
   /// out a timer that is now measuring nothing.
