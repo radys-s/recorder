@@ -146,7 +146,7 @@ vývojářského účtu platí podpis 7 dní a pak je potřeba IPA znovu nainsta
 
 ```bash
 gh run list --workflow "iOS build" --limit 3
-gh run download <run-id> -n Aftermind-iOS-1.0.0-build3
+gh run download <run-id> -n Aftermind-iOS-1.0.1-build4
 ```
 
 ## Dokumentace
@@ -159,6 +159,6 @@ gh run download <run-id> -n Aftermind-iOS-1.0.0-build3
 
 ## Stav
 
-Verze 1.0.0 (beta, build 3). Funguje na iPhonu, ale nemá veřejné vydání.
+Verze 1.0.1 (beta, build 4). Funguje na iPhonu, ale nemá veřejné vydání.
 Kvalita přepisu v reálné třídě a chování mikrofonu při hovorech a změně
 zvukové trasy se ověřují jen na zařízení.
