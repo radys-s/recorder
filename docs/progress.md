@@ -34,6 +34,8 @@ each, and several texts named things that do not exist.
 | Recover N failed chunks | N taps | 1 tap |
 | Wrong key detected | during the next lesson | on Save |
 
+The recording screen also lost its disabled player row.
+
 Tests: 7 new or extended test files (key check, lesson screen, wording guard,
 wait notice, queue worker, default titles, queue DAO on an in-memory drift
 database). `flutter analyze` clean; iOS CI green on every PR branch.
@@ -46,8 +48,6 @@ intended failure and a teardown hang (pending timers) early. Independent
 reviews found real issues in #2 (any 400/401/403 called a bad key; Gemini
 card stayed red after a good check) and #5 (retry could reset an upload in
 flight).
-
-The recording screen also lost its disabled player row.
 
 **Watch out.** Some files use CRLF or even mixed endings (`meeting_detail_screen.dart`,
 `transcription_queue_worker.dart`, several tests); edit them byte-preserving.
