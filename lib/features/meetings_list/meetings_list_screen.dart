@@ -343,7 +343,7 @@ class _MeetingsListScreenState extends ConsumerState<MeetingsListScreen> {
                 ? Theme.of(context).colorScheme.outline
                 : subjectColor(context, subject.colorIndex),
           ),
-          title: named ? s.meeting.title : (subject?.name ?? 'Hodina'),
+          title: named ? s.meeting.title : (subject?.name ?? 'Nahrávka'),
           excerpt: notePreview(notes.content ?? ''),
           subtitle: [
             if (named) ?subject?.name,
@@ -481,7 +481,7 @@ class _MeetingRow extends ConsumerWidget {
     );
     final subject = summary.subject;
     final named = !isDefaultMeetingTitle(meeting.title);
-    final title = named ? meeting.title : (subject?.name ?? 'Schůzka');
+    final title = named ? meeting.title : (subject?.name ?? 'Nahrávka');
     final subtitle = [
       if (named && subject != null) subject.name,
       formatTimeOfDay(meeting.createdAt),

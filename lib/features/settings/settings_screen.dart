@@ -642,7 +642,7 @@ class _LanguageSection extends ConsumerWidget {
           description:
               'Napevno zvolený jazyk drží přepis pohromadě. '
               'Automaticky ho hádá Whisper znovu u každého úseku, takže se '
-              'uprostřed schůzky může přepnout jinam.',
+              'uprostřed hodiny může přepnout jinam.',
         ),
         SegmentedButton<TranscriptLanguage>(
           segments: [
@@ -859,7 +859,7 @@ class _SensitivitySection extends ConsumerWidget {
           title: 'Citlivost poslechu',
           description:
               'Automaticky si na začátku nahrávání změří místnost a '
-              'průběžně se jí přizpůsobuje. Hodně zachytí i tichou schůzku '
+              'průběžně se jí přizpůsobuje. Hodně zachytí i tichý hlas '
               'nebo vzdáleného mluvčího, jen občas přepíše i šum. Málo se hodí '
               'do hlučné místnosti. Změna platí hned, i během nahrávání.',
         ),
@@ -934,8 +934,8 @@ class _LiveAnswersSection extends ConsumerWidget {
           title: const Text('Hledat i na internetu'),
           subtitle: const Text(
             'Vyžaduje Gemini klíč. Když na otázku neodpovídá samotná'
-            ' schůzka, aplikace ji vyhledá na internetu a ukáže i zdroje.'
-            ' Odchází jen samotná otázka, nikdy přepis schůzky.',
+            ' hodina, aplikace ji vyhledá na internetu a ukáže i zdroje.'
+            ' Odchází jen samotná otázka, nikdy přepis hodiny.',
           ),
         ),
       ],

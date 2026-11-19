@@ -235,7 +235,7 @@ class _NotesLibraryScreenState extends ConsumerState<NotesLibraryScreen> {
           icon: Icons.bookmarks_outlined,
           title: 'Knihovna je zatím prázdná',
           message:
-              'Otevři schůzku, v záložce Poznámky je vytvoř a klepni na '
+              'Otevři hodinu, v záložce Výpisky je vytvoř a klepni na '
               'Uložit. Tady je pak najdeš roztříděné podle předmětů.',
         ),
       );

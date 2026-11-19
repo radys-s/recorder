@@ -361,7 +361,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                   enabled: !isThisOneRecording,
                   child: MenuRow(
                     icon: Icons.delete_outline,
-                    label: 'Smazat schůzku',
+                    label: 'Smazat nahrávku',
                     destructive: true,
                     enabled: !isThisOneRecording,
                   ),
@@ -802,7 +802,7 @@ class _MeetingTitle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final m = meeting;
-    if (m == null) return const Text('Schůzka');
+    if (m == null) return const Text('Nahrávka');
     final subjectId = m.subjectId;
     final subject = subjectId == null
         ? null

@@ -112,6 +112,7 @@ void main() {
   group('isDefaultMeetingTitle', () {
     test('matches the generated title', () {
       expect(isDefaultMeetingTitle('Schůzka 08.09. 09:50'), isTrue);
+      expect(isDefaultMeetingTitle('Nahrávka 08.09. 09:50'), isTrue);
       expect(isDefaultMeetingTitle('Hodina 26.9. 8:00'), isTrue);
     });
 
